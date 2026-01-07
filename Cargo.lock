@@ -739,6 +739,18 @@ dependencies = [
 [[package]]
 name = "zab-bid"
 version = "0.1.0"
+dependencies = [
+ "zab-bid-audit",
+ "zab-bid-domain",
+]
+
+[[package]]
+name = "zab-bid-audit"
+version = "0.1.0"
+
+[[package]]
+name = "zab-bid-domain"
+version = "0.1.0"
 
 [[package]]
 name = "zmij"
