@@ -1,0 +1,110 @@
+# AGENTS.md
+
+## Project Objective
+
+This project exists to:
+
+- Provide the API for the front end to interface with the data
+- All data decisions are made by the back end. The front end is just a UI.
+- Data integrity is PARAMOUNT. There are strict rules governing leave and days-off bidding.
+- The system must be able to validate these rules and provide a complete, auditable trail for every state-changing action.
+
+All changes must advance these goals. If unsure, stop and ask.
+
+## Non-Negotiable Rules
+
+- No unsafe code unless explicitly requested
+- Prefer clarity over cleverness
+- No public APIs without tests
+- No breaking changes without migration notes
+- All code paths must have corresponding tests, including error cases
+- Correctness and auditability always take precedence over performance
+
+## Architectural Constraints
+
+- Core logic must remain UI-agnostic
+- Side effects must be isolated
+- All state transitions must be explicit and observable
+- Domain rules must have a single authoritative implementation (no duplication)
+
+## Development Environment & Tooling
+
+- The development environment is declaratively defined using Nix
+- Missing tools, libraries, or services indicate an incomplete environment, not broken code
+- Agents must not work around missing dependencies by modifying code
+- If additional system dependencies or services are required (e.g. databases),
+  the correct action is to update the Nix environment or ask for intervention
+- Environment-related failures must not trigger refactors or logic changes
+
+## Audit & Data Integrity Rules
+
+- All state changes must be attributable to an actor and a cause
+- Historical records must be immutable once written
+- Mutations must be additive (no silent overwrites or deletes)
+- Validation failures must be explicit and surfaced as structured errors
+
+## Code Style
+
+- Rust: idiomatic, clippy-clean, no `.unwrap()` in library code
+- Prefer small, composable functions
+- Avoid macros unless justified
+- Document public functions, methods, types, and non-obvious logic
+- Prefer explicit type annotations for variables, fields, and function signatures; do not rely on type inference for clarity
+- Use consistent naming conventions and formatting
+- Follow Rust naming conventions for variables, functions, and types
+- All dependencies must be declared in the root workspace Cargo.toml.
+- Member crates must reference dependencies exclusively via `<package>.workspace = true`.
+- Do not specify versions, overrides, or duplicate dependency entries in member crates.
+- All markdown must comply with existing rules enforced by `cargo xtask ci`
+- All markdown must comply with existing rules enforced by `pre-commit run --all-files`
+
+## Workspace structure
+
+- The workspace may be expanded with new member crates when doing so meaningfully reduces complexity or clarifies responsibility
+- Each workspace member must have a clearly defined, limited focus
+- New crates should exist to enforce boundaries, not to speculate about future needs
+- Do not create crates “just in case” or for hypothetical reuse
+- If the need for a new crate is unclear, prefer extending an existing one and ask before splitting
+- Crate boundaries are architectural decisions and should be treated as such
+
+## Testing Infrastructure
+
+- Some tests may require external infrastructure (e.g. databases)
+- Such requirements must be explicit and deterministic
+- Test infrastructure should be provisioned via the development environment, not ad-hoc setup
+- If required infrastructure is unavailable, stop and ask rather than altering behavior
+
+## AI-Specific Rules
+
+- Do NOT invent APIs
+- Do NOT silently change behavior
+- Do NOT infer or assume domain rules not explicitly defined
+- If requirements conflict, call it out explicitly
+
+## Documentation Rules
+
+- Do NOT create new markdown files by default
+- Documentation must be created only when it serves a clear, durable purpose
+- Summaries, restatements, or intermediate reasoning must NOT be written to files
+- If documentation seems useful, propose it first and wait for approval
+- Avoid duplicating information already present in existing documents
+- Do NOT create files whose sole purpose is summarization, restatement, or planning notes
+- New markdown files are allowed only for:
+  - Canonical project documents (e.g. README.md, AGENTS.md, PLAN.md)
+  - Formal design decisions explicitly requested by the user
+  - User-facing documentation explicitly approved
+- All markdown must comply with existing markdownlint rules enforced by `cargo xtask ci`
+- All markdown must comply with existing markdownlint rules enforced by `pre-commit run --all-files`
+- Creating or modifying markdown is a higher-friction action than writing code or tests
+
+## When to Stop
+
+If any of the following are true:
+
+- Requirements are ambiguous
+- A change would violate rules above
+- The solution requires guessing intent
+- The change affects auditability or domain rules in unclear ways
+- Failures appear to be caused by missing tools, packages, or environment configuration
+
+→ Ask the user.

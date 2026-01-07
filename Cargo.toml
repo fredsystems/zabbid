@@ -1,6 +1,6 @@
 [workspace]
-members = ["zab-bid", "xtask"]
-default-members = ["zab-bid"]
+members = ["crates/core", "xtask"]
+default-members = ["crates/core"]
 resolver = "3"
 
 [workspace.package]
