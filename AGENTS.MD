@@ -66,6 +66,7 @@ All changes must advance these goals. If unsure, stop and ask.
 - Do not create crates “just in case” or for hypothetical reuse
 - If the need for a new crate is unclear, prefer extending an existing one and ask before splitting
 - Crate boundaries are architectural decisions and should be treated as such
+- Adding new files should invoke git add <file name> so that pre-commit will pick it up.
 
 ## Testing Infrastructure
 
@@ -123,6 +124,24 @@ All changes must advance these goals. If unsure, stop and ask.
 - Seniority-related fields are inputs, not behavior
 - No seniority comparison, ranking, or tie-breaking logic may be implemented in Phase 1
 - The presence of seniority data must not imply ordering or priority without an explicit rule
+
+## Logging & Instrumentation
+
+- Logging and instrumentation must use the `tracing` crate
+- Use appropriate `tracing` macros (`trace!`, `debug!`, `info!`, `warn!`, `error!`)
+- Logging configuration must respect environment-based filtering
+  (e.g. `RUST_LOG` via `tracing-subscriber::EnvFilter`)
+- Do NOT use `println!`, `eprintln!`, or ad-hoc logging
+- Instrumentation must not affect program logic or control flow
+- API-facing errors must be derived from domain/core errors, not replace them
+
+## Error Handling
+
+- Domain and core errors must be expressed as explicit, typed enums
+- Errors must carry structured, testable information
+- Do NOT use `anyhow::Error` in domain, core, or API layers
+- `anyhow` may be used only in binaries, tooling, or top-level application glue
+- Error context must not replace structured error variants
 
 ## When to Stop
 
