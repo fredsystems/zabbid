@@ -170,87 +170,294 @@ This plan may be updated:
 
 Changes to this plan must be explicit and intentional.
 
+## Phase 1: Domain Rules & Enforcement
+
+**Goal:**
+Establish and prove the **pattern** for defining, enforcing, failing, and auditing real domain rules.
+
+Phase 1 validates _how_ rules are expressed and applied, not how many rules exist.
+
 ---
 
-## Phase 1: Minimal Domain Logic
+### Phase 1 Objectives
 
-**Goal:** Implement the smallest set of domain rules necessary to validate the system design.
+- Formalize bid-year–scoped domain vocabulary
+- Implement a representative domain rule end-to-end
+- Enforce domain rules through explicit core state transitions
+- Produce auditable state changes for successful transitions
+- Establish a repeatable pattern for adding future rules
 
-### Phase 1: Objectives
+---
 
-- Implement one or two representative domain rules
-- Validate rule enforcement paths (success and failure)
-- Ensure auditability of all rule-driven transitions
+### Phase 1 Scope
 
-### Phase 1: Non-Goals
+Phase 1 includes:
 
-- Complete rule coverage
+- Bid-year–scoped user domain modeling
+- Domain rule definition as pure, testable functions
+- Core command handling and rule enforcement
+- Structured domain and core error handling
+- Audit event generation for successful transitions
+- Unit tests demonstrating success and failure paths
+
+Phase 1 explicitly excludes:
+
+- Seniority ordering or tie-breaking logic
+- Bidding round modeling or round-specific rules
+- Persistence or database integration
+- API exposure (HTTP, gRPC, etc.)
+- Authentication or authorization
+- Configuration-driven behavior
 - Performance optimization
-- UI concerns
-
-### Phase 1: Exit Criteria
-
-- Rules are validated and tested
-- Invalid actions fail explicitly
-- Audit trails are complete and immutable
 
 ---
 
-## Phase 2: API Skeleton
+### Phase 1 Representative Rule
 
-**Goal:** Expose a minimal API surface without committing to final shapes.
+Phase 1 will implement **one representative domain rule** to prove the enforcement pattern.
 
-### Phase 2: Objectives
+The initial rule is:
 
-- Define request/response types
-- Validate inputs server-side
-- Ensure API reflects domain authority
+- **Within a bid year, user initials must be unique**
 
-### Phase 2: Non-Goals
+This rule must:
 
+- Be scoped strictly to a single bid year
+- Treat initials as the sole user identifier
+- Fail explicitly with structured domain errors
+- Be enforced before any state mutation
+- Produce an audit event only on success
+
+No additional rules may be added unless explicitly approved.
+
+---
+
+### Phase 1 Audit Guarantees
+
+- Every successful state transition emits exactly one audit event
+- Audit events must capture:
+  - actor
+  - cause
+  - action performed
+  - before and after state
+- Failed transitions must not emit audit events
+- Audit records are immutable once created
+
+---
+
+### Phase 1 Testing Requirements
+
+Tests must demonstrate:
+
+- Domain rules accept valid input
+- Domain rules reject invalid input with structured errors
+- Core transitions enforce domain rules consistently
+- Failed transitions do not mutate state
+- Successful transitions emit exactly one audit event
+- Audit events accurately reflect before and after state
+
+Tests should serve as executable examples of the rule enforcement pattern.
+
+---
+
+### Phase 1 Exit Criteria
+
+Phase 1 is complete when all of the following are true:
+
+- Bid-year–scoped user domain model is established
+- The representative domain rule is implemented and tested
+- Rule failures are explicit and structured
+- Core state transitions enforce rules atomically
+- Audit events are generated only for successful transitions
+- Adding an additional rule would follow an obvious, mechanical pattern
+- No round-specific or seniority-resolution logic exists
+- `cargo xtask ci` passes consistently
+- `pre-commit run --all-files` passes consistently
+
+---
+
+## Phase 2: API Skeleton & Boundary Hardening
+
+**Goal:**
+Expose the Phase 1 domain and enforcement model through a minimal API boundary without leaking domain logic or freezing contracts.
+
+Phase 2 proves that the domain remains authoritative when driven externally.
+
+---
+
+### Phase 2 Objectives
+
+- Introduce a minimal API boundary that drives core commands
+- Define request and response DTOs distinct from domain types
+- Translate domain and core errors into API-facing errors explicitly
+- Ensure all successful API-driven transitions emit audit events
+- Ensure failed API calls do not mutate state or emit audit events
+
+---
+
+### Phase 2 Scope
+
+Phase 2 includes:
+
+- A thin API layer that translates requests into core commands
+- Request/response types scoped to API concerns
+- Explicit error mapping from domain/core errors to API errors
+- Boundary tests exercising API → core → audit paths
+
+Phase 2 explicitly excludes:
+
+- Persistence or database integration
+- Authentication or authorization
+- Stable or versioned public API contracts
 - Frontend integration
-- Authentication/authorization
-- Backwards compatibility guarantees
-
-### Phase 2: Exit Criteria
-
-- API endpoints compile and pass tests
-- API does not leak domain internals
-- Errors are structured and meaningful
+- Pagination, querying, or filtering
+- Bidding round modeling or round-specific logic
+- Seniority ordering or tie-breaking
+- Performance optimization
 
 ---
 
-## Phase 3: Infrastructure & Persistence
+### Phase 2 Boundary Rules
 
-**Goal:** Introduce persistence while preserving invariants.
-
-### Phase 3: Objectives
-
-- Introduce database schema
-- Ensure persistence preserves auditability
-- Integrate test database infrastructure
-
-### Phase 3: Non-Goals
-
-- Performance tuning
-- Schema optimization
-
-### Phase 3: Exit Criteria
-
-- State can be persisted and restored
-- Audit history remains immutable
-- Database-backed tests pass in CI
+- The API layer must not contain domain rules
+- The API layer must not mutate state directly
+- All state changes must occur via core transitions
+- Domain types must not be exposed directly through the API
+- Errors must be translated, not reinterpreted or hidden
 
 ---
 
-## Phase 3: Working Rules
+### Phase 2 Testing Requirements
 
-- Work must stay within the current phase
-- If a requirement appears to belong to a future phase, stop and ask
-- Phases may be refined or reordered intentionally
-- Do not speculate about later features
+Tests must demonstrate:
+
+- Valid API requests result in successful state transitions
+- Invalid API requests result in structured API errors
+- Domain rule failures propagate correctly through the API
+- Failed API calls do not mutate state
+- Successful API calls emit exactly one audit event
+- API responses do not leak domain internals
 
 ---
+
+### Phase 2 Exit Criteria
+
+Phase 2 is complete when all of the following are true:
+
+- A minimal API layer exists and compiles
+- The Phase 1 representative rule can be exercised via the API
+- Domain rules are not duplicated in the API layer
+- Error translation is explicit and test-covered
+- Audit events are emitted only on successful API calls
+- No persistence, authentication, or round logic exists
+- `cargo xtask ci` passes consistently
+- `pre-commit run --all-files` passes consistently
+
+--
+
+## Phase 3: Persistence, Audit History, and Rollback
+
+**Goal:**
+Introduce durable persistence for audit history and derived state while preserving domain authority, audit guarantees, and rollback semantics.
+
+Phase 3 proves that system state can be safely reconstructed, corrected, and inspected at any point in time without rewriting history.
+
+---
+
+### Phase 3 Objectives
+
+- Persist audit events in a durable, append-only store
+- Persist derived state snapshots to support efficient recovery
+- Support explicit rollback as a first-class, auditable action
+- Enable reconstruction of effective state at any point in time
+- Ensure persistence failures do not result in partial or unaudited state changes
+
+---
+
+### Phase 3 Scope
+
+Phase 3 includes:
+
+- A persistence adapter implemented below the core layer
+- Durable storage of audit events, ordered in time
+- Durable storage of state snapshots per bid year and area
+- SQLite-backed persistence suitable for read-heavy workloads
+- Atomic persistence of audit events and snapshots
+- Persistence-backed tests demonstrating correctness and recovery
+
+Phase 3 explicitly excludes:
+
+- Authentication or authorization
+- Background jobs or asynchronous processing
+- Performance tuning or query optimization
+- Distributed systems or multi-node coordination
+- Schema migration or versioning strategies
+- Alternate persistence backends
+- UI or frontend concerns
+
+---
+
+### Persistence Semantics
+
+- The audit log is the authoritative source of truth
+- Audit events are append-only and are never rewritten or deleted
+- All audit events are scoped to a single bid year and a single area
+- State is derived by replaying audit events in order
+- Rollback is modeled as an explicit audit event
+- Rollback establishes a prior effective state as authoritative going forward
+- Rollback does not erase or modify historical audit events
+
+---
+
+### State Snapshots
+
+- State is conceptually a complete, materialized snapshot per bid year and area
+- Snapshots exist to accelerate recovery and replay
+- Snapshots must not alter the meaning of the audit log
+- Full state snapshots must be persisted at:
+  - rollback events
+  - round finalized events
+  - explicit checkpoint events
+- All other audit events persist deltas only
+
+---
+
+### Failure Guarantees
+
+- Persistence operations must be atomic
+- If persistence fails, the transition must fail
+- Partial persistence of state or audit data is forbidden
+- In-memory state must not advance unless persistence succeeds
+
+---
+
+### Phase 3 Testing Requirements
+
+Tests must demonstrate:
+
+- Successful persistence of audit events
+- Persistence of full state snapshots at required boundaries
+- Rollback recorded as an auditable event
+- Reconstruction of effective state at a given point in time
+- No partial persistence on simulated failure
+
+Tests must use deterministic infrastructure provided by the development environment.
+
+---
+
+### Phase 3 Exit Criteria
+
+Phase 3 is complete when all of the following are true:
+
+- Audit events are durably persisted and ordered
+- State snapshots are persisted at defined boundaries
+- Rollback is implemented as an auditable event
+- Effective state can be reconstructed at any point in time
+- Persistence failures do not result in partial or unaudited state changes
+- Domain and core behavior are unchanged by persistence
+- No persistence details leak into domain or core layers
+- `cargo xtask ci` passes consistently
+- `pre-commit run --all-files` passes consistently.
 
 ## When to Update This Plan
 

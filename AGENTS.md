@@ -66,6 +66,7 @@ All changes must advance these goals. If unsure, stop and ask.
 - Do not create crates “just in case” or for hypothetical reuse
 - If the need for a new crate is unclear, prefer extending an existing one and ask before splitting
 - Crate boundaries are architectural decisions and should be treated as such
+- Adding new files should invoke git add <file name> so that pre-commit will pick it up.
 
 ## Testing Infrastructure
 
@@ -96,6 +97,71 @@ All changes must advance these goals. If unsure, stop and ask.
 - All markdown must comply with existing markdownlint rules enforced by `cargo xtask ci`
 - All markdown must comply with existing markdownlint rules enforced by `pre-commit run --all-files`
 - Creating or modifying markdown is a higher-friction action than writing code or tests
+
+## Domain Invariants
+
+### Users
+
+- Users are scoped to a single bid year
+- A user’s initials are the sole identifier for that user within a bid year
+- User names are informational and are not unique
+- A user must belong to exactly one area
+- A user must belong to exactly one crew
+
+### Seniority Data
+
+- Seniority-related fields exist as domain data
+- Seniority inputs include:
+  - cumulative NATCA bargaining unit time
+  - NATCA bargaining unit time
+  - EOD / FAA date
+  - service computation date (SCD)
+  - optional lottery value
+- Seniority data must not be used for ordering, ranking, or decision-making unless explicitly enabled by a later phase
+
+### Seniority Constraints
+
+- Seniority-related fields are inputs, not behavior
+- No seniority comparison, ranking, or tie-breaking logic may be implemented in Phase 1
+- The presence of seniority data must not imply ordering or priority without an explicit rule
+
+## Logging & Instrumentation
+
+- Logging and instrumentation must use the `tracing` crate
+- Use appropriate `tracing` macros (`trace!`, `debug!`, `info!`, `warn!`, `error!`)
+- Logging configuration must respect environment-based filtering
+  (e.g. `RUST_LOG` via `tracing-subscriber::EnvFilter`)
+- Do NOT use `println!`, `eprintln!`, or ad-hoc logging
+- Instrumentation must not affect program logic or control flow
+- API-facing errors must be derived from domain/core errors, not replace them
+
+## Error Handling
+
+- Domain and core errors must be expressed as explicit, typed enums
+- Errors must carry structured, testable information
+- Do NOT use `anyhow::Error` in domain, core, or API layers
+- `anyhow` may be used only in binaries, tooling, or top-level application glue
+- Error context must not replace structured error variants
+
+## Persistence & State Derivation
+
+- The audit log is append-only and is never rewritten or deleted
+- All state is derived from the ordered audit log
+- Rollback is modeled as an explicit, auditable event
+- Rollback does not erase or modify prior audit events
+- Rollback selects a prior effective state and establishes it as authoritative going forward
+- Audit events are scoped to a single bid year and a single area
+
+## State Snapshots
+
+- State is conceptually a complete, materialized state per (bid year, area)
+- Snapshots exist only to accelerate recovery and replay
+- Snapshots must not alter the meaning of the audit log
+- Full state snapshots must be persisted at:
+  - rollback events
+  - round finalized events
+  - explicit checkpoint events
+- All other audit events persist deltas only
 
 ## When to Stop
 

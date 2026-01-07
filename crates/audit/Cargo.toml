@@ -1,11 +1,5 @@
-[dependencies]
-zab-bid-domain = { path = "../domain" }
-zab-bid-audit = { path = "../audit" }
-
-[dev-dependencies]
-
 [package]
-name = "zab-bid"
+name = "zab-bid-audit"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
@@ -13,4 +7,9 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 readme.workspace = true
-description = "The backend for the ZAB Bidding System"
+description = "Audit types and invariants for the ZAB Bidding System"
+
+[dependencies]
+zab-bid-domain = { path = "../domain" }
+
+[dev-dependencies]
