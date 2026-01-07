@@ -12,6 +12,8 @@
     clippy::all
 )]
 
+use zab_bid_domain::{Area, BidYear};
+
 /// Represents the entity performing an action.
 ///
 /// An actor is any identifiable entity that initiates a state change.
@@ -117,8 +119,14 @@ impl StateSnapshot {
 /// - What action was performed (action)
 /// - The state before the transition (before)
 /// - The state after the transition (after)
+/// - The bid year scope (`bid_year`)
+/// - The area scope (`area`)
+/// - An optional event ID assigned by persistence (`event_id`)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuditEvent {
+    /// Optional event ID assigned when persisted.
+    /// None when created in-memory, Some(id) after persistence.
+    pub event_id: Option<i64>,
     /// The actor who initiated this state change.
     pub actor: Actor,
     /// The cause or reason for this state change.
@@ -129,12 +137,17 @@ pub struct AuditEvent {
     pub before: StateSnapshot,
     /// The state after the transition.
     pub after: StateSnapshot,
+    /// The bid year this event is scoped to.
+    pub bid_year: BidYear,
+    /// The area this event is scoped to.
+    pub area: Area,
 }
 
 impl AuditEvent {
-    /// Creates a new `AuditEvent`.
+    /// Creates a new `AuditEvent` without a persisted event ID.
     ///
     /// Once created, an audit event is immutable.
+    /// The `event_id` will be None until the event is persisted.
     ///
     /// # Arguments
     ///
@@ -143,20 +156,66 @@ impl AuditEvent {
     /// * `action` - The action that was performed
     /// * `before` - The state before the transition
     /// * `after` - The state after the transition
+    /// * `bid_year` - The bid year this event is scoped to
+    /// * `area` - The area this event is scoped to
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub const fn new(
         actor: Actor,
         cause: Cause,
         action: Action,
         before: StateSnapshot,
         after: StateSnapshot,
+        bid_year: BidYear,
+        area: Area,
     ) -> Self {
         Self {
+            event_id: None,
             actor,
             cause,
             action,
             before,
             after,
+            bid_year,
+            area,
+        }
+    }
+
+    /// Creates a new `AuditEvent` with a persisted event ID.
+    ///
+    /// This is typically used when reconstructing events from storage.
+    ///
+    /// # Arguments
+    ///
+    /// * `event_id` - The unique event ID from persistence
+    /// * `actor` - The actor who initiated the change
+    /// * `cause` - The reason for the change
+    /// * `action` - The action that was performed
+    /// * `before` - The state before the transition
+    /// * `after` - The state after the transition
+    /// * `bid_year` - The bid year this event is scoped to
+    /// * `area` - The area this event is scoped to
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    pub const fn with_id(
+        event_id: i64,
+        actor: Actor,
+        cause: Cause,
+        action: Action,
+        before: StateSnapshot,
+        after: StateSnapshot,
+        bid_year: BidYear,
+        area: Area,
+    ) -> Self {
+        Self {
+            event_id: Some(event_id),
+            actor,
+            cause,
+            action,
+            before,
+            after,
+            bid_year,
+            area,
         }
     }
 }
@@ -215,19 +274,27 @@ mod tests {
         let before: StateSnapshot = StateSnapshot::new(String::from("before-state"));
         let after: StateSnapshot = StateSnapshot::new(String::from("after-state"));
 
+        let bid_year: BidYear = BidYear::new(2026);
+        let area: Area = Area::new(String::from("North"));
+
         let event: AuditEvent = AuditEvent::new(
             actor.clone(),
             cause.clone(),
             action.clone(),
             before.clone(),
             after.clone(),
+            bid_year.clone(),
+            area.clone(),
         );
 
+        assert_eq!(event.event_id, None);
         assert_eq!(event.actor, actor);
         assert_eq!(event.cause, cause);
         assert_eq!(event.action, action);
         assert_eq!(event.before, before);
         assert_eq!(event.after, after);
+        assert_eq!(event.bid_year, bid_year);
+        assert_eq!(event.area, area);
     }
 
     #[test]
@@ -238,7 +305,11 @@ mod tests {
         let before: StateSnapshot = StateSnapshot::new(String::from("before-state"));
         let after: StateSnapshot = StateSnapshot::new(String::from("after-state"));
 
-        let event: AuditEvent = AuditEvent::new(actor, cause, action, before, after);
+        let bid_year: BidYear = BidYear::new(2026);
+        let area: Area = Area::new(String::from("North"));
+
+        let event: AuditEvent =
+            AuditEvent::new(actor, cause, action, before, after, bid_year, area);
 
         // Clone the event to verify it can be cloned but not mutated
         let cloned_event: AuditEvent = event.clone();
@@ -246,11 +317,14 @@ mod tests {
 
         // Verify all fields are accessible but cannot be mutated
         // (Rust's type system enforces this - the fields are not mutable)
+        assert_eq!(event.event_id, None);
         assert_eq!(event.actor.id, "user-123");
         assert_eq!(event.cause.id, "req-456");
         assert_eq!(event.action.name, "SubmitBid");
         assert_eq!(event.before.data, "before-state");
         assert_eq!(event.after.data, "after-state");
+        assert_eq!(event.bid_year.year(), 2026);
+        assert_eq!(event.area.id(), "North");
     }
 
     #[test]
@@ -271,16 +345,38 @@ mod tests {
         let before: StateSnapshot = StateSnapshot::new(String::from("before-state"));
         let after: StateSnapshot = StateSnapshot::new(String::from("after-state"));
 
+        let bid_year: BidYear = BidYear::new(2026);
+        let area: Area = Area::new(String::from("North"));
+
         let event1: AuditEvent = AuditEvent::new(
             actor.clone(),
             cause.clone(),
             action.clone(),
             before.clone(),
             after.clone(),
+            bid_year.clone(),
+            area.clone(),
         );
 
-        let event2: AuditEvent = AuditEvent::new(actor, cause, action, before, after);
+        let event2: AuditEvent =
+            AuditEvent::new(actor, cause, action, before, after, bid_year, area);
 
         assert_eq!(event1, event2);
+    }
+
+    #[test]
+    fn test_audit_event_with_id() {
+        let actor: Actor = Actor::new(String::from("user-123"), String::from("user"));
+        let cause: Cause = Cause::new(String::from("req-456"), String::from("User request"));
+        let action: Action = Action::new(String::from("SubmitBid"), None);
+        let before: StateSnapshot = StateSnapshot::new(String::from("before-state"));
+        let after: StateSnapshot = StateSnapshot::new(String::from("after-state"));
+        let bid_year: BidYear = BidYear::new(2026);
+        let area: Area = Area::new(String::from("North"));
+
+        let event: AuditEvent =
+            AuditEvent::with_id(42, actor, cause, action, before, after, bid_year, area);
+
+        assert_eq!(event.event_id, Some(42));
     }
 }

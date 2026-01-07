@@ -12,12 +12,13 @@
     clippy::all
 )]
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 /// Represents a bid year identifier.
 ///
 /// A bid year is the scope within which users are identified and rules are enforced.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BidYear {
     /// The year value (e.g., 2026).
     year: u16,
@@ -44,7 +45,7 @@ impl BidYear {
 /// Represents a user's initials.
 ///
 /// Initials are the sole identifier for a user within a bid year.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Initials {
     /// The initials value (e.g., "ABC").
     value: String,
@@ -71,7 +72,7 @@ impl Initials {
 /// Represents an area identifier.
 ///
 /// A user must belong to exactly one area.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Area {
     /// The area identifier (e.g., "North", "South").
     id: String,
@@ -98,7 +99,7 @@ impl Area {
 /// Represents a crew identifier.
 ///
 /// A user must belong to exactly one crew.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Crew {
     /// The crew identifier (e.g., "A", "B", "C").
     id: String,
@@ -126,7 +127,7 @@ impl Crew {
 ///
 /// This data exists as domain data but must NOT be used for ordering,
 /// ranking, or decision-making in Phase 1.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeniorityData {
     /// Cumulative NATCA bargaining unit date (ISO 8601 date string).
     pub cumulative_natca_bu_date: String,
@@ -173,7 +174,7 @@ impl SeniorityData {
 ///
 /// Users are scoped to a single bid year and are uniquely identified
 /// by their initials within that bid year.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct User {
     /// The bid year this user belongs to.
     pub bid_year: BidYear,

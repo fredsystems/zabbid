@@ -10,5 +10,6 @@ readme.workspace = true
 description = "Domain types and rule validation for the ZAB Bidding System"
 
 [dependencies]
+serde.workspace = true
 
 [dev-dependencies]

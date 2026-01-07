@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn test_valid_api_request_succeeds() {
-        let state: State = State::new();
+        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let request: RegisterUserRequest = create_valid_request();
         let actor: Actor = create_test_actor();
         let cause: Cause = create_test_cause();
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_valid_api_request_emits_audit_event() {
-        let state: State = State::new();
+        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let request: RegisterUserRequest = create_valid_request();
         let actor: Actor = create_test_actor();
         let cause: Cause = create_test_cause();
@@ -287,7 +287,7 @@ mod tests {
 
     #[test]
     fn test_valid_api_request_returns_new_state() {
-        let state: State = State::new();
+        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let request: RegisterUserRequest = create_valid_request();
         let actor: Actor = create_test_actor();
         let cause: Cause = create_test_cause();
@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_initials_returns_api_error() {
-        let mut state: State = State::new();
+        let mut state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
 
         // First registration
         let request1: RegisterUserRequest = create_valid_request();
@@ -344,7 +344,7 @@ mod tests {
 
     #[test]
     fn test_failed_api_request_does_not_mutate_state() {
-        let mut state: State = State::new();
+        let mut state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
 
         // First registration
         let request1: RegisterUserRequest = create_valid_request();
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn test_invalid_empty_initials_returns_api_error() {
-        let state: State = State::new();
+        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let request: RegisterUserRequest = RegisterUserRequest {
             bid_year: 2026,
             initials: String::new(), // Invalid
@@ -411,7 +411,7 @@ mod tests {
 
     #[test]
     fn test_invalid_empty_name_returns_api_error() {
-        let state: State = State::new();
+        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let request: RegisterUserRequest = RegisterUserRequest {
             bid_year: 2026,
             initials: String::from("ABC"),
@@ -440,7 +440,7 @@ mod tests {
 
     #[test]
     fn test_invalid_empty_area_returns_api_error() {
-        let state: State = State::new();
+        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let request: RegisterUserRequest = RegisterUserRequest {
             bid_year: 2026,
             initials: String::from("ABC"),
@@ -469,7 +469,7 @@ mod tests {
 
     #[test]
     fn test_invalid_empty_crew_returns_api_error() {
-        let state: State = State::new();
+        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let request: RegisterUserRequest = RegisterUserRequest {
             bid_year: 2026,
             initials: String::from("ABC"),
@@ -498,7 +498,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_initials_in_different_bid_years_allowed() {
-        let mut state: State = State::new();
+        let mut state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
 
         // User in 2026
         let request1: RegisterUserRequest = create_valid_request();
@@ -555,7 +555,7 @@ mod tests {
 
     #[test]
     fn test_successful_api_call_updates_state() {
-        let state: State = State::new();
+        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         assert_eq!(state.users.len(), 0);
 
         let request: RegisterUserRequest = create_valid_request();

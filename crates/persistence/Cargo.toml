@@ -1,5 +1,5 @@
 [package]
-name = "zab-bid-audit"
+name = "zab-bid-persistence"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
@@ -7,9 +7,15 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 readme.workspace = true
-description = "Audit types and invariants for the ZAB Bidding System"
+description = "Persistence layer for the ZAB Bidding System"
 
 [dependencies]
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+zab-bid = { path = "../core" }
+zab-bid-audit = { path = "../audit" }
 zab-bid-domain = { path = "../domain" }
 
 [dev-dependencies]

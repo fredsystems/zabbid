@@ -143,6 +143,26 @@ All changes must advance these goals. If unsure, stop and ask.
 - `anyhow` may be used only in binaries, tooling, or top-level application glue
 - Error context must not replace structured error variants
 
+## Persistence & State Derivation
+
+- The audit log is append-only and is never rewritten or deleted
+- All state is derived from the ordered audit log
+- Rollback is modeled as an explicit, auditable event
+- Rollback does not erase or modify prior audit events
+- Rollback selects a prior effective state and establishes it as authoritative going forward
+- Audit events are scoped to a single bid year and a single area
+
+## State Snapshots
+
+- State is conceptually a complete, materialized state per (bid year, area)
+- Snapshots exist only to accelerate recovery and replay
+- Snapshots must not alter the meaning of the audit log
+- Full state snapshots must be persisted at:
+  - rollback events
+  - round finalized events
+  - explicit checkpoint events
+- All other audit events persist deltas only
+
 ## When to Stop
 
 If any of the following are true:
