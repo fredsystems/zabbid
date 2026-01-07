@@ -1,0 +1,17 @@
+[package]
+name = "zab-bid-api"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme.workspace = true
+description = "API boundary layer for the ZAB Bidding System"
+
+[dependencies]
+zab-bid = { path = "../core" }
+zab-bid-audit = { path = "../audit" }
+zab-bid-domain = { path = "../domain" }
+
+[dev-dependencies]
