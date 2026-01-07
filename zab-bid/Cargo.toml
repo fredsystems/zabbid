@@ -1,0 +1,14 @@
+[dependencies]
+
+[dev-dependencies]
+
+[package]
+name = "zab-bid"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme.workspace = true
+description = "The backend for the ZAB Bidding System"
