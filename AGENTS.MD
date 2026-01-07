@@ -97,6 +97,33 @@ All changes must advance these goals. If unsure, stop and ask.
 - All markdown must comply with existing markdownlint rules enforced by `pre-commit run --all-files`
 - Creating or modifying markdown is a higher-friction action than writing code or tests
 
+## Domain Invariants
+
+### Users
+
+- Users are scoped to a single bid year
+- A user’s initials are the sole identifier for that user within a bid year
+- User names are informational and are not unique
+- A user must belong to exactly one area
+- A user must belong to exactly one crew
+
+### Seniority Data
+
+- Seniority-related fields exist as domain data
+- Seniority inputs include:
+  - cumulative NATCA bargaining unit time
+  - NATCA bargaining unit time
+  - EOD / FAA date
+  - service computation date (SCD)
+  - optional lottery value
+- Seniority data must not be used for ordering, ranking, or decision-making unless explicitly enabled by a later phase
+
+### Seniority Constraints
+
+- Seniority-related fields are inputs, not behavior
+- No seniority comparison, ranking, or tie-breaking logic may be implemented in Phase 1
+- The presence of seniority data must not imply ordering or priority without an explicit rule
+
 ## When to Stop
 
 If any of the following are true:
