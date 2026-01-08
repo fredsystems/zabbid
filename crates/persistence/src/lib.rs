@@ -694,8 +694,8 @@ impl SqlitePersistence {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zab_bid::{Command, apply};
-    use zab_bid_domain::{Crew, Initials, SeniorityData};
+    use zab_bid::{BootstrapMetadata, Command, apply};
+    use zab_bid_domain::{Crew, Initials, SeniorityData, UserType};
 
     fn create_test_actor() -> Actor {
         Actor::new(String::from("test-actor"), String::from("system"))
@@ -715,6 +715,15 @@ mod tests {
         )
     }
 
+    fn create_test_metadata() -> BootstrapMetadata {
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+        metadata.bid_years.push(BidYear::new(2026));
+        metadata
+            .areas
+            .push((BidYear::new(2026), Area::new(String::from("North"))));
+        metadata
+    }
+
     #[test]
     fn test_persistence_initialization() {
         let result: Result<SqlitePersistence, PersistenceError> =
@@ -731,12 +740,19 @@ mod tests {
             initials: Initials::new(String::from("AB")),
             name: String::from("John Doe"),
             area: Area::new(String::from("North")),
-            crew: Crew::new(String::from("A")),
+            user_type: UserType::CPC,
+            crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
         };
 
-        let result: TransitionResult =
-            apply(&state, command, create_test_actor(), create_test_cause()).unwrap();
+        let result: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
 
         let event_id: i64 = persistence.persist_transition(&result, false).unwrap();
 
@@ -751,8 +767,14 @@ mod tests {
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
 
         let command: Command = Command::Checkpoint;
-        let result: TransitionResult =
-            apply(&state, command, create_test_actor(), create_test_cause()).unwrap();
+        let result: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
 
         let event_id: i64 = persistence.persist_transition(&result, true).unwrap();
 
@@ -772,13 +794,20 @@ mod tests {
 
         // Create first event
         let command1: Command = Command::Checkpoint;
-        let result1: TransitionResult =
-            apply(&state, command1, create_test_actor(), create_test_cause()).unwrap();
+        let result1: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         let event_id1: i64 = persistence.persist_transition(&result1, true).unwrap();
 
         // Create second event
         let command2: Command = Command::Finalize;
         let result2: TransitionResult = apply(
+            &create_test_metadata(),
             &result1.new_state,
             command2,
             create_test_actor(),
@@ -820,8 +849,14 @@ mod tests {
 
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let command: Command = Command::Checkpoint;
-        let result: TransitionResult =
-            apply(&state, command, create_test_actor(), create_test_cause()).unwrap();
+        let result: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
 
         // This should succeed
         assert!(persistence.persist_transition(&result, true).is_ok());
@@ -834,8 +869,14 @@ mod tests {
 
         // Create a snapshot
         let command: Command = Command::Checkpoint;
-        let result: TransitionResult =
-            apply(&state, command, create_test_actor(), create_test_cause()).unwrap();
+        let result: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         persistence.persist_transition(&result, true).unwrap();
 
         // Retrieve current state
@@ -855,8 +896,14 @@ mod tests {
 
         // Create initial empty snapshot
         let command1: Command = Command::Checkpoint;
-        let result1: TransitionResult =
-            apply(&state, command1, create_test_actor(), create_test_cause()).unwrap();
+        let result1: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         persistence.persist_transition(&result1, true).unwrap();
 
         // Register a user (delta event, no snapshot)
@@ -865,10 +912,12 @@ mod tests {
             initials: Initials::new(String::from("AB")),
             name: String::from("Alice Blue"),
             area: Area::new(String::from("North")),
-            crew: Crew::new(String::from("A")),
+            user_type: UserType::CPC,
+            crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
         };
         let result2: TransitionResult = apply(
+            &create_test_metadata(),
             &result1.new_state,
             command2,
             create_test_actor(),
@@ -880,6 +929,7 @@ mod tests {
         // Create another snapshot to capture the state with the user
         let command3: Command = Command::Checkpoint;
         let result3: TransitionResult = apply(
+            &create_test_metadata(),
             &result2.new_state,
             command3,
             create_test_actor(),
@@ -921,12 +971,19 @@ mod tests {
 
         // Create multiple events
         let command1: Command = Command::Checkpoint;
-        let result1: TransitionResult =
-            apply(&state, command1, create_test_actor(), create_test_cause()).unwrap();
+        let result1: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         persistence.persist_transition(&result1, true).unwrap();
 
         let command2: Command = Command::Finalize;
         let result2: TransitionResult = apply(
+            &create_test_metadata(),
             &result1.new_state,
             command2,
             create_test_actor(),
@@ -937,6 +994,7 @@ mod tests {
 
         let command3: Command = Command::RollbackToEventId { target_event_id: 1 };
         let result3: TransitionResult = apply(
+            &create_test_metadata(),
             &result2.new_state,
             command3,
             create_test_actor(),
@@ -979,8 +1037,14 @@ mod tests {
 
         // Create checkpoint
         let command1: Command = Command::Checkpoint;
-        let result1: TransitionResult =
-            apply(&state, command1, create_test_actor(), create_test_cause()).unwrap();
+        let result1: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         let event_id1: i64 = persistence.persist_transition(&result1, true).unwrap();
 
         // Create rollback
@@ -988,6 +1052,7 @@ mod tests {
             target_event_id: event_id1,
         };
         let result2: TransitionResult = apply(
+            &create_test_metadata(),
             &result1.new_state,
             command2,
             create_test_actor(),
@@ -1013,8 +1078,14 @@ mod tests {
 
         // Create initial snapshot
         let command1: Command = Command::Checkpoint;
-        let result1: TransitionResult =
-            apply(&state, command1, create_test_actor(), create_test_cause()).unwrap();
+        let result1: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         persistence.persist_transition(&result1, true).unwrap();
 
         // Register a user
@@ -1023,10 +1094,12 @@ mod tests {
             initials: Initials::new(String::from("XY")),
             name: String::from("Xavier Young"),
             area: Area::new(String::from("North")),
-            crew: Crew::new(String::from("B")),
+            user_type: UserType::CPC,
+            crew: Some(Crew::new(2).unwrap()),
             seniority_data: create_test_seniority_data(),
         };
         let result2: TransitionResult = apply(
+            &create_test_metadata(),
             &result1.new_state,
             command2,
             create_test_actor(),
@@ -1038,6 +1111,7 @@ mod tests {
         // Create snapshot with user
         let command3: Command = Command::Checkpoint;
         let result3: TransitionResult = apply(
+            &create_test_metadata(),
             &result2.new_state,
             command3,
             create_test_actor(),
@@ -1075,8 +1149,14 @@ mod tests {
 
         // Create a snapshot
         let command: Command = Command::Checkpoint;
-        let result: TransitionResult =
-            apply(&state, command, create_test_actor(), create_test_cause()).unwrap();
+        let result: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         persistence.persist_transition(&result, true).unwrap();
 
         // Count events before read
@@ -1105,8 +1185,14 @@ mod tests {
 
         // Create events
         let command: Command = Command::Checkpoint;
-        let result: TransitionResult =
-            apply(&state, command, create_test_actor(), create_test_cause()).unwrap();
+        let result: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         persistence.persist_transition(&result, true).unwrap();
 
         // Retrieve timeline
@@ -1131,8 +1217,14 @@ mod tests {
 
         // Create initial snapshot
         let command1: Command = Command::Checkpoint;
-        let result1: TransitionResult =
-            apply(&state, command1, create_test_actor(), create_test_cause()).unwrap();
+        let result1: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         persistence.persist_transition(&result1, true).unwrap();
 
         // Register first user
@@ -1141,10 +1233,12 @@ mod tests {
             initials: Initials::new(String::from("AA")),
             name: String::from("Alice Anderson"),
             area: Area::new(String::from("North")),
-            crew: Crew::new(String::from("A")),
+            user_type: UserType::CPC,
+            crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
         };
         let result2: TransitionResult = apply(
+            &create_test_metadata(),
             &result1.new_state,
             command2,
             create_test_actor(),
@@ -1159,10 +1253,12 @@ mod tests {
             initials: Initials::new(String::from("BB")),
             name: String::from("Bob Brown"),
             area: Area::new(String::from("North")),
-            crew: Crew::new(String::from("B")),
+            user_type: UserType::CPC,
+            crew: Some(Crew::new(2).unwrap()),
             seniority_data: create_test_seniority_data(),
         };
         let result3: TransitionResult = apply(
+            &create_test_metadata(),
             &result2.new_state,
             command3,
             create_test_actor(),
@@ -1174,6 +1270,7 @@ mod tests {
         // Create snapshot with both users
         let command4: Command = Command::Checkpoint;
         let result4: TransitionResult = apply(
+            &create_test_metadata(),
             &result3.new_state,
             command4,
             create_test_actor(),
@@ -1198,6 +1295,7 @@ mod tests {
         let state_north: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let command_north: Command = Command::Checkpoint;
         let result_north: TransitionResult = apply(
+            &create_test_metadata(),
             &state_north,
             command_north,
             create_test_actor(),
@@ -1210,6 +1308,7 @@ mod tests {
         let state_south: State = State::new(BidYear::new(2026), Area::new(String::from("South")));
         let command_south: Command = Command::Checkpoint;
         let result_south: TransitionResult = apply(
+            &create_test_metadata(),
             &state_south,
             command_south,
             create_test_actor(),
@@ -1238,8 +1337,14 @@ mod tests {
 
         // Create initial snapshot
         let command1: Command = Command::Checkpoint;
-        let result1: TransitionResult =
-            apply(&state, command1, create_test_actor(), create_test_cause()).unwrap();
+        let result1: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         persistence.persist_transition(&result1, true).unwrap();
 
         // Add user (delta)
@@ -1248,10 +1353,12 @@ mod tests {
             initials: Initials::new(String::from("TS")),
             name: String::from("Test User"),
             area: Area::new(String::from("North")),
-            crew: Crew::new(String::from("A")),
+            user_type: UserType::CPC,
+            crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
         };
         let result2: TransitionResult = apply(
+            &create_test_metadata(),
             &result1.new_state,
             command2,
             create_test_actor(),
@@ -1263,6 +1370,7 @@ mod tests {
         // Create another snapshot
         let command3: Command = Command::Checkpoint;
         let result3: TransitionResult = apply(
+            &create_test_metadata(),
             &result2.new_state,
             command3,
             create_test_actor(),
@@ -1287,8 +1395,14 @@ mod tests {
 
         // Create first snapshot with no users
         let command1: Command = Command::Checkpoint;
-        let result1: TransitionResult =
-            apply(&state, command1, create_test_actor(), create_test_cause()).unwrap();
+        let result1: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         persistence.persist_transition(&result1, true).unwrap();
 
         // Register a user (non-snapshot event)
@@ -1297,10 +1411,12 @@ mod tests {
             initials: Initials::new(String::from("NE")),
             name: String::from("New User"),
             area: Area::new(String::from("North")),
-            crew: Crew::new(String::from("A")),
+            user_type: UserType::CPC,
+            crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
         };
         let result2: TransitionResult = apply(
+            &create_test_metadata(),
             &result1.new_state,
             command2,
             create_test_actor(),
@@ -1312,6 +1428,7 @@ mod tests {
         // Create second snapshot with user
         let command3: Command = Command::Checkpoint;
         let result3: TransitionResult = apply(
+            &create_test_metadata(),
             &result2.new_state,
             command3,
             create_test_actor(),
@@ -1350,8 +1467,14 @@ mod tests {
 
         // Create a snapshot
         let command: Command = Command::Checkpoint;
-        let result: TransitionResult =
-            apply(&state, command, create_test_actor(), create_test_cause()).unwrap();
+        let result: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         persistence.persist_transition(&result, true).unwrap();
 
         // Try to query before the snapshot was created
@@ -1376,8 +1499,14 @@ mod tests {
 
         // Create snapshot
         let command: Command = Command::Checkpoint;
-        let result: TransitionResult =
-            apply(&state, command, create_test_actor(), create_test_cause()).unwrap();
+        let result: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         persistence.persist_transition(&result, true).unwrap();
 
         // Get the timestamp
@@ -1428,8 +1557,14 @@ mod tests {
 
         // Create snapshot
         let command: Command = Command::Checkpoint;
-        let result: TransitionResult =
-            apply(&state, command, create_test_actor(), create_test_cause()).unwrap();
+        let result: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         persistence.persist_transition(&result, true).unwrap();
 
         let timestamp: String = String::from("9999-12-31 23:59:59");
@@ -1464,8 +1599,14 @@ mod tests {
 
         // Create initial snapshot
         let command: Command = Command::Checkpoint;
-        let result: TransitionResult =
-            apply(&state, command, create_test_actor(), create_test_cause()).unwrap();
+        let result: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            command,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
         persistence.persist_transition(&result, true).unwrap();
 
         // Capture initial event count
