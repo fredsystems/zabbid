@@ -507,14 +507,12 @@ pub fn register_user(
     let area: Area = Area::new(request.area.clone());
 
     // Parse user type
-    let user_type: UserType = UserType::parse(&request.user_type)
-        .map_err(|domain_err| translate_domain_error(domain_err))?;
+    let user_type: UserType =
+        UserType::parse(&request.user_type).map_err(translate_domain_error)?;
 
     // Parse optional crew
     let crew: Option<Crew> = match request.crew {
-        Some(crew_num) => {
-            Some(Crew::new(crew_num).map_err(|domain_err| translate_domain_error(domain_err))?)
-        }
+        Some(crew_num) => Some(Crew::new(crew_num).map_err(translate_domain_error)?),
         None => None,
     };
 
@@ -706,7 +704,7 @@ pub fn rollback(
 ///
 /// This function:
 /// - Verifies the actor is authorized (Admin role required)
-/// - Creates a CreateBidYear command
+/// - Creates a `CreateBidYear` command
 /// - Applies the command to the bootstrap metadata
 /// - Returns the bootstrap result on success
 ///
@@ -730,7 +728,7 @@ pub fn rollback(
 /// - The bid year value is invalid
 pub fn create_bid_year(
     metadata: &BootstrapMetadata,
-    request: CreateBidYearRequest,
+    request: &CreateBidYearRequest,
     authenticated_actor: &AuthenticatedActor,
     cause: Cause,
 ) -> Result<BootstrapResult, ApiError> {
@@ -761,7 +759,7 @@ pub fn create_bid_year(
 ///
 /// This function:
 /// - Verifies the actor is authorized (Admin role required)
-/// - Creates a CreateArea command
+/// - Creates a `CreateArea` command
 /// - Applies the command to the bootstrap metadata
 /// - Returns the bootstrap result on success
 ///
@@ -1170,7 +1168,7 @@ mod tests {
 
     #[test]
     fn test_api_error_display() {
-        let metadata: BootstrapMetadata = create_test_metadata();
+        let _metadata: BootstrapMetadata = create_test_metadata();
         let err1: ApiError = ApiError::DomainRuleViolation {
             rule: String::from("test_rule"),
             message: String::from("test message"),
@@ -1216,7 +1214,7 @@ mod tests {
 
     #[test]
     fn test_authenticate_stub_succeeds_with_valid_id() {
-        let metadata: BootstrapMetadata = create_test_metadata();
+        let _metadata: BootstrapMetadata = create_test_metadata();
         let result: Result<AuthenticatedActor, AuthError> =
             authenticate_stub(String::from("user-123"), Role::Admin);
         assert!(result.is_ok());
@@ -1227,7 +1225,7 @@ mod tests {
 
     #[test]
     fn test_authenticate_stub_fails_with_empty_id() {
-        let metadata: BootstrapMetadata = create_test_metadata();
+        let _metadata: BootstrapMetadata = create_test_metadata();
         let result: Result<AuthenticatedActor, AuthError> =
             authenticate_stub(String::new(), Role::Admin);
         assert!(result.is_err());
@@ -1239,7 +1237,7 @@ mod tests {
 
     #[test]
     fn test_authenticated_actor_to_audit_actor_admin() {
-        let metadata: BootstrapMetadata = create_test_metadata();
+        let _metadata: BootstrapMetadata = create_test_metadata();
         let auth_actor: AuthenticatedActor =
             AuthenticatedActor::new(String::from("admin-1"), Role::Admin);
         let audit_actor: Actor = auth_actor.to_audit_actor();
@@ -1249,7 +1247,7 @@ mod tests {
 
     #[test]
     fn test_authenticated_actor_to_audit_actor_bidder() {
-        let metadata: BootstrapMetadata = create_test_metadata();
+        let _metadata: BootstrapMetadata = create_test_metadata();
         let auth_actor: AuthenticatedActor =
             AuthenticatedActor::new(String::from("bidder-1"), Role::Bidder);
         let audit_actor: Actor = auth_actor.to_audit_actor();
@@ -1433,7 +1431,7 @@ mod tests {
 
     #[test]
     fn test_authorization_error_converts_to_api_error() {
-        let metadata: BootstrapMetadata = create_test_metadata();
+        let _metadata: BootstrapMetadata = create_test_metadata();
         let auth_err: AuthError = AuthError::Unauthorized {
             action: String::from("test_action"),
             required_role: String::from("Admin"),
@@ -1444,7 +1442,7 @@ mod tests {
 
     #[test]
     fn test_authentication_error_converts_to_api_error() {
-        let metadata: BootstrapMetadata = create_test_metadata();
+        let _metadata: BootstrapMetadata = create_test_metadata();
         let auth_err: AuthError = AuthError::AuthenticationFailed {
             reason: String::from("invalid token"),
         };
@@ -1454,7 +1452,7 @@ mod tests {
 
     #[test]
     fn test_auth_error_display_unauthorized() {
-        let metadata: BootstrapMetadata = create_test_metadata();
+        let _metadata: BootstrapMetadata = create_test_metadata();
         let err: AuthError = AuthError::Unauthorized {
             action: String::from("test_action"),
             required_role: String::from("Admin"),
@@ -1467,7 +1465,7 @@ mod tests {
 
     #[test]
     fn test_auth_error_display_authentication_failed() {
-        let metadata: BootstrapMetadata = create_test_metadata();
+        let _metadata: BootstrapMetadata = create_test_metadata();
         let err: AuthError = AuthError::AuthenticationFailed {
             reason: String::from("invalid credentials"),
         };
@@ -1478,7 +1476,7 @@ mod tests {
 
     #[test]
     fn test_api_error_display_unauthorized() {
-        let metadata: BootstrapMetadata = create_test_metadata();
+        let _metadata: BootstrapMetadata = create_test_metadata();
         let err: ApiError = ApiError::Unauthorized {
             action: String::from("register_user"),
             required_role: String::from("Admin"),
@@ -1491,7 +1489,7 @@ mod tests {
 
     #[test]
     fn test_api_error_display_authentication_failed() {
-        let metadata: BootstrapMetadata = create_test_metadata();
+        let _metadata: BootstrapMetadata = create_test_metadata();
         let err: ApiError = ApiError::AuthenticationFailed {
             reason: String::from("token expired"),
         };
@@ -1508,7 +1506,7 @@ mod tests {
         let cause: Cause = create_test_cause();
 
         let result: Result<BootstrapResult, ApiError> =
-            create_bid_year(&metadata, request, &admin, cause);
+            create_bid_year(&metadata, &request, &admin, cause);
 
         assert!(result.is_ok());
         let bootstrap_result: BootstrapResult = result.unwrap();
@@ -1524,7 +1522,7 @@ mod tests {
         let cause: Cause = create_test_cause();
 
         let result: Result<BootstrapResult, ApiError> =
-            create_bid_year(&metadata, request, &bidder, cause);
+            create_bid_year(&metadata, &request, &bidder, cause);
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ApiError::Unauthorized { .. }));
