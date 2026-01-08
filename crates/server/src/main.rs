@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{error, info};
-use zab_bid::{State, TransitionResult};
+use zab_bid::{BootstrapMetadata, State, TransitionResult};
 use zab_bid_api::{
     ApiError, ApiResult, AuthenticatedActor, RegisterUserRequest, RegisterUserResponse, Role,
     authenticate_stub, checkpoint, finalize, register_user, rollback,
@@ -78,8 +78,10 @@ struct RegisterUserApiRequest {
     name: String,
     /// The user's area identifier.
     area: String,
+    /// The user's type classification.
+    user_type: String,
     /// The user's crew identifier.
-    crew: String,
+    crew: Option<u8>,
     /// Cumulative NATCA bargaining unit date (ISO 8601).
     cumulative_natca_bu_date: String,
     /// NATCA bargaining unit date (ISO 8601).
@@ -307,7 +309,9 @@ fn state_to_response(state: &State) -> StateResponse {
                 initials: user.initials.value().to_string(),
                 name: user.name.clone(),
                 area: user.area.id().to_string(),
-                crew: user.crew.id().to_string(),
+                crew: user
+                    .crew
+                    .map_or_else(String::new, |c| c.number().to_string()),
                 cumulative_natca_bu_date: user.seniority_data.cumulative_natca_bu_date.clone(),
                 natca_bu_date: user.seniority_data.natca_bu_date.clone(),
                 eod_faa_date: user.seniority_data.eod_faa_date.clone(),
@@ -380,12 +384,18 @@ async fn handle_register_user(
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
     drop(persistence);
 
+    // Build bootstrap metadata
+    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+    metadata.bid_years.push(bid_year.clone());
+    metadata.areas.push((bid_year.clone(), area.clone()));
+
     // Build API request
     let register_request: RegisterUserRequest = RegisterUserRequest {
         bid_year: req.bid_year,
         initials: req.initials,
         name: req.name,
         area: req.area,
+        user_type: req.user_type,
         crew: req.crew,
         cumulative_natca_bu_date: req.cumulative_natca_bu_date,
         natca_bu_date: req.natca_bu_date,
@@ -396,7 +406,7 @@ async fn handle_register_user(
 
     // Execute command via API
     let result: ApiResult<RegisterUserResponse> =
-        register_user(&state, register_request, &actor, cause)?;
+        register_user(&metadata, &state, register_request, &actor, cause)?;
 
     // Persist the transition
     let mut persistence = app_state.persistence.lock().await;
@@ -457,8 +467,13 @@ async fn handle_checkpoint(
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
     drop(persistence);
 
+    // Build bootstrap metadata
+    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+    metadata.bid_years.push(bid_year.clone());
+    metadata.areas.push((bid_year.clone(), area.clone()));
+
     // Execute command via API
-    let result: TransitionResult = checkpoint(&state, &actor, cause)?;
+    let result: TransitionResult = checkpoint(&metadata, &state, &actor, cause)?;
 
     // Persist the transition
     let mut persistence = app_state.persistence.lock().await;
@@ -511,8 +526,13 @@ async fn handle_finalize(
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
     drop(persistence);
 
+    // Build bootstrap metadata
+    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+    metadata.bid_years.push(bid_year.clone());
+    metadata.areas.push((bid_year.clone(), area.clone()));
+
     // Execute command via API
-    let result: TransitionResult = finalize(&state, &actor, cause)?;
+    let result: TransitionResult = finalize(&metadata, &state, &actor, cause)?;
 
     // Persist the transition
     let mut persistence = app_state.persistence.lock().await;
@@ -571,8 +591,13 @@ async fn handle_rollback(
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
     drop(persistence);
 
+    // Build bootstrap metadata
+    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+    metadata.bid_years.push(bid_year.clone());
+    metadata.areas.push((bid_year.clone(), area.clone()));
+
     // Execute command via API
-    let result: TransitionResult = rollback(&state, target_event_id, &actor, cause)?;
+    let result: TransitionResult = rollback(&metadata, &state, target_event_id, &actor, cause)?;
 
     // Persist the transition
     let mut persistence = app_state.persistence.lock().await;
@@ -782,7 +807,8 @@ mod tests {
             initials: initials.to_string(),
             name: String::from("Test User"),
             area: String::from("TestArea"),
-            crew: String::from("TestCrew"),
+            user_type: String::from("CPC"),
+            crew: Some(1),
             cumulative_natca_bu_date: String::from("2020-01-01"),
             natca_bu_date: String::from("2020-01-01"),
             eod_faa_date: String::from("2020-01-01"),
