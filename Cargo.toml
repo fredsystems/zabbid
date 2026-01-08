@@ -13,6 +13,7 @@ keywords = ["zab", "bid", "monitoring"]
 categories = ["monitoring"]
 
 [workspace.dependencies]
+axum = "0.8.1"
 cargo_metadata = "0.23.1"
 clap = "4.5.54"
 clap-cargo = "0.18.3"
@@ -22,6 +23,8 @@ duct = "1.1.1"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+tokio = { version = "1.43.0", features = ["full"] }
+tower = "0.5.2"
 tracing = "0.1.41"
 tracing-log = "0.2.0"
-tracing-subscriber = "0.3.22"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
