@@ -639,7 +639,7 @@ mod tests {
     fn create_valid_request() -> RegisterUserRequest {
         RegisterUserRequest {
             bid_year: 2026,
-            initials: String::from("ABC"),
+            initials: String::from("AB"),
             name: String::from("John Doe"),
             area: String::from("North"),
             crew: String::from("A"),
@@ -664,7 +664,7 @@ mod tests {
         assert!(result.is_ok());
         let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
         assert_eq!(api_result.response.bid_year, 2026);
-        assert_eq!(api_result.response.initials, "ABC");
+        assert_eq!(api_result.response.initials, "AB");
         assert_eq!(api_result.response.name, "John Doe");
         assert!(
             api_result
@@ -705,7 +705,7 @@ mod tests {
         assert!(result.is_ok());
         let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
         assert_eq!(api_result.new_state.users.len(), 1);
-        assert_eq!(api_result.new_state.users[0].initials.value(), "ABC");
+        assert_eq!(api_result.new_state.users[0].initials.value(), "AB");
     }
 
     #[test]
@@ -724,7 +724,7 @@ mod tests {
         // Second registration with same initials
         let request2: RegisterUserRequest = RegisterUserRequest {
             bid_year: 2026,
-            initials: String::from("ABC"), // Duplicate
+            initials: String::from("AB"), // Duplicate
             name: String::from("Jane Smith"),
             area: String::from("South"),
             crew: String::from("B"),
@@ -743,7 +743,7 @@ mod tests {
         assert!(matches!(err, ApiError::DomainRuleViolation { .. }));
         if let ApiError::DomainRuleViolation { rule, message } = err {
             assert_eq!(rule, "unique_initials");
-            assert!(message.contains("ABC"));
+            assert!(message.contains("AB"));
             assert!(message.contains("2026"));
         }
     }
@@ -765,7 +765,7 @@ mod tests {
         // Attempt duplicate registration
         let request2: RegisterUserRequest = RegisterUserRequest {
             bid_year: 2026,
-            initials: String::from("ABC"), // Duplicate
+            initials: String::from("AB"), // Duplicate
             name: String::from("Jane Smith"),
             area: String::from("South"),
             crew: String::from("B"),
@@ -810,7 +810,7 @@ mod tests {
         assert!(matches!(err, ApiError::InvalidInput { .. }));
         if let ApiError::InvalidInput { field, message } = err {
             assert_eq!(field, "initials");
-            assert!(message.contains("empty"));
+            assert!(message.contains("exactly 2 characters"));
         }
     }
 
@@ -819,7 +819,7 @@ mod tests {
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let request: RegisterUserRequest = RegisterUserRequest {
             bid_year: 2026,
-            initials: String::from("ABC"),
+            initials: String::from("AB"),
             name: String::new(), // Invalid
             area: String::from("North"),
             crew: String::from("A"),
@@ -848,7 +848,7 @@ mod tests {
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let request: RegisterUserRequest = RegisterUserRequest {
             bid_year: 2026,
-            initials: String::from("ABC"),
+            initials: String::from("AB"),
             name: String::from("John Doe"),
             area: String::new(), // Invalid
             crew: String::from("A"),
@@ -877,7 +877,7 @@ mod tests {
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let request: RegisterUserRequest = RegisterUserRequest {
             bid_year: 2026,
-            initials: String::from("ABC"),
+            initials: String::from("AB"),
             name: String::from("John Doe"),
             area: String::from("North"),
             crew: String::new(), // Invalid
@@ -916,8 +916,8 @@ mod tests {
 
         // Same initials in 2027 (different bid year)
         let request2: RegisterUserRequest = RegisterUserRequest {
-            bid_year: 2027,                // Different bid year
-            initials: String::from("ABC"), // Same initials
+            bid_year: 2027,               // Different bid year
+            initials: String::from("AB"), // Same initials
             name: String::from("Jane Smith"),
             area: String::from("South"),
             crew: String::from("B"),
