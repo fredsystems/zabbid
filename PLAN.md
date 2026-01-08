@@ -1031,66 +1031,91 @@ Phase 6.2 is complete when all of the following are true:
 - `cargo xtask ci` passes consistently
 - `pre-commit run --all-files` passes consistently
 
-## Phase 7: API Stabilization & External Integration
+## Phase 7: Canonical State Refactor
 
 **Goal:**
-Prepare the system for reliable use by external clients and tools.
+Introduce explicit, relational canonical storage for current operational state while preserving all existing audit, snapshot, and rollback guarantees.
 
-Phase 7 focuses on API clarity, consistency, and operability.
+This phase aligns the implementation with clarified architectural intent.
+Earlier phases are not reinterpreted or modified.
 
-### Phase 7: Scope
+---
+
+### Phase 7 Scope
 
 Phase 7 includes:
 
-- API shape refinement
-- Error stability and consistency
-- Pagination and filtering for read endpoints
-- Versioning strategy (if required)
-- External client compatibility considerations
+- Introduction of canonical relational tables for current state
+  - users
+  - areas
+  - bid years
+  - (future) bids
+- Refactoring write paths to:
+  - update canonical tables
+  - emit audit events
+  - optionally persist snapshots
+- Refactoring read APIs to:
+  - read from canonical tables for current state
+  - use audit/snapshots only for historical queries
+- Transactional consistency between:
+  - canonical state mutation
+  - audit event persistence
+- Migration of existing persistence logic to respect this separation
 
 Phase 7 explicitly excludes:
 
 - New domain rules
-- Persistence changes
-- Authorization redesign
-- UI implementation
-
-### Phase 7: Exit Criteria
-
-- API surfaces are stable and documented
-- Errors are structured and predictable
-- External consumers can integrate reliably
-- No domain or audit guarantees are weakened
+- New business logic
+- Changes to audit semantics
+- Changes to rollback semantics
+- Performance optimization
+- Schema versioning strategies
+- Data migrations for existing deployments
 
 ---
 
-## Phase 8: Operational Concerns (Optional)
+### Phase 7 Canonical vs Derived Responsibilities
 
-**Goal:**
-Support long-term operation, monitoring, and maintenance without altering system semantics.
-
-This phase is optional and driven by operational needs.
-
-### Phase 8: Scope
-
-Phase 8 may include:
-
-- Metrics and instrumentation
-- Audit export and reporting
-- Backup and retention strategies
-- Data archival policies
-- Performance tuning based on observed usage
-
-Phase 8 explicitly excludes:
-
-- Domain rule changes
-- Audit semantics changes
-- Authorization changes
-
-### Phase 8: Exit Criteria
-
-- Operational visibility is sufficient
-- System remains correct under load
-- No changes affect domain correctness or auditability
+- Canonical tables represent **current authoritative state**
+- Audit events represent **what happened and when**
+- Snapshots represent **accelerators for historical reconstruction**
+- Current-state APIs must not replay audit logs
+- Historical APIs must not read canonical tables directly
 
 ---
+
+### Phase 7 Invariants
+
+Phase 7 must preserve all existing invariants:
+
+- All state mutations are auditable
+- Audit logs remain append-only
+- Rollbacks are explicit events
+- Historical state reconstruction remains deterministic
+- No state change occurs without an audit event
+
+---
+
+### Phase 7 Testing Requirements
+
+Tests must demonstrate:
+
+- Canonical tables reflect current state correctly
+- Audit events are emitted for all mutations
+- Snapshots reflect canonical state at the correct event
+- Read APIs return correct data without audit replay
+- Historical queries remain correct and deterministic
+
+---
+
+### Phase 7 Exit Criteria
+
+Phase 7 is complete when:
+
+- Canonical tables exist and are populated correctly
+- Current-state APIs read exclusively from canonical tables
+- Historical APIs remain functional and unchanged
+- Audit and snapshot behavior is preserved
+- No existing domain rules are altered
+- `cargo xtask ci` passes
+- `pre-commit run --all-files` passes
