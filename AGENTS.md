@@ -163,6 +163,49 @@ All changes must advance these goals. If unsure, stop and ask.
   - explicit checkpoint events
 - All other audit events persist deltas only
 
+## Actors & Roles
+
+- Actors are authenticated system operators who execute commands
+- Actors are distinct from domain users whose data is being managed
+- Roles apply only to actors, never to domain users
+
+### Roles
+
+#### Admin
+
+Admins are system operators with structural and corrective authority.
+
+Admins may perform:
+
+- creation and modification of bid years
+- creation and modification of areas
+- creation and modification of users
+- rollback operations
+- checkpoint creation
+- round finalization and similar milestone actions
+- any other system-level or corrective actions
+
+#### Bidder
+
+Bidders are system operators authorized to perform bidding actions.
+
+Bidders may:
+
+- enter new bids
+- modify existing bids
+- withdraw or correct bids
+- perform bidding actions on behalf of any domain user
+
+Bidders are not the same entities as domain users.
+They act as trusted operators entering data provided by many users.
+
+### Authorization Boundary
+
+- Authorization is enforced before command execution
+- Domain logic must not inspect actor roles
+- Core state transitions must be role-agnostic
+- All state-changing actions must record the acting actor in the audit log
+
 ## When to Stop
 
 If any of the following are true:
