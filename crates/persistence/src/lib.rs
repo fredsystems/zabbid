@@ -18,7 +18,7 @@ use std::path::Path;
 use tracing::{debug, info};
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
-use zab_bid_domain::{Area, BidYear};
+use zab_bid_domain::{Area, BidYear, Crew, Initials, SeniorityData, User, UserType};
 
 /// Errors that can occur during persistence operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +114,8 @@ impl SqlitePersistence {
     /// Returns an error if the database cannot be initialized.
     pub fn new_in_memory() -> Result<Self, PersistenceError> {
         let conn: Connection = Connection::open_in_memory()?;
+        // Enable foreign key constraints
+        conn.pragma_update(None, "foreign_keys", "ON")?;
         let adapter: Self = Self { conn };
         adapter.initialize_schema()?;
         Ok(adapter)
@@ -132,6 +134,8 @@ impl SqlitePersistence {
         let conn: Connection = Connection::open(path)?;
         // Enable WAL mode for better read concurrency
         conn.pragma_update(None, "journal_mode", "WAL")?;
+        // Enable foreign key constraints
+        conn.pragma_update(None, "foreign_keys", "ON")?;
         let adapter: Self = Self { conn };
         adapter.initialize_schema()?;
         Ok(adapter)
@@ -143,6 +147,38 @@ impl SqlitePersistence {
 
         self.conn.execute_batch(
             "
+            -- Canonical state tables (Phase 7)
+            CREATE TABLE IF NOT EXISTS bid_years (
+                year INTEGER PRIMARY KEY NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS areas (
+                bid_year INTEGER NOT NULL,
+                area_id TEXT NOT NULL,
+                PRIMARY KEY (bid_year, area_id),
+                FOREIGN KEY(bid_year) REFERENCES bid_years(year)
+            );
+
+            CREATE TABLE IF NOT EXISTS users (
+                bid_year INTEGER NOT NULL,
+                area_id TEXT NOT NULL,
+                initials TEXT NOT NULL,
+                name TEXT NOT NULL,
+                user_type TEXT NOT NULL,
+                crew INTEGER,
+                cumulative_natca_bu_date TEXT NOT NULL,
+                natca_bu_date TEXT NOT NULL,
+                eod_faa_date TEXT NOT NULL,
+                service_computation_date TEXT NOT NULL,
+                lottery_value INTEGER,
+                PRIMARY KEY (bid_year, area_id, initials),
+                FOREIGN KEY(bid_year, area_id) REFERENCES areas(bid_year, area_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_users_by_area
+                ON users(bid_year, area_id);
+
+            -- Audit log and derived historical state tables
             CREATE TABLE IF NOT EXISTS audit_events (
                 event_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 bid_year INTEGER NOT NULL,
@@ -203,6 +239,15 @@ impl SqlitePersistence {
         let event_id: i64 = Self::persist_audit_event_tx(&tx, &result.audit_event)?;
         debug!(event_id, "Persisted audit event");
 
+        // Sync canonical users table with the new state
+        Self::sync_canonical_users_tx(&tx, &result.new_state)?;
+        debug!(
+            bid_year = result.new_state.bid_year.year(),
+            area = result.new_state.area.id(),
+            user_count = result.new_state.users.len(),
+            "Synced canonical users table"
+        );
+
         // Persist full snapshot if required
         if should_snapshot {
             Self::persist_state_snapshot_tx(&tx, &result.new_state, event_id)?;
@@ -231,19 +276,47 @@ impl SqlitePersistence {
     pub fn persist_bootstrap(&mut self, result: &BootstrapResult) -> Result<i64, PersistenceError> {
         let tx: Transaction<'_> = self.conn.transaction()?;
 
-        // Persist the audit event
+        // Persist the audit event first (needed for event_id)
         let event_id: i64 = Self::persist_audit_event_tx(&tx, &result.audit_event)?;
         debug!(event_id, "Persisted bootstrap audit event");
 
-        // If this is a CreateArea event, create an initial empty snapshot
-        // so that subsequent operations have a baseline to work from
-        if result.audit_event.action.name == "CreateArea" {
-            let initial_state: State = State::new(
-                result.audit_event.bid_year.clone(),
-                result.audit_event.area.clone(),
-            );
-            Self::persist_state_snapshot_tx(&tx, &initial_state, event_id)?;
-            debug!(event_id, "Created initial empty snapshot for new area");
+        // Update canonical tables based on the action
+        match result.audit_event.action.name.as_str() {
+            "CreateBidYear" => {
+                tx.execute(
+                    "INSERT INTO bid_years (year) VALUES (?1)",
+                    params![result.audit_event.bid_year.year()],
+                )?;
+                debug!(
+                    bid_year = result.audit_event.bid_year.year(),
+                    "Inserted bid year into canonical table"
+                );
+            }
+            "CreateArea" => {
+                tx.execute(
+                    "INSERT INTO areas (bid_year, area_id) VALUES (?1, ?2)",
+                    params![
+                        result.audit_event.bid_year.year(),
+                        result.audit_event.area.id()
+                    ],
+                )?;
+                debug!(
+                    bid_year = result.audit_event.bid_year.year(),
+                    area = result.audit_event.area.id(),
+                    "Inserted area into canonical table"
+                );
+
+                // Create an initial empty snapshot for new areas
+                let initial_state: State = State::new(
+                    result.audit_event.bid_year.clone(),
+                    result.audit_event.area.clone(),
+                );
+                Self::persist_state_snapshot_tx(&tx, &initial_state, event_id)?;
+                debug!(event_id, "Created initial empty snapshot for new area");
+            }
+            _ => {
+                // Non-bootstrap actions should not be handled here
+            }
         }
 
         tx.commit()?;
@@ -321,6 +394,47 @@ impl SqlitePersistence {
                 serde_json::to_string(&state_data)?,
             ],
         )?;
+
+        Ok(())
+    }
+
+    /// Syncs the canonical users table to match the given state.
+    ///
+    /// This is an idempotent operation that replaces all users for the given
+    /// `(bid_year, area)` with the users in the provided state.
+    fn sync_canonical_users_tx(
+        tx: &Transaction<'_>,
+        state: &State,
+    ) -> Result<(), PersistenceError> {
+        // Delete all existing users for this (bid_year, area)
+        tx.execute(
+            "DELETE FROM users WHERE bid_year = ?1 AND area_id = ?2",
+            params![state.bid_year.year(), state.area.id()],
+        )?;
+
+        // Insert all users from the new state
+        for user in &state.users {
+            tx.execute(
+                "INSERT INTO users (
+                    bid_year, area_id, initials, name, user_type, crew,
+                    cumulative_natca_bu_date, natca_bu_date,
+                    eod_faa_date, service_computation_date, lottery_value
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    user.bid_year.year(),
+                    user.area.id(),
+                    user.initials.value(),
+                    user.name,
+                    user.user_type.as_str(),
+                    user.crew.as_ref().map(|c| c.number()),
+                    user.seniority_data.cumulative_natca_bu_date,
+                    user.seniority_data.natca_bu_date,
+                    user.seniority_data.eod_faa_date,
+                    user.seniority_data.service_computation_date,
+                    user.seniority_data.lottery_value,
+                ],
+            )?;
+        }
 
         Ok(())
     }
@@ -517,9 +631,7 @@ impl SqlitePersistence {
 
     /// Retrieves the current effective state for a given `(bid_year, area)` scope.
     ///
-    /// This is a read-only operation that returns the most recent snapshot.
-    /// In the current implementation, snapshots represent complete state at specific points,
-    /// and non-snapshot events are for audit trail purposes only.
+    /// This queries the canonical `users` table to reconstruct the current state.
     ///
     /// # Arguments
     ///
@@ -528,7 +640,7 @@ impl SqlitePersistence {
     ///
     /// # Errors
     ///
-    /// Returns an error if no snapshot exists.
+    /// Returns an error if the database cannot be queried.
     pub fn get_current_state(
         &self,
         bid_year: &BidYear,
@@ -537,17 +649,82 @@ impl SqlitePersistence {
         tracing::debug!(
             bid_year = bid_year.year(),
             area = area.id(),
-            "Retrieving current effective state"
+            "Retrieving current effective state from canonical tables"
         );
 
-        // Get the most recent snapshot - this IS the current state
-        let (state, snapshot_event_id): (State, i64) = self.get_latest_snapshot(bid_year, area)?;
+        let mut stmt = self.conn.prepare(
+            "SELECT initials, name, user_type, crew,
+                    cumulative_natca_bu_date, natca_bu_date, eod_faa_date,
+                    service_computation_date, lottery_value
+             FROM users
+             WHERE bid_year = ?1 AND area_id = ?2
+             ORDER BY initials ASC",
+        )?;
+
+        let rows = stmt.query_map(params![bid_year.year(), area.id()], |row| {
+            Ok((
+                row.get::<_, String>(0)?,      // initials
+                row.get::<_, String>(1)?,      // name
+                row.get::<_, String>(2)?,      // user_type
+                row.get::<_, Option<i32>>(3)?, // crew
+                row.get::<_, String>(4)?,      // cumulative_natca_bu_date
+                row.get::<_, String>(5)?,      // natca_bu_date
+                row.get::<_, String>(6)?,      // eod_faa_date
+                row.get::<_, String>(7)?,      // service_computation_date
+                row.get::<_, Option<i32>>(8)?, // lottery_value
+            ))
+        })?;
+
+        let mut users: Vec<User> = Vec::new();
+        for row_result in rows {
+            let (
+                initials_str,
+                name,
+                user_type_str,
+                crew_num,
+                cumulative_natca_bu_date,
+                natca_bu_date,
+                eod_faa_date,
+                service_computation_date,
+                lottery_value,
+            ) = row_result?;
+
+            let initials: Initials = Initials::new(initials_str);
+            let user_type: UserType = UserType::parse(&user_type_str)
+                .map_err(|e| PersistenceError::ReconstructionError(e.to_string()))?;
+            let crew: Option<Crew> =
+                crew_num.and_then(|n| u8::try_from(n).ok().and_then(|num| Crew::new(num).ok()));
+            let seniority_data: SeniorityData = SeniorityData::new(
+                cumulative_natca_bu_date,
+                natca_bu_date,
+                eod_faa_date,
+                service_computation_date,
+                lottery_value.and_then(|v| u32::try_from(v).ok()),
+            );
+
+            let user: User = User::new(
+                bid_year.clone(),
+                initials,
+                name,
+                area.clone(),
+                user_type,
+                crew,
+                seniority_data,
+            );
+            users.push(user);
+        }
+
+        let state: State = State {
+            bid_year: bid_year.clone(),
+            area: area.clone(),
+            users,
+        };
 
         tracing::info!(
             bid_year = bid_year.year(),
             area = area.id(),
-            snapshot_event_id = snapshot_event_id,
-            "Retrieved current state from snapshot"
+            user_count = state.users.len(),
+            "Retrieved current state from canonical tables"
         );
 
         Ok(state)
@@ -740,50 +917,42 @@ impl SqlitePersistence {
     ///
     /// Panics if a bid year value from the database is outside the valid `u16` range.
     /// This should not occur in normal operation as bid years are validated on creation.
+    /// # Panics
+    ///
+    /// Panics if a bid year value from the database cannot be converted to `u16`.
+    /// This should never happen in practice as the schema enforces valid ranges.
     pub fn get_bootstrap_metadata(&self) -> Result<BootstrapMetadata, PersistenceError> {
         let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
-        // Query all audit events and reconstruct metadata
-        let mut stmt = self.conn.prepare(
-            "SELECT bid_year, area, action_json
-             FROM audit_events
-             ORDER BY event_id ASC",
-        )?;
-
-        let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, i32>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
+        // Query canonical bid_years table
+        let mut stmt = self
+            .conn
+            .prepare("SELECT year FROM bid_years ORDER BY year ASC")?;
+        let bid_year_rows = stmt.query_map([], |row| {
+            let year_value: i32 = row.get(0)?;
+            Ok(u16::try_from(year_value).expect("bid_year value out of u16 range"))
         })?;
 
-        for row_result in rows {
-            let (bid_year_value, area_value, action_json) = row_result?;
-            let action_data: ActionData = serde_json::from_str(&action_json)?;
+        for row_result in bid_year_rows {
+            let year: u16 = row_result?;
+            metadata.bid_years.push(BidYear::new(year));
+        }
 
-            match action_data.name.as_str() {
-                "CreateBidYear" => {
-                    let bid_year: BidYear = BidYear::new(
-                        u16::try_from(bid_year_value).expect("bid_year value out of u16 range"),
-                    );
-                    if !metadata.has_bid_year(&bid_year) {
-                        metadata.bid_years.push(bid_year);
-                    }
-                }
-                "CreateArea" => {
-                    let bid_year: BidYear = BidYear::new(
-                        u16::try_from(bid_year_value).expect("bid_year value out of u16 range"),
-                    );
-                    let area: Area = Area::new(area_value);
-                    if !metadata.has_area(&bid_year, &area) {
-                        metadata.areas.push((bid_year, area));
-                    }
-                }
-                _ => {
-                    // Non-bootstrap actions don't affect metadata
-                }
-            }
+        // Query canonical areas table
+        let mut stmt = self
+            .conn
+            .prepare("SELECT bid_year, area_id FROM areas ORDER BY bid_year ASC, area_id ASC")?;
+        let area_rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, i32>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        for row_result in area_rows {
+            let (bid_year_value, area_id) = row_result?;
+            let bid_year: BidYear = BidYear::new(
+                u16::try_from(bid_year_value).expect("bid_year value out of u16 range"),
+            );
+            let area: Area = Area::new(area_id);
+            metadata.areas.push((bid_year, area));
         }
 
         Ok(metadata)
@@ -791,15 +960,38 @@ impl SqlitePersistence {
 
     /// Lists all bid years that have been created.
     ///
+    /// This queries the canonical `bid_years` table directly.
+    ///
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a bid year value from the database cannot be converted to `u16`.
+    /// This should never happen in practice as the schema enforces valid ranges.
     pub fn list_bid_years(&self) -> Result<Vec<BidYear>, PersistenceError> {
-        let metadata: BootstrapMetadata = self.get_bootstrap_metadata()?;
-        Ok(metadata.bid_years)
+        let mut stmt = self
+            .conn
+            .prepare("SELECT year FROM bid_years ORDER BY year ASC")?;
+
+        let rows = stmt.query_map([], |row| {
+            let year_value: i32 = row.get(0)?;
+            Ok(u16::try_from(year_value).expect("bid_year value out of u16 range"))
+        })?;
+
+        let mut bid_years: Vec<BidYear> = Vec::new();
+        for row_result in rows {
+            let year: u16 = row_result?;
+            bid_years.push(BidYear::new(year));
+        }
+
+        Ok(bid_years)
     }
 
     /// Lists all areas for a given bid year.
+    ///
+    /// This queries the canonical `areas` table directly.
     ///
     /// # Arguments
     ///
@@ -808,15 +1000,110 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a bid year value from the database cannot be converted to `u16`.
+    /// This should never happen in practice as the schema enforces valid ranges.
     pub fn list_areas(&self, bid_year: &BidYear) -> Result<Vec<Area>, PersistenceError> {
-        let metadata: BootstrapMetadata = self.get_bootstrap_metadata()?;
-        let areas: Vec<Area> = metadata
-            .areas
-            .iter()
-            .filter(|(by, _)| by.year() == bid_year.year())
-            .map(|(_, area)| area.clone())
-            .collect();
+        let mut stmt = self
+            .conn
+            .prepare("SELECT area_id FROM areas WHERE bid_year = ?1 ORDER BY area_id ASC")?;
+
+        let rows = stmt.query_map(params![bid_year.year()], |row| {
+            let area_id: String = row.get(0)?;
+            Ok(area_id)
+        })?;
+
+        let mut areas: Vec<Area> = Vec::new();
+        for row_result in rows {
+            let area_id: String = row_result?;
+            areas.push(Area::new(area_id));
+        }
+
         Ok(areas)
+    }
+
+    /// Lists all users for a given `(bid_year, area)` scope.
+    ///
+    /// This queries the canonical `users` table directly.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year` - The bid year
+    /// * `area` - The area
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn list_users(
+        &self,
+        bid_year: &BidYear,
+        area: &Area,
+    ) -> Result<Vec<User>, PersistenceError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT initials, name, user_type, crew,
+                    cumulative_natca_bu_date, natca_bu_date, eod_faa_date,
+                    service_computation_date, lottery_value
+             FROM users
+             WHERE bid_year = ?1 AND area_id = ?2
+             ORDER BY initials ASC",
+        )?;
+
+        let rows = stmt.query_map(params![bid_year.year(), area.id()], |row| {
+            Ok((
+                row.get::<_, String>(0)?,      // initials
+                row.get::<_, String>(1)?,      // name
+                row.get::<_, String>(2)?,      // user_type
+                row.get::<_, Option<i32>>(3)?, // crew
+                row.get::<_, String>(4)?,      // cumulative_natca_bu_date
+                row.get::<_, String>(5)?,      // natca_bu_date
+                row.get::<_, String>(6)?,      // eod_faa_date
+                row.get::<_, String>(7)?,      // service_computation_date
+                row.get::<_, Option<i32>>(8)?, // lottery_value
+            ))
+        })?;
+
+        let mut users: Vec<User> = Vec::new();
+        for row_result in rows {
+            let (
+                initials_str,
+                name,
+                user_type_str,
+                crew_num,
+                cumulative_natca_bu_date,
+                natca_bu_date,
+                eod_faa_date,
+                service_computation_date,
+                lottery_value,
+            ) = row_result?;
+
+            let initials: Initials = Initials::new(initials_str);
+            let user_type: UserType = UserType::parse(&user_type_str)
+                .map_err(|e| PersistenceError::ReconstructionError(e.to_string()))?;
+            let crew: Option<Crew> =
+                crew_num.and_then(|n| u8::try_from(n).ok().and_then(|num| Crew::new(num).ok()));
+            let seniority_data: SeniorityData = SeniorityData::new(
+                cumulative_natca_bu_date,
+                natca_bu_date,
+                eod_faa_date,
+                service_computation_date,
+                lottery_value.and_then(|v| u32::try_from(v).ok()),
+            );
+
+            let user: User = User::new(
+                bid_year.clone(),
+                initials,
+                name,
+                area.clone(),
+                user_type,
+                crew,
+                seniority_data,
+            );
+            users.push(user);
+        }
+
+        Ok(users)
     }
 }
 
@@ -853,6 +1140,42 @@ mod tests {
         metadata
     }
 
+    /// Creates a fully bootstrapped test persistence instance with bid year 2026 and area "North".
+    fn create_bootstrapped_persistence() -> SqlitePersistence {
+        use zab_bid::{Command, apply_bootstrap};
+
+        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        // Bootstrap bid year
+        let create_bid_year_cmd: Command = Command::CreateBidYear { year: 2026 };
+        let bid_year_result: BootstrapResult = apply_bootstrap(
+            &metadata,
+            create_bid_year_cmd,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&bid_year_result).unwrap();
+        metadata.bid_years.push(BidYear::new(2026));
+
+        // Bootstrap area
+        let create_area_cmd: Command = Command::CreateArea {
+            bid_year: BidYear::new(2026),
+            area_id: String::from("North"),
+        };
+        let area_result: BootstrapResult = apply_bootstrap(
+            &metadata,
+            create_area_cmd,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&area_result).unwrap();
+
+        persistence
+    }
+
     #[test]
     fn test_persistence_initialization() {
         let result: Result<SqlitePersistence, PersistenceError> =
@@ -862,7 +1185,7 @@ mod tests {
 
     #[test]
     fn test_persist_and_retrieve_audit_event() {
-        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
@@ -892,7 +1215,7 @@ mod tests {
 
     #[test]
     fn test_persist_with_snapshot() {
-        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
 
         let command: Command = Command::Checkpoint;
@@ -918,7 +1241,7 @@ mod tests {
 
     #[test]
     fn test_get_events_after() {
-        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
 
         // Create first event
@@ -1020,7 +1343,7 @@ mod tests {
 
     #[test]
     fn test_get_current_state_after_snapshot_with_user() {
-        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
 
         // Create initial empty snapshot
@@ -1080,17 +1403,17 @@ mod tests {
 
     #[test]
     fn test_get_current_state_no_snapshot_returns_error() {
-        let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let persistence: SqlitePersistence = create_bootstrapped_persistence();
 
-        // Try to retrieve current state with no snapshot
+        // Try to retrieve current state with no users added yet
+        // With canonical tables (Phase 7), an empty state is valid (no users yet)
         let result: Result<State, PersistenceError> =
             persistence.get_current_state(&BidYear::new(2026), &Area::new(String::from("North")));
 
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            PersistenceError::SnapshotNotFound { .. }
-        ));
+        // Should succeed with empty user list
+        assert!(result.is_ok());
+        let state: State = result.unwrap();
+        assert_eq!(state.users.len(), 0);
     }
 
     #[test]
@@ -1202,7 +1525,7 @@ mod tests {
 
     #[test]
     fn test_get_current_state_is_deterministic() {
-        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
 
         // Create initial snapshot
@@ -1341,7 +1664,7 @@ mod tests {
 
     #[test]
     fn test_get_current_state_with_multiple_users() {
-        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
 
         // Create initial snapshot
@@ -1461,7 +1784,7 @@ mod tests {
 
     #[test]
     fn test_state_reconstruction_with_snapshot_then_deltas() {
-        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
 
         // Create initial snapshot
@@ -1519,7 +1842,7 @@ mod tests {
 
     #[test]
     fn test_get_historical_state_at_specific_timestamp() {
-        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
 
         // Create first snapshot with no users
@@ -1812,8 +2135,20 @@ mod tests {
 
         let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
         let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        // First create the bid year
+        let create_bid_year_cmd: Command = Command::CreateBidYear { year: 2026 };
+        let bid_year_result: BootstrapResult = apply_bootstrap(
+            &metadata,
+            create_bid_year_cmd,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&bid_year_result).unwrap();
         metadata.bid_years.push(BidYear::new(2026));
 
+        // Now create the area
         let command: Command = Command::CreateArea {
             bid_year: BidYear::new(2026),
             area_id: String::from("North"),
@@ -1823,7 +2158,7 @@ mod tests {
 
         let event_id: i64 = persistence.persist_bootstrap(&result).unwrap();
 
-        assert_eq!(event_id, 1);
+        assert_eq!(event_id, 2);
 
         // Verify the event was persisted
         let retrieved_event: AuditEvent = persistence.get_audit_event(event_id).unwrap();
