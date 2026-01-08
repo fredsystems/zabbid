@@ -255,20 +255,29 @@ fn fix_clippy() -> Result<()> {
     ])
 }
 
-/// Check that docs build without errors using flags for docs.rs
+/// Check that docs build without errors using docs.rs-equivalent flags
 fn lint_docs() -> Result<()> {
-    // ensure docs-rs is installed, if not, just return Ok(())
-    if cmd!("docs-rs").run().is_err() {
-        tracing::warn!("docs-rs is not installed, skipping lint_docs.");
-        return Ok(());
-    }
-
     let meta = MetadataCommand::new()
         .exec()
         .wrap_err("failed to get cargo metadata")?;
+
     for package in meta.workspace_default_packages() {
-        run_cargo_nightly(vec!["docs-rs", "--package", &package.name])?;
+        cmd(
+            "cargo",
+            [
+                "doc",
+                "--no-deps",
+                "--all-features",
+                "--package",
+                &package.name,
+            ],
+        )
+        .env_remove("CARGO")
+        .env("RUSTUP_TOOLCHAIN", "nightly")
+        .env("RUSTDOCFLAGS", "--cfg docsrs -D warnings")
+        .run_with_trace()?;
     }
+
     Ok(())
 }
 
