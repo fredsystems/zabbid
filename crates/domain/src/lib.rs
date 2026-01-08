@@ -47,7 +47,7 @@ impl BidYear {
 /// Initials are the sole identifier for a user within a bid year.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Initials {
-    /// The initials value (e.g., "ABC").
+    /// The initials value (exactly 2 characters).
     value: String,
 }
 
@@ -285,10 +285,11 @@ impl std::error::Error for DomainError {}
 /// - The user's area is empty
 /// - The user's crew is empty
 pub fn validate_user_fields(user: &User) -> Result<(), DomainError> {
-    // Rule: initials must not be empty
-    if user.initials.value().is_empty() {
+    // Rule: initials must be exactly 2 characters
+    let initials_len: usize = user.initials.value().len();
+    if initials_len != 2 {
         return Err(DomainError::InvalidInitials(String::from(
-            "Initials cannot be empty",
+            "Initials must be exactly 2 characters",
         )));
     }
 
@@ -376,7 +377,7 @@ mod tests {
         User::new(
             bid_year,
             initials,
-            String::from("John Doe"),
+            String::from("Test User"),
             Area::new(String::from("North")),
             Crew::new(String::from("A")),
             create_test_seniority_data(),
@@ -391,8 +392,8 @@ mod tests {
 
     #[test]
     fn test_initials_creation() {
-        let initials: Initials = Initials::new(String::from("ABC"));
-        assert_eq!(initials.value(), "ABC");
+        let initials: Initials = Initials::new(String::from("AB"));
+        assert_eq!(initials.value(), "AB");
     }
 
     #[test]
@@ -410,12 +411,12 @@ mod tests {
     #[test]
     fn test_user_creation() {
         let bid_year: BidYear = BidYear::new(2026);
-        let initials: Initials = Initials::new(String::from("ABC"));
+        let initials: Initials = Initials::new(String::from("AB"));
         let user: User = create_test_user(bid_year.clone(), initials.clone());
 
         assert_eq!(user.bid_year, bid_year);
         assert_eq!(user.initials, initials);
-        assert_eq!(user.name, "John Doe");
+        assert_eq!(user.name, "Test User");
         assert_eq!(user.area.id(), "North");
         assert_eq!(user.crew.id(), "A");
     }
@@ -423,7 +424,7 @@ mod tests {
     #[test]
     fn test_validate_user_fields_accepts_valid_user() {
         let bid_year: BidYear = BidYear::new(2026);
-        let initials: Initials = Initials::new(String::from("ABC"));
+        let initials: Initials = Initials::new(String::from("AB"));
         let user: User = create_test_user(bid_year, initials);
 
         let result: Result<(), DomainError> = validate_user_fields(&user);
@@ -441,10 +442,40 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_user_fields_rejects_one_character_initials() {
+        let bid_year: BidYear = BidYear::new(2026);
+        let initials: Initials = Initials::new(String::from("A"));
+        let user: User = create_test_user(bid_year, initials);
+
+        let result: Result<(), DomainError> = validate_user_fields(&user);
+        assert!(matches!(result, Err(DomainError::InvalidInitials(_))));
+    }
+
+    #[test]
+    fn test_validate_user_fields_rejects_three_character_initials() {
+        let bid_year: BidYear = BidYear::new(2026);
+        let initials: Initials = Initials::new(String::from("ABC"));
+        let user: User = create_test_user(bid_year, initials);
+
+        let result: Result<(), DomainError> = validate_user_fields(&user);
+        assert!(matches!(result, Err(DomainError::InvalidInitials(_))));
+    }
+
+    #[test]
+    fn test_validate_user_fields_accepts_two_character_initials() {
+        let bid_year: BidYear = BidYear::new(2026);
+        let initials: Initials = Initials::new(String::from("AB"));
+        let user: User = create_test_user(bid_year, initials);
+
+        let result: Result<(), DomainError> = validate_user_fields(&user);
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn test_validate_user_fields_rejects_empty_name() {
         let user: User = User::new(
             BidYear::new(2026),
-            Initials::new(String::from("ABC")),
+            Initials::new(String::from("AB")),
             String::new(),
             Area::new(String::from("North")),
             Crew::new(String::from("A")),
@@ -459,7 +490,7 @@ mod tests {
     fn test_validate_user_fields_rejects_empty_area() {
         let user: User = User::new(
             BidYear::new(2026),
-            Initials::new(String::from("ABC")),
+            Initials::new(String::from("AB")),
             String::from("John Doe"),
             Area::new(String::new()),
             Crew::new(String::from("A")),
@@ -474,7 +505,7 @@ mod tests {
     fn test_validate_user_fields_rejects_empty_crew() {
         let user: User = User::new(
             BidYear::new(2026),
-            Initials::new(String::from("ABC")),
+            Initials::new(String::from("AB")),
             String::from("John Doe"),
             Area::new(String::from("North")),
             Crew::new(String::new()),
@@ -489,10 +520,10 @@ mod tests {
     fn test_validate_initials_unique_accepts_unique_initials() {
         let bid_year: BidYear = BidYear::new(2026);
         let existing_user: User =
-            create_test_user(bid_year.clone(), Initials::new(String::from("ABC")));
+            create_test_user(bid_year.clone(), Initials::new(String::from("AB")));
         let existing_users: Vec<User> = vec![existing_user];
 
-        let new_initials: Initials = Initials::new(String::from("XYZ"));
+        let new_initials: Initials = Initials::new(String::from("XY"));
         let result: Result<(), DomainError> =
             validate_initials_unique(&bid_year, &new_initials, &existing_users);
 
@@ -503,10 +534,10 @@ mod tests {
     fn test_validate_initials_unique_rejects_duplicate_initials() {
         let bid_year: BidYear = BidYear::new(2026);
         let existing_user: User =
-            create_test_user(bid_year.clone(), Initials::new(String::from("ABC")));
+            create_test_user(bid_year.clone(), Initials::new(String::from("AB")));
         let existing_users: Vec<User> = vec![existing_user];
 
-        let duplicate_initials: Initials = Initials::new(String::from("ABC"));
+        let duplicate_initials: Initials = Initials::new(String::from("AB"));
         let result: Result<(), DomainError> =
             validate_initials_unique(&bid_year, &duplicate_initials, &existing_users);
 
@@ -519,11 +550,11 @@ mod tests {
         let bid_year_2027: BidYear = BidYear::new(2027);
 
         let existing_user_2027: User =
-            create_test_user(bid_year_2027, Initials::new(String::from("ABC")));
+            create_test_user(bid_year_2027, Initials::new(String::from("AB")));
         let existing_users: Vec<User> = vec![existing_user_2027];
 
         // Same initials but different bid year should be allowed
-        let new_initials: Initials = Initials::new(String::from("ABC"));
+        let new_initials: Initials = Initials::new(String::from("AB"));
         let result: Result<(), DomainError> =
             validate_initials_unique(&bid_year_2026, &new_initials, &existing_users);
 
@@ -535,7 +566,7 @@ mod tests {
         let bid_year: BidYear = BidYear::new(2026);
         let existing_users: Vec<User> = vec![];
 
-        let new_initials: Initials = Initials::new(String::from("ABC"));
+        let new_initials: Initials = Initials::new(String::from("AB"));
         let result: Result<(), DomainError> =
             validate_initials_unique(&bid_year, &new_initials, &existing_users);
 
@@ -545,19 +576,19 @@ mod tests {
     #[test]
     fn test_validate_initials_unique_with_multiple_existing_users() {
         let bid_year: BidYear = BidYear::new(2026);
-        let user1: User = create_test_user(bid_year.clone(), Initials::new(String::from("ABC")));
-        let user2: User = create_test_user(bid_year.clone(), Initials::new(String::from("DEF")));
-        let user3: User = create_test_user(bid_year.clone(), Initials::new(String::from("GHI")));
+        let user1: User = create_test_user(bid_year.clone(), Initials::new(String::from("AB")));
+        let user2: User = create_test_user(bid_year.clone(), Initials::new(String::from("CD")));
+        let user3: User = create_test_user(bid_year.clone(), Initials::new(String::from("EF")));
         let existing_users: Vec<User> = vec![user1, user2, user3];
 
         // New unique initials should be accepted
-        let new_initials: Initials = Initials::new(String::from("JKL"));
+        let new_initials: Initials = Initials::new(String::from("GH"));
         let result: Result<(), DomainError> =
             validate_initials_unique(&bid_year, &new_initials, &existing_users);
         assert!(result.is_ok());
 
         // Duplicate initials should be rejected
-        let duplicate_initials: Initials = Initials::new(String::from("DEF"));
+        let duplicate_initials: Initials = Initials::new(String::from("CD"));
         let result: Result<(), DomainError> =
             validate_initials_unique(&bid_year, &duplicate_initials, &existing_users);
         assert!(matches!(result, Err(DomainError::DuplicateInitials { .. })));
@@ -566,12 +597,12 @@ mod tests {
     #[test]
     fn test_domain_error_display() {
         let bid_year: BidYear = BidYear::new(2026);
-        let initials: Initials = Initials::new(String::from("ABC"));
+        let initials: Initials = Initials::new(String::from("AB"));
 
         let err: DomainError = DomainError::DuplicateInitials { bid_year, initials };
         assert_eq!(
             format!("{err}"),
-            "User with initials 'ABC' already exists in bid year 2026"
+            "User with initials 'AB' already exists in bid year 2026"
         );
 
         let err: DomainError = DomainError::InvalidInitials(String::from("test"));

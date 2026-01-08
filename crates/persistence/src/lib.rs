@@ -726,10 +726,9 @@ mod tests {
     fn test_persist_and_retrieve_audit_event() {
         let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
-
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")),
+            initials: Initials::new(String::from("AB")),
             name: String::from("John Doe"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("A")),
@@ -863,7 +862,7 @@ mod tests {
         // Register a user (delta event, no snapshot)
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")),
+            initials: Initials::new(String::from("AB")),
             name: String::from("Alice Blue"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("A")),
@@ -897,7 +896,7 @@ mod tests {
         assert_eq!(current_state.bid_year.year(), 2026);
         assert_eq!(current_state.area.id(), "North");
         assert_eq!(current_state.users.len(), 1);
-        assert_eq!(current_state.users[0].initials.value(), "ABC");
+        assert_eq!(current_state.users[0].initials.value(), "AB");
     }
 
     #[test]
@@ -1021,7 +1020,7 @@ mod tests {
         // Register a user
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("XYZ")),
+            initials: Initials::new(String::from("XY")),
             name: String::from("Xavier Young"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("B")),
@@ -1064,9 +1063,9 @@ mod tests {
         assert_eq!(state1.users.len(), state2.users.len());
         assert_eq!(state2.users.len(), state3.users.len());
         assert_eq!(state1.users.len(), 1);
-        assert_eq!(state1.users[0].initials.value(), "XYZ");
-        assert_eq!(state2.users[0].initials.value(), "XYZ");
-        assert_eq!(state3.users[0].initials.value(), "XYZ");
+        assert_eq!(state1.users[0].initials.value(), "XY");
+        assert_eq!(state2.users[0].initials.value(), "XY");
+        assert_eq!(state3.users[0].initials.value(), "XY");
     }
 
     #[test]
@@ -1139,7 +1138,7 @@ mod tests {
         // Register first user
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AAA")),
+            initials: Initials::new(String::from("AA")),
             name: String::from("Alice Anderson"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("A")),
@@ -1157,7 +1156,7 @@ mod tests {
         // Register second user
         let command3: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("BBB")),
+            initials: Initials::new(String::from("BB")),
             name: String::from("Bob Brown"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("B")),
@@ -1246,7 +1245,7 @@ mod tests {
         // Add user (delta)
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("TST")),
+            initials: Initials::new(String::from("TS")),
             name: String::from("Test User"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("A")),
@@ -1278,7 +1277,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(current_state.users.len(), 1);
-        assert_eq!(current_state.users[0].initials.value(), "TST");
+        assert_eq!(current_state.users[0].initials.value(), "TS");
     }
 
     #[test]
@@ -1295,7 +1294,7 @@ mod tests {
         // Register a user (non-snapshot event)
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("NEW")),
+            initials: Initials::new(String::from("NE")),
             name: String::from("New User"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("A")),
@@ -1341,7 +1340,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(historical_state.users.len(), 1);
-        assert_eq!(historical_state.users[0].initials.value(), "NEW");
+        assert_eq!(historical_state.users[0].initials.value(), "NE");
     }
 
     #[test]

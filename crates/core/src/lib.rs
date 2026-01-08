@@ -330,7 +330,7 @@ mod tests {
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")),
+            initials: Initials::new(String::from("AB")),
             name: String::from("John Doe"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("A")),
@@ -344,7 +344,7 @@ mod tests {
         assert!(result.is_ok());
         let transition: TransitionResult = result.unwrap();
         assert_eq!(transition.new_state.users.len(), 1);
-        assert_eq!(transition.new_state.users[0].initials.value(), "ABC");
+        assert_eq!(transition.new_state.users[0].initials.value(), "AB");
         assert_eq!(transition.new_state.users[0].name, "John Doe");
     }
 
@@ -353,7 +353,7 @@ mod tests {
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")),
+            initials: Initials::new(String::from("AB")),
             name: String::from("John Doe"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("A")),
@@ -376,7 +376,7 @@ mod tests {
                 .details
                 .as_ref()
                 .unwrap()
-                .contains("ABC")
+                .contains("AB")
         );
     }
 
@@ -385,7 +385,7 @@ mod tests {
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")),
+            initials: Initials::new(String::from("AB")),
             name: String::from("John Doe"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("A")),
@@ -409,7 +409,7 @@ mod tests {
         // First user
         let command1: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")),
+            initials: Initials::new(String::from("AB")),
             name: String::from("John Doe"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("A")),
@@ -426,7 +426,7 @@ mod tests {
         // Second user with same initials in same bid year
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")), // Duplicate!
+            initials: Initials::new(String::from("AB")), // Duplicate!
             name: String::from("Jane Smith"),
             area: Area::new(String::from("South")),
             crew: Crew::new(String::from("B")),
@@ -449,7 +449,7 @@ mod tests {
         // User in 2026
         let command1: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")),
+            initials: Initials::new(String::from("AB")),
             name: String::from("John Doe"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("A")),
@@ -496,7 +496,7 @@ mod tests {
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")),
+            initials: Initials::new(String::from("AB")),
             name: String::new(), // Invalid: empty
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("A")),
@@ -519,7 +519,7 @@ mod tests {
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")),
+            initials: Initials::new(String::from("AB")),
             name: String::from("John Doe"),
             area: Area::new(String::new()), // Invalid: empty
             crew: Crew::new(String::from("A")),
@@ -542,7 +542,7 @@ mod tests {
         let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")),
+            initials: Initials::new(String::from("AB")),
             name: String::from("John Doe"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::new()), // Invalid: empty
@@ -612,7 +612,7 @@ mod tests {
         // First user
         let command1: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")),
+            initials: Initials::new(String::from("AB")),
             name: String::from("John Doe"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("A")),
@@ -627,7 +627,7 @@ mod tests {
         // Second user with different initials
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("XYZ")),
+            initials: Initials::new(String::from("XY")),
             name: String::from("Jane Smith"),
             area: Area::new(String::from("South")),
             crew: Crew::new(String::from("B")),
@@ -649,7 +649,7 @@ mod tests {
         // First user
         let command1: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")),
+            initials: Initials::new(String::from("AB")),
             name: String::from("John Doe"),
             area: Area::new(String::from("North")),
             crew: Crew::new(String::from("A")),
@@ -667,7 +667,7 @@ mod tests {
         // Attempt to add duplicate
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("ABC")), // Duplicate
+            initials: Initials::new(String::from("AB")), // Duplicate
             name: String::from("Jane Smith"),
             area: Area::new(String::from("South")),
             crew: Crew::new(String::from("B")),

@@ -21,6 +21,7 @@ zab-bid-domain = { path = "../domain" }
 zab-bid-persistence = { path = "../persistence" }
 
 axum.workspace = true
+clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

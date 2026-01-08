@@ -20,6 +20,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -32,6 +33,19 @@ use zab_bid_api::{
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear};
 use zab_bid_persistence::{PersistenceError, SqlitePersistence};
+
+/// ZAB Bid Server - HTTP server for the ZAB Bidding System
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Path to the `SQLite` database file. If not provided, uses in-memory database.
+    #[arg(short, long)]
+    database: Option<String>,
+
+    /// Port to bind the server to
+    #[arg(short, long, default_value_t = 3000)]
+    port: u16,
+}
 
 /// Application state shared across handlers.
 ///
@@ -695,6 +709,9 @@ fn build_router(app_state: AppState) -> Router {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Parse command-line arguments
+    let args: Args = Args::parse();
+
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -705,8 +722,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Initializing ZAB Bid Server");
 
-    // Initialize persistence (in-memory for now)
-    let persistence: SqlitePersistence = SqlitePersistence::new_in_memory()?;
+    // Initialize persistence (in-memory or file-based based on CLI argument)
+    let persistence: SqlitePersistence = if let Some(db_path) = &args.database {
+        info!("Using file-based database at: {}", db_path);
+        SqlitePersistence::new_with_file(db_path)?
+    } else {
+        info!("Using in-memory database");
+        SqlitePersistence::new_in_memory()?
+    };
+
     let app_state: AppState = AppState {
         persistence: Arc::new(Mutex::new(persistence)),
     };
@@ -715,7 +739,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app: Router = build_router(app_state);
 
     // Bind to address
-    let addr: std::net::SocketAddr = "127.0.0.1:3000".parse()?;
+    let addr: std::net::SocketAddr = format!("127.0.0.1:{}", args.port).parse()?;
     info!("Server listening on {}", addr);
 
     // Run server
@@ -773,7 +797,7 @@ mod tests {
         let app: Router = build_router(app_state.clone());
 
         let req_body: RegisterUserApiRequest =
-            create_test_register_request("admin1", "admin", "ABC");
+            create_test_register_request("admin1", "admin", "AB");
 
         let response = app
             .oneshot(
@@ -795,7 +819,7 @@ mod tests {
         let api_response: RegisterUserApiResponse = serde_json::from_slice(&body_bytes).unwrap();
 
         assert!(api_response.success);
-        assert_eq!(api_response.initials, "ABC");
+        assert_eq!(api_response.initials, "AB");
         assert!(api_response.event_id > 0);
     }
 
@@ -805,7 +829,7 @@ mod tests {
         let app: Router = build_router(app_state);
 
         let req_body: RegisterUserApiRequest =
-            create_test_register_request("bidder1", "bidder", "DEF");
+            create_test_register_request("bidder1", "bidder", "XY");
 
         let response = app
             .oneshot(
@@ -837,7 +861,7 @@ mod tests {
 
         // Try to register as bidder (should fail)
         let req_body: RegisterUserApiRequest =
-            create_test_register_request("bidder1", "bidder", "GHI");
+            create_test_register_request("bidder1", "bidder", "XY");
 
         let response = app
             .clone()
@@ -881,7 +905,7 @@ mod tests {
 
         // Register a user as admin
         let req_body: RegisterUserApiRequest =
-            create_test_register_request("admin1", "admin", "JKL");
+            create_test_register_request("admin1", "admin", "AB");
 
         let response = app
             .clone()
@@ -929,7 +953,7 @@ mod tests {
 
         // Register a user as admin
         let req_body: RegisterUserApiRequest =
-            create_test_register_request("admin1", "admin", "MNO");
+            create_test_register_request("admin1", "admin", "AB");
 
         let response = app
             .clone()
@@ -1043,7 +1067,7 @@ mod tests {
 
         // First, register a user to create an event
         let req_body: RegisterUserApiRequest =
-            create_test_register_request("admin1", "admin", "PQR");
+            create_test_register_request("admin1", "admin", "AB");
 
         let response = app
             .clone()

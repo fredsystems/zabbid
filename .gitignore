@@ -1,3 +1,6 @@
 .direnv
 .pre-commit-config.yaml
 target
+*.db
+*.db-shm
+*.db-wal
