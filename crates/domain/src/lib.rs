@@ -98,11 +98,12 @@ impl Area {
 
 /// Represents a crew identifier.
 ///
-/// A user must belong to exactly one crew.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Crews are domain constants numbered 1 through 7.
+/// A user may have zero or one crew assignment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Crew {
-    /// The crew identifier (e.g., "A", "B", "C").
-    id: String,
+    /// The crew number (1-7).
+    number: u8,
 }
 
 impl Crew {
@@ -110,16 +111,92 @@ impl Crew {
     ///
     /// # Arguments
     ///
-    /// * `id` - The crew identifier
-    #[must_use]
-    pub const fn new(id: String) -> Self {
-        Self { id }
+    /// * `number` - The crew number (must be between 1 and 7 inclusive)
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Crew)` if the number is valid
+    /// * `Err(DomainError::InvalidCrew)` if the number is not between 1 and 7
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the crew number is not in the range 1-7.
+    pub const fn new(number: u8) -> Result<Self, DomainError> {
+        if number >= 1 && number <= 7 {
+            Ok(Self { number })
+        } else {
+            Err(DomainError::InvalidCrew(
+                "Crew number must be between 1 and 7",
+            ))
+        }
     }
 
-    /// Returns the crew identifier.
+    /// Returns the crew number.
     #[must_use]
-    pub fn id(&self) -> &str {
-        &self.id
+    pub const fn number(&self) -> u8 {
+        self.number
+    }
+}
+
+/// Represents a user type classification.
+///
+/// User types are fixed domain constants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UserType {
+    /// Certified Professional Controller
+    CPC,
+    /// Certified Professional Controller - In Training
+    #[serde(rename = "CPC-IT")]
+    CpcIt,
+    /// Developmental - Radar
+    #[serde(rename = "Dev-R")]
+    DevR,
+    /// Developmental - Tower
+    #[serde(rename = "Dev-D")]
+    DevD,
+}
+
+impl UserType {
+    /// Parses a user type from a string.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - The string to parse
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(UserType)` if the string is valid
+    /// * `Err(DomainError::InvalidUserType)` if the string is not recognized
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the string does not match a valid user type.
+    /// Parses a user type from a string.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the string does not match a valid user type.
+    pub fn parse(s: &str) -> Result<Self, DomainError> {
+        match s {
+            "CPC" => Ok(Self::CPC),
+            "CPC-IT" => Ok(Self::CpcIt),
+            "Dev-R" => Ok(Self::DevR),
+            "Dev-D" => Ok(Self::DevD),
+            _ => Err(DomainError::InvalidUserType(format!(
+                "Unknown user type: {s}"
+            ))),
+        }
+    }
+
+    /// Returns the string representation of this user type.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::CPC => "CPC",
+            Self::CpcIt => "CPC-IT",
+            Self::DevR => "Dev-R",
+            Self::DevD => "Dev-D",
+        }
     }
 }
 
@@ -184,8 +261,10 @@ pub struct User {
     pub name: String,
     /// The area this user belongs to.
     pub area: Area,
-    /// The crew this user belongs to.
-    pub crew: Crew,
+    /// The user's type classification.
+    pub user_type: UserType,
+    /// The crew this user belongs to (optional).
+    pub crew: Option<Crew>,
     /// Seniority-related data (informational only in Phase 1).
     pub seniority_data: SeniorityData,
 }
@@ -199,7 +278,8 @@ impl User {
     /// * `initials` - The user's initials
     /// * `name` - The user's name
     /// * `area` - The user's area
-    /// * `crew` - The user's crew
+    /// * `user_type` - The user's type classification
+    /// * `crew` - The user's crew (optional)
     /// * `seniority_data` - The user's seniority data
     #[must_use]
     #[allow(clippy::too_many_arguments)]
@@ -208,7 +288,8 @@ impl User {
         initials: Initials,
         name: String,
         area: Area,
-        crew: Crew,
+        user_type: UserType,
+        crew: Option<Crew>,
         seniority_data: SeniorityData,
     ) -> Self {
         Self {
@@ -216,6 +297,7 @@ impl User {
             initials,
             name,
             area,
+            user_type,
             crew,
             seniority_data,
         }
@@ -239,7 +321,29 @@ pub enum DomainError {
     /// Area identifier is empty or invalid.
     InvalidArea(String),
     /// Crew identifier is empty or invalid.
-    InvalidCrew(String),
+    InvalidCrew(&'static str),
+    /// User type is invalid.
+    InvalidUserType(String),
+    /// Bid year does not exist.
+    BidYearNotFound(u16),
+    /// Area does not exist in the specified bid year.
+    AreaNotFound {
+        /// The bid year.
+        bid_year: u16,
+        /// The area identifier.
+        area: String,
+    },
+    /// Bid year already exists.
+    DuplicateBidYear(u16),
+    /// Area already exists in the bid year.
+    DuplicateArea {
+        /// The bid year.
+        bid_year: u16,
+        /// The area identifier.
+        area: String,
+    },
+    /// Invalid bid year value.
+    InvalidBidYear(String),
 }
 
 impl std::fmt::Display for DomainError {
@@ -257,6 +361,16 @@ impl std::fmt::Display for DomainError {
             Self::InvalidName(msg) => write!(f, "Invalid name: {msg}"),
             Self::InvalidArea(msg) => write!(f, "Invalid area: {msg}"),
             Self::InvalidCrew(msg) => write!(f, "Invalid crew: {msg}"),
+            Self::InvalidUserType(msg) => write!(f, "Invalid user type: {msg}"),
+            Self::BidYearNotFound(year) => write!(f, "Bid year {year} not found"),
+            Self::AreaNotFound { bid_year, area } => {
+                write!(f, "Area '{area}' not found in bid year {bid_year}")
+            }
+            Self::DuplicateBidYear(year) => write!(f, "Bid year {year} already exists"),
+            Self::DuplicateArea { bid_year, area } => {
+                write!(f, "Area '{area}' already exists in bid year {bid_year}")
+            }
+            Self::InvalidBidYear(msg) => write!(f, "Invalid bid year: {msg}"),
         }
     }
 }
@@ -307,13 +421,32 @@ pub fn validate_user_fields(user: &User) -> Result<(), DomainError> {
         )));
     }
 
-    // Rule: crew must not be empty
-    if user.crew.id().is_empty() {
-        return Err(DomainError::InvalidCrew(String::from(
-            "Crew cannot be empty",
+    // Crew validation is done at construction time via Crew::new()
+    // No additional validation needed here since crew is optional
+
+    Ok(())
+}
+
+/// Validates that a bid year is a valid calendar year.
+///
+/// # Arguments
+///
+/// * `year` - The year to validate
+///
+/// # Returns
+///
+/// * `Ok(())` if the year is valid
+/// * `Err(DomainError::InvalidBidYear)` if the year is invalid
+///
+/// # Errors
+///
+/// Returns an error if the year is not a reasonable calendar year (1900-2200).
+pub fn validate_bid_year(year: u16) -> Result<(), DomainError> {
+    if !(1900..=2200).contains(&year) {
+        return Err(DomainError::InvalidBidYear(format!(
+            "Bid year must be between 1900 and 2200, got {year}"
         )));
     }
-
     Ok(())
 }
 
@@ -379,7 +512,8 @@ mod tests {
             initials,
             String::from("Test User"),
             Area::new(String::from("North")),
-            Crew::new(String::from("A")),
+            UserType::CPC,
+            Some(Crew::new(1).unwrap()),
             create_test_seniority_data(),
         )
     }
@@ -404,8 +538,52 @@ mod tests {
 
     #[test]
     fn test_crew_creation() {
-        let crew: Crew = Crew::new(String::from("A"));
-        assert_eq!(crew.id(), "A");
+        let crew: Result<Crew, DomainError> = Crew::new(1);
+        assert!(crew.is_ok());
+        assert_eq!(crew.unwrap().number(), 1);
+    }
+
+    #[test]
+    fn test_crew_validation_rejects_zero() {
+        let crew: Result<Crew, DomainError> = Crew::new(0);
+        assert!(matches!(crew, Err(DomainError::InvalidCrew(_))));
+    }
+
+    #[test]
+    fn test_crew_validation_rejects_eight() {
+        let crew: Result<Crew, DomainError> = Crew::new(8);
+        assert!(matches!(crew, Err(DomainError::InvalidCrew(_))));
+    }
+
+    #[test]
+    fn test_crew_validation_accepts_all_valid_values() {
+        for n in 1..=7 {
+            let crew: Result<Crew, DomainError> = Crew::new(n);
+            assert!(crew.is_ok());
+            assert_eq!(crew.unwrap().number(), n);
+        }
+    }
+
+    #[test]
+    fn test_user_type_from_str() {
+        assert_eq!(UserType::parse("CPC").unwrap(), UserType::CPC);
+        assert_eq!(UserType::parse("CPC-IT").unwrap(), UserType::CpcIt);
+        assert_eq!(UserType::parse("Dev-R").unwrap(), UserType::DevR);
+        assert_eq!(UserType::parse("Dev-D").unwrap(), UserType::DevD);
+    }
+
+    #[test]
+    fn test_user_type_from_str_rejects_invalid() {
+        let result: Result<UserType, DomainError> = UserType::parse("Invalid");
+        assert!(matches!(result, Err(DomainError::InvalidUserType(_))));
+    }
+
+    #[test]
+    fn test_user_type_as_str() {
+        assert_eq!(UserType::CPC.as_str(), "CPC");
+        assert_eq!(UserType::CpcIt.as_str(), "CPC-IT");
+        assert_eq!(UserType::DevR.as_str(), "Dev-R");
+        assert_eq!(UserType::DevD.as_str(), "Dev-D");
     }
 
     #[test]
@@ -418,7 +596,9 @@ mod tests {
         assert_eq!(user.initials, initials);
         assert_eq!(user.name, "Test User");
         assert_eq!(user.area.id(), "North");
-        assert_eq!(user.crew.id(), "A");
+        assert_eq!(user.user_type, UserType::CPC);
+        assert!(user.crew.is_some());
+        assert_eq!(user.crew.unwrap().number(), 1);
     }
 
     #[test]
@@ -478,7 +658,8 @@ mod tests {
             Initials::new(String::from("AB")),
             String::new(),
             Area::new(String::from("North")),
-            Crew::new(String::from("A")),
+            UserType::CPC,
+            Some(Crew::new(1).unwrap()),
             create_test_seniority_data(),
         );
 
@@ -493,7 +674,8 @@ mod tests {
             Initials::new(String::from("AB")),
             String::from("John Doe"),
             Area::new(String::new()),
-            Crew::new(String::from("A")),
+            UserType::CPC,
+            Some(Crew::new(1).unwrap()),
             create_test_seniority_data(),
         );
 
@@ -502,18 +684,38 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_user_fields_rejects_empty_crew() {
+    fn test_validate_user_fields_accepts_user_with_no_crew() {
         let user: User = User::new(
             BidYear::new(2026),
             Initials::new(String::from("AB")),
             String::from("John Doe"),
             Area::new(String::from("North")),
-            Crew::new(String::new()),
+            UserType::CPC,
+            None,
             create_test_seniority_data(),
         );
 
         let result: Result<(), DomainError> = validate_user_fields(&user);
-        assert!(matches!(result, Err(DomainError::InvalidCrew(_))));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_bid_year_accepts_valid_years() {
+        assert!(validate_bid_year(2026).is_ok());
+        assert!(validate_bid_year(1900).is_ok());
+        assert!(validate_bid_year(2200).is_ok());
+    }
+
+    #[test]
+    fn test_validate_bid_year_rejects_invalid_years() {
+        assert!(matches!(
+            validate_bid_year(1899),
+            Err(DomainError::InvalidBidYear(_))
+        ));
+        assert!(matches!(
+            validate_bid_year(2201),
+            Err(DomainError::InvalidBidYear(_))
+        ));
     }
 
     #[test]
@@ -614,7 +816,34 @@ mod tests {
         let err: DomainError = DomainError::InvalidArea(String::from("test"));
         assert_eq!(format!("{err}"), "Invalid area: test");
 
-        let err: DomainError = DomainError::InvalidCrew(String::from("test"));
+        let err: DomainError = DomainError::InvalidCrew("test");
         assert_eq!(format!("{err}"), "Invalid crew: test");
+
+        let err: DomainError = DomainError::InvalidUserType(String::from("test"));
+        assert_eq!(format!("{err}"), "Invalid user type: test");
+
+        let err: DomainError = DomainError::BidYearNotFound(2026);
+        assert_eq!(format!("{err}"), "Bid year 2026 not found");
+
+        let err: DomainError = DomainError::AreaNotFound {
+            bid_year: 2026,
+            area: String::from("North"),
+        };
+        assert_eq!(format!("{err}"), "Area 'North' not found in bid year 2026");
+
+        let err: DomainError = DomainError::DuplicateBidYear(2026);
+        assert_eq!(format!("{err}"), "Bid year 2026 already exists");
+
+        let err: DomainError = DomainError::DuplicateArea {
+            bid_year: 2026,
+            area: String::from("North"),
+        };
+        assert_eq!(
+            format!("{err}"),
+            "Area 'North' already exists in bid year 2026"
+        );
+
+        let err: DomainError = DomainError::InvalidBidYear(String::from("test"));
+        assert_eq!(format!("{err}"), "Invalid bid year: test");
     }
 }
