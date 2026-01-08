@@ -162,6 +162,78 @@ All changes must advance these goals. If unsure, stop and ask.
 - Rollback selects a prior effective state and establishes it as authoritative going forward
 - Audit events are scoped to a single bid year and a single area
 
+## Canonical State vs Derived State
+
+The system distinguishes clearly between **canonical operational state** and **derived historical state**.
+
+### Canonical Operational State
+
+- Canonical state represents the **current, authoritative data** of the system
+- Canonical state is stored in **explicit relational tables** (e.g. users, areas, bid years, bids)
+- Canonical state is the source of truth for:
+  - current users
+  - current areas
+  - current bids
+  - any other “what exists right now” queries
+- Canonical state is mutated **only** via core state transitions
+- Canonical state must be:
+  - directly queryable
+  - human-readable
+  - validated by domain rules
+  - transactionally consistent
+
+Read-only APIs that expose current data (e.g. `/users`, `/areas`, `/bid_years`)
+**must query canonical tables**, not snapshots or audit logs.
+
+---
+
+### Derived Historical State
+
+- Derived state exists to support:
+  - historical inspection
+  - rollback semantics
+  - time-based reconstruction
+- Derived state is computed from:
+  - the ordered audit log
+  - optional persisted snapshots
+- Derived state is **never authoritative on its own**
+- Derived state must never be mutated directly
+- Derived state may be discarded and recomputed at any time
+
+Snapshots are **derived artifacts**, not primary storage.
+
+---
+
+### Snapshots
+
+- Snapshots are serialized representations of **canonical state at a specific audit event**
+- Snapshots exist solely to accelerate historical reconstruction
+- Snapshots:
+  - are not queried directly for current state
+  - must not be treated as canonical storage
+  - may be replaced, regenerated, or discarded
+- Snapshots must reflect the canonical state **as it existed at the associated event**
+
+---
+
+### Audit Log Relationship
+
+- The audit log records **what happened**, not canonical data models
+- Audit events describe actions, actors, causes, and ordering
+- Audit events must not be relied upon as a substitute for canonical tables
+- Canonical state + audit log together define system correctness
+
+---
+
+### Prohibited Patterns
+
+Agents must NOT:
+
+- Treat snapshots as primary storage
+- Derive current state by replaying audit events unless explicitly required
+- Query snapshots to answer “current state” APIs
+- Encode domain data models exclusively inside audit events
+
 ## State Snapshots
 
 - State is conceptually a complete, materialized state per (bid year, area)

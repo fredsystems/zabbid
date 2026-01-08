@@ -813,6 +813,139 @@ pub fn create_area(
     Ok(bootstrap_result)
 }
 
+/// API response for listing bid years.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListBidYearsResponse {
+    /// The list of bid years.
+    pub bid_years: Vec<u16>,
+}
+
+/// API request to list areas for a bid year.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListAreasRequest {
+    /// The bid year to list areas for.
+    pub bid_year: u16,
+}
+
+/// API response for listing areas.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListAreasResponse {
+    /// The bid year.
+    pub bid_year: u16,
+    /// The list of area identifiers.
+    pub areas: Vec<String>,
+}
+
+/// API request to list users for a bid year and area.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListUsersRequest {
+    /// The bid year.
+    pub bid_year: u16,
+    /// The area identifier.
+    pub area: String,
+}
+
+/// API response for listing users.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListUsersResponse {
+    /// The bid year.
+    pub bid_year: u16,
+    /// The area identifier.
+    pub area: String,
+    /// The list of users.
+    pub users: Vec<UserInfo>,
+}
+
+/// User information for listing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserInfo {
+    /// The user's initials.
+    pub initials: String,
+    /// The user's name.
+    pub name: String,
+    /// The user's crew (optional).
+    pub crew: Option<u8>,
+}
+
+/// Lists all bid years.
+///
+/// This operation never fails and requires no authorization.
+/// Returns an empty list if no bid years have been created.
+///
+/// # Arguments
+///
+/// * `metadata` - The current bootstrap metadata
+///
+/// # Returns
+///
+/// A response containing all bid years.
+#[must_use]
+pub fn list_bid_years(metadata: &BootstrapMetadata) -> ListBidYearsResponse {
+    let bid_years: Vec<u16> = metadata.bid_years.iter().map(BidYear::year).collect();
+
+    ListBidYearsResponse { bid_years }
+}
+
+/// Lists all areas for a given bid year.
+///
+/// This is a read-only operation that requires no authorization.
+/// Returns an empty list if the bid year has no areas.
+///
+/// # Arguments
+///
+/// * `metadata` - The current bootstrap metadata
+/// * `request` - The list areas request
+///
+/// # Returns
+///
+/// A response containing all areas for the bid year.
+#[must_use]
+pub fn list_areas(metadata: &BootstrapMetadata, request: &ListAreasRequest) -> ListAreasResponse {
+    let bid_year: BidYear = BidYear::new(request.bid_year);
+    let areas: Vec<String> = metadata
+        .areas
+        .iter()
+        .filter(|(by, _)| by.year() == bid_year.year())
+        .map(|(_, area)| area.id().to_string())
+        .collect();
+
+    ListAreasResponse {
+        bid_year: request.bid_year,
+        areas,
+    }
+}
+
+/// Lists all users for a given bid year and area.
+///
+/// This is a read-only operation that requires no authorization.
+/// Returns an empty list if no users exist for the given scope.
+///
+/// # Arguments
+///
+/// * `state` - The current state for the bid year and area
+///
+/// # Returns
+///
+/// A response containing all users.
+#[must_use]
+pub fn list_users(state: &State) -> ListUsersResponse {
+    let users: Vec<UserInfo> = state
+        .users
+        .iter()
+        .map(|user| UserInfo {
+            initials: user.initials.value().to_string(),
+            name: user.name.clone(),
+            crew: user.crew.as_ref().map(Crew::number),
+        })
+        .collect();
+
+    ListUsersResponse {
+        bid_year: state.bid_year.year(),
+        area: state.area.id().to_string(),
+        users,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1585,5 +1718,200 @@ mod tests {
             result.unwrap_err(),
             ApiError::DomainRuleViolation { .. }
         ));
+    }
+
+    #[test]
+    fn test_list_bid_years_empty() {
+        let metadata: BootstrapMetadata = BootstrapMetadata::new();
+        let response: ListBidYearsResponse = list_bid_years(&metadata);
+
+        assert_eq!(response.bid_years.len(), 0);
+    }
+
+    #[test]
+    fn test_list_bid_years_with_single_year() {
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+        metadata.bid_years.push(BidYear::new(2026));
+
+        let response: ListBidYearsResponse = list_bid_years(&metadata);
+
+        assert_eq!(response.bid_years.len(), 1);
+        assert_eq!(response.bid_years[0], 2026);
+    }
+
+    #[test]
+    fn test_list_bid_years_with_multiple_years() {
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+        metadata.bid_years.push(BidYear::new(2026));
+        metadata.bid_years.push(BidYear::new(2027));
+        metadata.bid_years.push(BidYear::new(2028));
+
+        let response: ListBidYearsResponse = list_bid_years(&metadata);
+
+        assert_eq!(response.bid_years.len(), 3);
+        assert!(response.bid_years.contains(&2026));
+        assert!(response.bid_years.contains(&2027));
+        assert!(response.bid_years.contains(&2028));
+    }
+
+    #[test]
+    fn test_list_areas_empty() {
+        let metadata: BootstrapMetadata = BootstrapMetadata::new();
+        let request: ListAreasRequest = ListAreasRequest { bid_year: 2026 };
+
+        let response: ListAreasResponse = list_areas(&metadata, &request);
+
+        assert_eq!(response.bid_year, 2026);
+        assert_eq!(response.areas.len(), 0);
+    }
+
+    #[test]
+    fn test_list_areas_for_bid_year() {
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+        metadata.bid_years.push(BidYear::new(2026));
+        metadata
+            .areas
+            .push((BidYear::new(2026), Area::new(String::from("North"))));
+        metadata
+            .areas
+            .push((BidYear::new(2026), Area::new(String::from("South"))));
+
+        let request: ListAreasRequest = ListAreasRequest { bid_year: 2026 };
+        let response: ListAreasResponse = list_areas(&metadata, &request);
+
+        assert_eq!(response.bid_year, 2026);
+        assert_eq!(response.areas.len(), 2);
+        assert!(response.areas.contains(&String::from("North")));
+        assert!(response.areas.contains(&String::from("South")));
+    }
+
+    #[test]
+    fn test_list_areas_isolated_by_bid_year() {
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+        metadata.bid_years.push(BidYear::new(2026));
+        metadata.bid_years.push(BidYear::new(2027));
+        metadata
+            .areas
+            .push((BidYear::new(2026), Area::new(String::from("North"))));
+        metadata
+            .areas
+            .push((BidYear::new(2027), Area::new(String::from("South"))));
+
+        let request_2026: ListAreasRequest = ListAreasRequest { bid_year: 2026 };
+        let response_2026: ListAreasResponse = list_areas(&metadata, &request_2026);
+
+        assert_eq!(response_2026.areas.len(), 1);
+        assert_eq!(response_2026.areas[0], "North");
+
+        let request_2027: ListAreasRequest = ListAreasRequest { bid_year: 2027 };
+        let response_2027: ListAreasResponse = list_areas(&metadata, &request_2027);
+
+        assert_eq!(response_2027.areas.len(), 1);
+        assert_eq!(response_2027.areas[0], "South");
+    }
+
+    #[test]
+    fn test_list_users_empty() {
+        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let response: ListUsersResponse = list_users(&state);
+
+        assert_eq!(response.bid_year, 2026);
+        assert_eq!(response.area, "North");
+        assert_eq!(response.users.len(), 0);
+    }
+
+    #[test]
+    fn test_list_users_with_users() {
+        let metadata: BootstrapMetadata = create_test_metadata();
+        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let admin: AuthenticatedActor = create_test_admin();
+        let cause: Cause = create_test_cause();
+
+        let request1: RegisterUserRequest = RegisterUserRequest {
+            bid_year: 2026,
+            initials: String::from("AB"),
+            name: String::from("Alice Brown"),
+            area: String::from("North"),
+            user_type: String::from("CPC"),
+            crew: Some(1),
+            cumulative_natca_bu_date: String::from("2019-01-15"),
+            natca_bu_date: String::from("2020-03-10"),
+            eod_faa_date: String::from("2018-06-01"),
+            service_computation_date: String::from("2018-06-01"),
+            lottery_value: None,
+        };
+
+        let result1: Result<ApiResult<RegisterUserResponse>, ApiError> =
+            register_user(&metadata, &state, request1, &admin, cause.clone());
+        assert!(result1.is_ok());
+
+        let state_with_user1: State = result1.unwrap().new_state;
+
+        let request2: RegisterUserRequest = RegisterUserRequest {
+            bid_year: 2026,
+            initials: String::from("CD"),
+            name: String::from("Charlie Davis"),
+            area: String::from("North"),
+            user_type: String::from("CPC"),
+            crew: Some(2),
+            cumulative_natca_bu_date: String::from("2019-01-15"),
+            natca_bu_date: String::from("2020-03-10"),
+            eod_faa_date: String::from("2018-06-01"),
+            service_computation_date: String::from("2018-06-01"),
+            lottery_value: None,
+        };
+
+        let result2: Result<ApiResult<RegisterUserResponse>, ApiError> =
+            register_user(&metadata, &state_with_user1, request2, &admin, cause);
+        assert!(result2.is_ok());
+
+        let final_state: State = result2.unwrap().new_state;
+        let response: ListUsersResponse = list_users(&final_state);
+
+        assert_eq!(response.bid_year, 2026);
+        assert_eq!(response.area, "North");
+        assert_eq!(response.users.len(), 2);
+
+        let ab_user = response.users.iter().find(|u| u.initials == "AB").unwrap();
+        assert_eq!(ab_user.name, "Alice Brown");
+        assert_eq!(ab_user.crew, Some(1));
+
+        let cd_user = response.users.iter().find(|u| u.initials == "CD").unwrap();
+        assert_eq!(cd_user.name, "Charlie Davis");
+        assert_eq!(cd_user.crew, Some(2));
+    }
+
+    #[test]
+    fn test_list_users_with_no_crew() {
+        let metadata: BootstrapMetadata = create_test_metadata();
+        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let admin: AuthenticatedActor = create_test_admin();
+        let cause: Cause = create_test_cause();
+
+        let request: RegisterUserRequest = RegisterUserRequest {
+            bid_year: 2026,
+            initials: String::from("EF"),
+            name: String::from("Eve Foster"),
+            area: String::from("North"),
+            user_type: String::from("Dev-R"),
+            crew: None,
+            cumulative_natca_bu_date: String::from("2019-01-15"),
+            natca_bu_date: String::from("2020-03-10"),
+            eod_faa_date: String::from("2018-06-01"),
+            service_computation_date: String::from("2018-06-01"),
+            lottery_value: None,
+        };
+
+        let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
+            register_user(&metadata, &state, request, &admin, cause);
+        assert!(result.is_ok());
+
+        let final_state: State = result.unwrap().new_state;
+        let response: ListUsersResponse = list_users(&final_state);
+
+        assert_eq!(response.users.len(), 1);
+        assert_eq!(response.users[0].initials, "EF");
+        assert_eq!(response.users[0].name, "Eve Foster");
+        assert_eq!(response.users[0].crew, None);
     }
 }

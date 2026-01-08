@@ -25,10 +25,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{error, info};
-use zab_bid::{BootstrapMetadata, State, TransitionResult};
+use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_api::{
-    ApiError, ApiResult, AuthenticatedActor, RegisterUserRequest, RegisterUserResponse, Role,
-    authenticate_stub, checkpoint, finalize, register_user, rollback,
+    ApiError, ApiResult, AuthenticatedActor, CreateAreaRequest, CreateBidYearRequest,
+    ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListUsersResponse,
+    RegisterUserRequest, RegisterUserResponse, Role, authenticate_stub, checkpoint, create_area,
+    create_bid_year, finalize, list_areas, list_bid_years, list_users, register_user, rollback,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear};
@@ -112,6 +114,92 @@ struct AdminActionRequest {
     /// The target event ID (only for rollback).
     #[serde(skip_serializing_if = "Option::is_none")]
     target_event_id: Option<i64>,
+}
+
+/// API request for creating a bid year.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct CreateBidYearApiRequest {
+    /// The actor ID performing this action.
+    actor_id: String,
+    /// The role of the actor.
+    actor_role: String,
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The year value (e.g., 2026).
+    year: u16,
+}
+
+/// API request for creating an area.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct CreateAreaApiRequest {
+    /// The actor ID performing this action.
+    actor_id: String,
+    /// The role of the actor.
+    actor_role: String,
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The bid year.
+    bid_year: u16,
+    /// The area identifier.
+    area_id: String,
+}
+
+/// Query parameters for listing areas.
+#[derive(Debug, Deserialize)]
+struct ListAreasQuery {
+    /// The bid year.
+    bid_year: u16,
+}
+
+/// Query parameters for listing users.
+#[derive(Debug, Deserialize)]
+struct ListUsersQuery {
+    /// The bid year.
+    bid_year: u16,
+    /// The area.
+    area: String,
+}
+
+/// API response for listing bid years.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ListBidYearsApiResponse {
+    /// The list of bid years.
+    bid_years: Vec<u16>,
+}
+
+/// API response for listing areas.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ListAreasApiResponse {
+    /// The bid year.
+    bid_year: u16,
+    /// The list of area identifiers.
+    areas: Vec<String>,
+}
+
+/// API response for listing users.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ListUsersApiResponse {
+    /// The bid year.
+    bid_year: u16,
+    /// The area.
+    area: String,
+    /// The list of users.
+    users: Vec<UserInfoResponse>,
+}
+
+/// User information for listing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct UserInfoResponse {
+    /// The user's initials.
+    initials: String,
+    /// The user's name.
+    name: String,
+    /// The user's crew (optional).
+    crew: Option<u8>,
 }
 
 /// API response for write operations.
@@ -351,6 +439,205 @@ fn parse_role(role_str: &str) -> Result<Role, HttpError> {
     }
 }
 
+/// Handler for POST `/bid_years` endpoint.
+///
+/// Creates a new bid year.
+async fn handle_create_bid_year(
+    AxumState(app_state): AxumState<AppState>,
+    Json(req): Json<CreateBidYearApiRequest>,
+) -> Result<Json<WriteResponse>, HttpError> {
+    info!(
+        actor_id = %req.actor_id,
+        role = %req.actor_role,
+        year = req.year,
+        "Handling create_bid_year request"
+    );
+
+    // Parse and authenticate
+    let role: Role = parse_role(&req.actor_role)?;
+    let actor: AuthenticatedActor =
+        authenticate_stub(req.actor_id.clone(), role).map_err(|e| HttpError {
+            status: StatusCode::UNAUTHORIZED,
+            message: e.to_string(),
+        })?;
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    // Get current bootstrap metadata
+    let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    drop(persistence);
+
+    // Build API request
+    let create_request: CreateBidYearRequest = CreateBidYearRequest { year: req.year };
+
+    // Execute command via API
+    let bootstrap_result: BootstrapResult =
+        create_bid_year(&metadata, &create_request, &actor, cause)?;
+
+    // Persist the bootstrap result
+    let mut persistence = app_state.persistence.lock().await;
+    let event_id: i64 = persistence.persist_bootstrap(&bootstrap_result)?;
+    drop(persistence);
+
+    info!(
+        event_id = event_id,
+        year = req.year,
+        "Successfully created bid year"
+    );
+
+    Ok(Json(WriteResponse {
+        success: true,
+        message: Some(format!("Created bid year {}", req.year)),
+        event_id: Some(event_id),
+    }))
+}
+
+/// Handler for POST `/areas` endpoint.
+///
+/// Creates a new area within a bid year.
+async fn handle_create_area(
+    AxumState(app_state): AxumState<AppState>,
+    Json(req): Json<CreateAreaApiRequest>,
+) -> Result<Json<WriteResponse>, HttpError> {
+    info!(
+        actor_id = %req.actor_id,
+        role = %req.actor_role,
+        bid_year = req.bid_year,
+        area_id = %req.area_id,
+        "Handling create_area request"
+    );
+
+    // Parse and authenticate
+    let role: Role = parse_role(&req.actor_role)?;
+    let actor: AuthenticatedActor =
+        authenticate_stub(req.actor_id.clone(), role).map_err(|e| HttpError {
+            status: StatusCode::UNAUTHORIZED,
+            message: e.to_string(),
+        })?;
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    // Get current bootstrap metadata
+    let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    drop(persistence);
+
+    // Build API request
+    let create_request: CreateAreaRequest = CreateAreaRequest {
+        bid_year: req.bid_year,
+        area_id: req.area_id.clone(),
+    };
+
+    // Execute command via API
+    let bootstrap_result: BootstrapResult = create_area(&metadata, create_request, &actor, cause)?;
+
+    // Persist the bootstrap result
+    let mut persistence = app_state.persistence.lock().await;
+    let event_id: i64 = persistence.persist_bootstrap(&bootstrap_result)?;
+    drop(persistence);
+
+    info!(
+        event_id = event_id,
+        bid_year = req.bid_year,
+        area_id = %req.area_id,
+        "Successfully created area"
+    );
+
+    Ok(Json(WriteResponse {
+        success: true,
+        message: Some(format!(
+            "Created area '{}' in bid year {}",
+            req.area_id, req.bid_year
+        )),
+        event_id: Some(event_id),
+    }))
+}
+
+/// Handler for GET `/bid_years` endpoint.
+///
+/// Lists all bid years.
+async fn handle_list_bid_years(
+    AxumState(app_state): AxumState<AppState>,
+) -> Result<Json<ListBidYearsApiResponse>, HttpError> {
+    info!("Handling list_bid_years request");
+
+    let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    drop(persistence);
+
+    let response: ListBidYearsResponse = list_bid_years(&metadata);
+
+    Ok(Json(ListBidYearsApiResponse {
+        bid_years: response.bid_years,
+    }))
+}
+
+/// Handler for GET `/areas` endpoint.
+///
+/// Lists all areas for a given bid year.
+async fn handle_list_areas(
+    AxumState(app_state): AxumState<AppState>,
+    Query(query): Query<ListAreasQuery>,
+) -> Result<Json<ListAreasApiResponse>, HttpError> {
+    info!(bid_year = query.bid_year, "Handling list_areas request");
+
+    let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    drop(persistence);
+
+    let request: ListAreasRequest = ListAreasRequest {
+        bid_year: query.bid_year,
+    };
+    let response: ListAreasResponse = list_areas(&metadata, &request);
+
+    Ok(Json(ListAreasApiResponse {
+        bid_year: response.bid_year,
+        areas: response.areas,
+    }))
+}
+
+/// Handler for GET `/users` endpoint.
+///
+/// Lists all users for a given bid year and area.
+async fn handle_list_users(
+    AxumState(app_state): AxumState<AppState>,
+    Query(query): Query<ListUsersQuery>,
+) -> Result<Json<ListUsersApiResponse>, HttpError> {
+    info!(
+        bid_year = query.bid_year,
+        area = %query.area,
+        "Handling list_users request"
+    );
+
+    let persistence = app_state.persistence.lock().await;
+    let bid_year: BidYear = BidYear::new(query.bid_year);
+    let area: Area = Area::new(query.area.clone());
+
+    let state: State = persistence
+        .get_current_state(&bid_year, &area)
+        .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
+    drop(persistence);
+
+    let response: ListUsersResponse = list_users(&state);
+
+    let users: Vec<UserInfoResponse> = response
+        .users
+        .into_iter()
+        .map(|u| UserInfoResponse {
+            initials: u.initials,
+            name: u.name,
+            crew: u.crew,
+        })
+        .collect();
+
+    Ok(Json(ListUsersApiResponse {
+        bid_year: response.bid_year,
+        area: response.area,
+        users,
+    }))
+}
+
 /// Handler for POST `/register_user` endpoint.
 ///
 /// Authenticates the actor, authorizes the action, and registers a new user.
@@ -375,19 +662,15 @@ async fn handle_register_user(
 
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
-    // Get current state
+    // Get bootstrap metadata and current state
     let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let bid_year: BidYear = BidYear::new(req.bid_year);
     let area: Area = Area::new(req.area.clone());
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
     drop(persistence);
-
-    // Build bootstrap metadata
-    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
-    metadata.bid_years.push(bid_year.clone());
-    metadata.areas.push((bid_year.clone(), area.clone()));
 
     // Build API request
     let register_request: RegisterUserRequest = RegisterUserRequest {
@@ -458,19 +741,15 @@ async fn handle_checkpoint(
 
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
-    // Get current state
+    // Get bootstrap metadata and current state
     let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let bid_year: BidYear = BidYear::new(req.bid_year);
     let area: Area = Area::new(req.area.clone());
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
     drop(persistence);
-
-    // Build bootstrap metadata
-    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
-    metadata.bid_years.push(bid_year.clone());
-    metadata.areas.push((bid_year.clone(), area.clone()));
 
     // Execute command via API
     let result: TransitionResult = checkpoint(&metadata, &state, &actor, cause)?;
@@ -517,19 +796,15 @@ async fn handle_finalize(
 
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
-    // Get current state
+    // Get bootstrap metadata and current state
     let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let bid_year: BidYear = BidYear::new(req.bid_year);
     let area: Area = Area::new(req.area.clone());
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
     drop(persistence);
-
-    // Build bootstrap metadata
-    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
-    metadata.bid_years.push(bid_year.clone());
-    metadata.areas.push((bid_year.clone(), area.clone()));
 
     // Execute command via API
     let result: TransitionResult = finalize(&metadata, &state, &actor, cause)?;
@@ -582,19 +857,15 @@ async fn handle_rollback(
 
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
-    // Get current state
+    // Get bootstrap metadata and current state
     let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let bid_year: BidYear = BidYear::new(req.bid_year);
     let area: Area = Area::new(req.area.clone());
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
     drop(persistence);
-
-    // Build bootstrap metadata
-    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
-    metadata.bid_years.push(bid_year.clone());
-    metadata.areas.push((bid_year.clone(), area.clone()));
 
     // Execute command via API
     let result: TransitionResult = rollback(&metadata, &state, target_event_id, &actor, cause)?;
@@ -721,6 +992,11 @@ async fn handle_get_audit_event(
 /// Builds the application router with all endpoints.
 fn build_router(app_state: AppState) -> Router {
     Router::new()
+        .route("/bid_years", post(handle_create_bid_year))
+        .route("/bid_years", get(handle_list_bid_years))
+        .route("/areas", post(handle_create_area))
+        .route("/areas", get(handle_list_areas))
+        .route("/users", get(handle_list_users))
         .route("/register_user", post(handle_register_user))
         .route("/checkpoint", post(handle_checkpoint))
         .route("/finalize", post(handle_finalize))
@@ -821,6 +1097,47 @@ mod tests {
     async fn test_register_user_as_admin_succeeds() {
         let app_state: AppState = create_test_app_state();
         let app: Router = build_router(app_state.clone());
+
+        // Bootstrap: Create bid year
+        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create bid year"),
+            year: 2026,
+        };
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/bid_years")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Bootstrap: Create area
+        let area_req: CreateAreaApiRequest = CreateAreaApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create area"),
+            bid_year: 2026,
+            area_id: String::from("TestArea"),
+        };
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/areas")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&area_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
         let req_body: RegisterUserApiRequest =
             create_test_register_request("admin1", "admin", "AB");
@@ -929,6 +1246,47 @@ mod tests {
         let app_state: AppState = create_test_app_state();
         let app: Router = build_router(app_state);
 
+        // Bootstrap: Create bid year
+        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create bid year"),
+            year: 2026,
+        };
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/bid_years")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Bootstrap: Create area
+        let area_req: CreateAreaApiRequest = CreateAreaApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create area"),
+            bid_year: 2026,
+            area_id: String::from("TestArea"),
+        };
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/areas")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&area_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
         // Register a user as admin
         let req_body: RegisterUserApiRequest =
             create_test_register_request("admin1", "admin", "AB");
@@ -967,15 +1325,60 @@ mod tests {
             .unwrap();
         let events: Vec<AuditEventResponse> = serde_json::from_slice(&body_bytes).unwrap();
 
-        assert_eq!(events.len(), 1, "One audit event should have been created");
-        assert_eq!(events[0].action_name, "RegisterUser");
-        assert_eq!(events[0].actor_id, "admin1");
+        assert_eq!(
+            events.len(),
+            2,
+            "Two audit events should be in this area's timeline (CreateArea, RegisterUser)"
+        );
+        assert_eq!(events[1].action_name, "RegisterUser");
+        assert_eq!(events[1].actor_id, "admin1");
     }
 
     #[tokio::test]
     async fn test_audit_event_contains_actor_attribution() {
         let app_state: AppState = create_test_app_state();
         let app: Router = build_router(app_state);
+
+        // Bootstrap: Create bid year
+        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create bid year"),
+            year: 2026,
+        };
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/bid_years")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Bootstrap: Create area
+        let area_req: CreateAreaApiRequest = CreateAreaApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create area"),
+            bid_year: 2026,
+            area_id: String::from("TestArea"),
+        };
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/areas")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&area_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
         // Register a user as admin
         let req_body: RegisterUserApiRequest =
@@ -1013,9 +1416,9 @@ mod tests {
             .unwrap();
         let events: Vec<AuditEventResponse> = serde_json::from_slice(&body_bytes).unwrap();
 
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].actor_id, "admin1");
-        assert_eq!(events[0].actor_type, "admin");
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[1].actor_id, "admin1");
+        assert_eq!(events[1].actor_type, "admin");
     }
 
     #[tokio::test]
@@ -1089,13 +1492,54 @@ mod tests {
     #[tokio::test]
     async fn test_get_audit_event_by_id() {
         let app_state: AppState = create_test_app_state();
-        let app: Router = build_router(app_state);
+        let app: Router = build_router(app_state.clone());
 
-        // First, register a user to create an event
+        // Bootstrap: Create bid year
+        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create bid year"),
+            year: 2026,
+        };
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/bid_years")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Bootstrap: Create area
+        let area_req: CreateAreaApiRequest = CreateAreaApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create area"),
+            bid_year: 2026,
+            area_id: String::from("TestArea"),
+        };
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/areas")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&area_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Register a user
         let req_body: RegisterUserApiRequest =
             create_test_register_request("admin1", "admin", "AB");
 
-        let response = app
+        let register_response = app
             .clone()
             .oneshot(
                 Request::builder()
@@ -1108,14 +1552,14 @@ mod tests {
             .await
             .unwrap();
 
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        assert_eq!(register_response.status(), HttpStatusCode::OK);
+        let body_bytes = axum::body::to_bytes(register_response.into_body(), usize::MAX)
             .await
             .unwrap();
-        let register_response: RegisterUserApiResponse =
-            serde_json::from_slice(&body_bytes).unwrap();
-        let event_id: i64 = register_response.event_id;
+        let register_result: RegisterUserApiResponse = serde_json::from_slice(&body_bytes).unwrap();
+        let event_id: i64 = register_result.event_id;
 
-        // Now fetch the event by ID
+        // Get the audit event by ID (which is the RegisterUser event, event_id 3)
         let event_response = app
             .oneshot(
                 Request::builder()
@@ -1129,12 +1573,12 @@ mod tests {
 
         assert_eq!(event_response.status(), HttpStatusCode::OK);
 
-        let body_bytes = axum::body::to_bytes(event_response.into_body(), usize::MAX)
+        let event_bytes = axum::body::to_bytes(event_response.into_body(), usize::MAX)
             .await
             .unwrap();
-        let event: AuditEventResponse = serde_json::from_slice(&body_bytes).unwrap();
+        let event: AuditEventResponse = serde_json::from_slice(&event_bytes).unwrap();
 
-        assert_eq!(event.event_id, Some(event_id));
+        assert_eq!(event.action_name, "RegisterUser");
         assert_eq!(event.actor_id, "admin1");
     }
 
@@ -1159,5 +1603,529 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), HttpStatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_create_bid_year_as_admin_succeeds() {
+        let app_state: AppState = create_test_app_state();
+        let app: Router = build_router(app_state);
+
+        let req_body: CreateBidYearApiRequest = CreateBidYearApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create initial bid year"),
+            year: 2026,
+        };
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/bid_years")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&req_body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), HttpStatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let write_response: WriteResponse = serde_json::from_slice(&body_bytes).unwrap();
+
+        assert!(write_response.success);
+        assert!(write_response.event_id.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_create_bid_year_as_bidder_fails() {
+        let app_state: AppState = create_test_app_state();
+        let app: Router = build_router(app_state);
+
+        let req_body: CreateBidYearApiRequest = CreateBidYearApiRequest {
+            actor_id: String::from("bidder1"),
+            actor_role: String::from("bidder"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create initial bid year"),
+            year: 2026,
+        };
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/bid_years")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&req_body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), HttpStatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn test_list_bid_years_empty() {
+        let app_state: AppState = create_test_app_state();
+        let app: Router = build_router(app_state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/bid_years")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), HttpStatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let list_response: ListBidYearsApiResponse = serde_json::from_slice(&body_bytes).unwrap();
+
+        assert_eq!(list_response.bid_years.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_list_bid_years_after_creation() {
+        let app_state: AppState = create_test_app_state();
+        let app: Router = build_router(app_state);
+
+        // 1. Create a bid year
+        let create_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create initial bid year"),
+            year: 2026,
+        };
+
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/bid_years")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&create_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(create_response.status(), HttpStatusCode::OK);
+
+        // 2. Create area
+        // List bid years
+        let list_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/bid_years")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(list_response.status(), HttpStatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(list_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let list_result: ListBidYearsApiResponse = serde_json::from_slice(&body_bytes).unwrap();
+
+        assert_eq!(list_result.bid_years.len(), 1);
+        assert_eq!(list_result.bid_years[0], 2026);
+    }
+
+    #[tokio::test]
+    async fn test_create_area_as_admin_succeeds() {
+        let app_state: AppState = create_test_app_state();
+        let app: Router = build_router(app_state);
+
+        // First create a bid year
+        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create bid year"),
+            year: 2026,
+        };
+
+        let by_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/bid_years")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(by_response.status(), HttpStatusCode::OK);
+
+        // Create an area
+        let area_req: CreateAreaApiRequest = CreateAreaApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create area"),
+            bid_year: 2026,
+            area_id: String::from("North"),
+        };
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/areas")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&area_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), HttpStatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let write_response: WriteResponse = serde_json::from_slice(&body_bytes).unwrap();
+
+        assert!(write_response.success);
+        assert!(write_response.event_id.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_create_area_without_bid_year_fails() {
+        let app_state: AppState = create_test_app_state();
+        let app: Router = build_router(app_state);
+
+        let area_req: CreateAreaApiRequest = CreateAreaApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create area"),
+            bid_year: 2026,
+            area_id: String::from("North"),
+        };
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/areas")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&area_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), HttpStatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn test_list_areas_empty() {
+        let app_state: AppState = create_test_app_state();
+        let app: Router = build_router(app_state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/areas?bid_year=2026")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), HttpStatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let list_response: ListAreasApiResponse = serde_json::from_slice(&body_bytes).unwrap();
+
+        assert_eq!(list_response.areas.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_list_areas_after_creation() {
+        let app_state: AppState = create_test_app_state();
+        let app: Router = build_router(app_state);
+
+        // Create bid year
+        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create bid year"),
+            year: 2026,
+        };
+
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/bid_years")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Create area
+        let area_req: CreateAreaApiRequest = CreateAreaApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create area"),
+            bid_year: 2026,
+            area_id: String::from("North"),
+        };
+
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/areas")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&area_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // List areas
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/areas?bid_year=2026")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), HttpStatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let list_result: ListAreasApiResponse = serde_json::from_slice(&body_bytes).unwrap();
+
+        assert_eq!(list_result.areas.len(), 1);
+        assert_eq!(list_result.areas[0], "North");
+    }
+
+    #[tokio::test]
+    async fn test_list_users_empty() {
+        let app_state: AppState = create_test_app_state();
+        let app: Router = build_router(app_state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/users?bid_year=2026&area=North")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), HttpStatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let list_response: ListUsersApiResponse = serde_json::from_slice(&body_bytes).unwrap();
+
+        assert_eq!(list_response.users.len(), 0);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn test_complete_bootstrap_workflow() {
+        let app_state: AppState = create_test_app_state();
+        let app: Router = build_router(app_state);
+
+        // 1. Create bid year
+        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create bid year"),
+            year: 2026,
+        };
+
+        let by_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/bid_years")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(by_response.status(), HttpStatusCode::OK);
+
+        // 2. Create area
+        let area_req: CreateAreaApiRequest = CreateAreaApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create area"),
+            bid_year: 2026,
+            area_id: String::from("TestArea"),
+        };
+
+        let area_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/areas")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&area_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(area_response.status(), HttpStatusCode::OK);
+
+        // 3. Register a user (using TestArea which now exists)
+        let user_req: RegisterUserApiRequest =
+            create_test_register_request("admin1", "admin", "AB");
+
+        let user_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/register_user")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&user_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(user_response.status(), HttpStatusCode::OK);
+
+        let user_bytes = axum::body::to_bytes(user_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let user_result: RegisterUserApiResponse = serde_json::from_slice(&user_bytes).unwrap();
+        assert!(user_result.success);
+
+        // 4. Create a checkpoint to snapshot the state
+        let checkpoint_req: AdminActionRequest = AdminActionRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("checkpoint"),
+            cause_description: String::from("Snapshot after user registration"),
+            bid_year: 2026,
+            area: String::from("TestArea"),
+            target_event_id: None,
+        };
+        let checkpoint_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/checkpoint")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&checkpoint_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(checkpoint_response.status(), HttpStatusCode::OK);
+
+        // 7. List bid years
+        let list_by = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/bid_years")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let by_bytes = axum::body::to_bytes(list_by.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let by_list: ListBidYearsApiResponse = serde_json::from_slice(&by_bytes).unwrap();
+        assert_eq!(by_list.bid_years.len(), 1);
+
+        // 8. List areas
+        let list_areas = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/areas?bid_year=2026")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let areas_bytes = axum::body::to_bytes(list_areas.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let areas_list: ListAreasApiResponse = serde_json::from_slice(&areas_bytes).unwrap();
+        assert_eq!(areas_list.areas.len(), 1);
+
+        // 9. Verify audit timeline shows all bootstrap and user events
+        let timeline_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/audit/timeline?bid_year=2026&area=TestArea")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let timeline_bytes = axum::body::to_bytes(timeline_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let timeline_events: Vec<AuditEventResponse> =
+            serde_json::from_slice(&timeline_bytes).unwrap();
+        // Should have: CreateArea, RegisterUser, Checkpoint
+        assert_eq!(
+            timeline_events.len(),
+            3,
+            "Expected CreateArea, RegisterUser, and Checkpoint events"
+        );
     }
 }

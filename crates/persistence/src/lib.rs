@@ -16,7 +16,7 @@ use rusqlite::{Connection, Result as SqliteResult, Transaction, params};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::{debug, info};
-use zab_bid::{State, TransitionResult};
+use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
 use zab_bid_domain::{Area, BidYear};
 
@@ -211,6 +211,43 @@ impl SqlitePersistence {
 
         tx.commit()?;
         info!(event_id, should_snapshot, "Persisted transition");
+
+        Ok(event_id)
+    }
+
+    /// Persists a bootstrap result (audit event for bid year/area creation).
+    ///
+    /// # Arguments
+    ///
+    /// * `result` - The bootstrap result to persist
+    ///
+    /// # Returns
+    ///
+    /// The event ID assigned to the persisted audit event.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if persistence fails. No partial writes occur.
+    pub fn persist_bootstrap(&mut self, result: &BootstrapResult) -> Result<i64, PersistenceError> {
+        let tx: Transaction<'_> = self.conn.transaction()?;
+
+        // Persist the audit event
+        let event_id: i64 = Self::persist_audit_event_tx(&tx, &result.audit_event)?;
+        debug!(event_id, "Persisted bootstrap audit event");
+
+        // If this is a CreateArea event, create an initial empty snapshot
+        // so that subsequent operations have a baseline to work from
+        if result.audit_event.action.name == "CreateArea" {
+            let initial_state: State = State::new(
+                result.audit_event.bid_year.clone(),
+                result.audit_event.area.clone(),
+            );
+            Self::persist_state_snapshot_tx(&tx, &initial_state, event_id)?;
+            debug!(event_id, "Created initial empty snapshot for new area");
+        }
+
+        tx.commit()?;
+        info!(event_id, "Persisted bootstrap operation");
 
         Ok(event_id)
     }
@@ -688,6 +725,98 @@ impl SqlitePersistence {
             }),
             Err(e) => Err(PersistenceError::DatabaseError(e.to_string())),
         }
+    }
+
+    /// Reconstructs bootstrap metadata from all audit events.
+    ///
+    /// This method scans all audit events and rebuilds the set of bid years
+    /// and areas that have been created via bootstrap commands.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a bid year value from the database is outside the valid `u16` range.
+    /// This should not occur in normal operation as bid years are validated on creation.
+    pub fn get_bootstrap_metadata(&self) -> Result<BootstrapMetadata, PersistenceError> {
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        // Query all audit events and reconstruct metadata
+        let mut stmt = self.conn.prepare(
+            "SELECT bid_year, area, action_json
+             FROM audit_events
+             ORDER BY event_id ASC",
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i32>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+
+        for row_result in rows {
+            let (bid_year_value, area_value, action_json) = row_result?;
+            let action_data: ActionData = serde_json::from_str(&action_json)?;
+
+            match action_data.name.as_str() {
+                "CreateBidYear" => {
+                    let bid_year: BidYear = BidYear::new(
+                        u16::try_from(bid_year_value).expect("bid_year value out of u16 range"),
+                    );
+                    if !metadata.has_bid_year(&bid_year) {
+                        metadata.bid_years.push(bid_year);
+                    }
+                }
+                "CreateArea" => {
+                    let bid_year: BidYear = BidYear::new(
+                        u16::try_from(bid_year_value).expect("bid_year value out of u16 range"),
+                    );
+                    let area: Area = Area::new(area_value);
+                    if !metadata.has_area(&bid_year, &area) {
+                        metadata.areas.push((bid_year, area));
+                    }
+                }
+                _ => {
+                    // Non-bootstrap actions don't affect metadata
+                }
+            }
+        }
+
+        Ok(metadata)
+    }
+
+    /// Lists all bid years that have been created.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn list_bid_years(&self) -> Result<Vec<BidYear>, PersistenceError> {
+        let metadata: BootstrapMetadata = self.get_bootstrap_metadata()?;
+        Ok(metadata.bid_years)
+    }
+
+    /// Lists all areas for a given bid year.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year` - The bid year to list areas for
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn list_areas(&self, bid_year: &BidYear) -> Result<Vec<Area>, PersistenceError> {
+        let metadata: BootstrapMetadata = self.get_bootstrap_metadata()?;
+        let areas: Vec<Area> = metadata
+            .areas
+            .iter()
+            .filter(|(by, _)| by.year() == bid_year.year())
+            .map(|(_, area)| area.clone())
+            .collect();
+        Ok(areas)
     }
 }
 
@@ -1655,5 +1784,532 @@ mod tests {
             .unwrap();
 
         assert_eq!(final_timeline.len(), initial_count);
+    }
+
+    #[test]
+    fn test_persist_bootstrap_bid_year() {
+        use zab_bid::{Command, apply_bootstrap};
+
+        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        let command: Command = Command::CreateBidYear { year: 2026 };
+        let result: BootstrapResult =
+            apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause()).unwrap();
+
+        let event_id: i64 = persistence.persist_bootstrap(&result).unwrap();
+
+        assert_eq!(event_id, 1);
+
+        // Verify the event was persisted
+        let retrieved_event: AuditEvent = persistence.get_audit_event(event_id).unwrap();
+        assert_eq!(retrieved_event.action.name, "CreateBidYear");
+    }
+
+    #[test]
+    fn test_persist_bootstrap_area() {
+        use zab_bid::{Command, apply_bootstrap};
+
+        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+        metadata.bid_years.push(BidYear::new(2026));
+
+        let command: Command = Command::CreateArea {
+            bid_year: BidYear::new(2026),
+            area_id: String::from("North"),
+        };
+        let result: BootstrapResult =
+            apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause()).unwrap();
+
+        let event_id: i64 = persistence.persist_bootstrap(&result).unwrap();
+
+        assert_eq!(event_id, 1);
+
+        // Verify the event was persisted
+        let retrieved_event: AuditEvent = persistence.get_audit_event(event_id).unwrap();
+        assert_eq!(retrieved_event.action.name, "CreateArea");
+    }
+
+    #[test]
+    fn test_get_bootstrap_metadata_empty() {
+        let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+
+        assert_eq!(metadata.bid_years.len(), 0);
+        assert_eq!(metadata.areas.len(), 0);
+    }
+
+    #[test]
+    fn test_get_bootstrap_metadata_with_bid_year() {
+        use zab_bid::{Command, apply_bootstrap};
+
+        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        let command: Command = Command::CreateBidYear { year: 2026 };
+        let result: BootstrapResult =
+            apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause()).unwrap();
+
+        persistence.persist_bootstrap(&result).unwrap();
+
+        let retrieved_metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+
+        assert_eq!(retrieved_metadata.bid_years.len(), 1);
+        assert_eq!(retrieved_metadata.bid_years[0].year(), 2026);
+        assert_eq!(retrieved_metadata.areas.len(), 0);
+    }
+
+    #[test]
+    fn test_get_bootstrap_metadata_with_multiple_bid_years() {
+        use zab_bid::{Command, apply_bootstrap};
+
+        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        // Create first bid year
+        let command1: Command = Command::CreateBidYear { year: 2026 };
+        let result1: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result1).unwrap();
+        metadata = result1.new_metadata;
+
+        // Create second bid year
+        let command2: Command = Command::CreateBidYear { year: 2027 };
+        let result2: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command2,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result2).unwrap();
+
+        let retrieved_metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+
+        assert_eq!(retrieved_metadata.bid_years.len(), 2);
+        assert!(retrieved_metadata.has_bid_year(&BidYear::new(2026)));
+        assert!(retrieved_metadata.has_bid_year(&BidYear::new(2027)));
+    }
+
+    #[test]
+    fn test_get_bootstrap_metadata_with_areas() {
+        use zab_bid::{Command, apply_bootstrap};
+
+        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        // Create bid year
+        let command1: Command = Command::CreateBidYear { year: 2026 };
+        let result1: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result1).unwrap();
+        metadata = result1.new_metadata;
+
+        // Create first area
+        let command2: Command = Command::CreateArea {
+            bid_year: BidYear::new(2026),
+            area_id: String::from("North"),
+        };
+        let result2: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command2,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result2).unwrap();
+        metadata = result2.new_metadata;
+
+        // Create second area
+        let command3: Command = Command::CreateArea {
+            bid_year: BidYear::new(2026),
+            area_id: String::from("South"),
+        };
+        let result3: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command3,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result3).unwrap();
+
+        let retrieved_metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+
+        assert_eq!(retrieved_metadata.bid_years.len(), 1);
+        assert_eq!(retrieved_metadata.areas.len(), 2);
+        assert!(
+            retrieved_metadata.has_area(&BidYear::new(2026), &Area::new(String::from("North")))
+        );
+        assert!(
+            retrieved_metadata.has_area(&BidYear::new(2026), &Area::new(String::from("South")))
+        );
+    }
+
+    #[test]
+    fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
+        use zab_bid::{Command, apply_bootstrap};
+
+        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        // Create bid year and area
+        let command1: Command = Command::CreateBidYear { year: 2026 };
+        let result1: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result1).unwrap();
+        metadata = result1.new_metadata;
+
+        let command2: Command = Command::CreateArea {
+            bid_year: BidYear::new(2026),
+            area_id: String::from("North"),
+        };
+        let result2: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command2,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result2).unwrap();
+
+        // Add a regular user registration event
+        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let user_command: Command = Command::RegisterUser {
+            bid_year: BidYear::new(2026),
+            initials: Initials::new(String::from("AB")),
+            name: String::from("Test User"),
+            area: Area::new(String::from("North")),
+            user_type: UserType::parse("CPC").unwrap(),
+            crew: Some(Crew::new(1).unwrap()),
+            seniority_data: create_test_seniority_data(),
+        };
+        let user_result: TransitionResult = apply(
+            &create_test_metadata(),
+            &state,
+            user_command,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_transition(&user_result, false).unwrap();
+
+        // Bootstrap metadata should only include bid year and area, not user
+        let retrieved_metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+
+        assert_eq!(retrieved_metadata.bid_years.len(), 1);
+        assert_eq!(retrieved_metadata.areas.len(), 1);
+    }
+
+    #[test]
+    fn test_list_bid_years_empty() {
+        let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let bid_years: Vec<BidYear> = persistence.list_bid_years().unwrap();
+
+        assert_eq!(bid_years.len(), 0);
+    }
+
+    #[test]
+    fn test_list_bid_years() {
+        use zab_bid::{Command, apply_bootstrap};
+
+        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        // Create first bid year
+        let command1: Command = Command::CreateBidYear { year: 2026 };
+        let result1: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result1).unwrap();
+        metadata = result1.new_metadata;
+
+        // Create second bid year
+        let command2: Command = Command::CreateBidYear { year: 2027 };
+        let result2: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command2,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result2).unwrap();
+
+        let bid_years: Vec<BidYear> = persistence.list_bid_years().unwrap();
+
+        assert_eq!(bid_years.len(), 2);
+        assert!(bid_years.iter().any(|by| by.year() == 2026));
+        assert!(bid_years.iter().any(|by| by.year() == 2027));
+    }
+
+    #[test]
+    fn test_list_areas_empty() {
+        let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let areas: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
+
+        assert_eq!(areas.len(), 0);
+    }
+
+    #[test]
+    fn test_list_areas_for_bid_year() {
+        use zab_bid::{Command, apply_bootstrap};
+
+        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        // Create bid year
+        let command1: Command = Command::CreateBidYear { year: 2026 };
+        let result1: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result1).unwrap();
+        metadata = result1.new_metadata;
+
+        // Create areas
+        let command2: Command = Command::CreateArea {
+            bid_year: BidYear::new(2026),
+            area_id: String::from("North"),
+        };
+        let result2: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command2,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result2).unwrap();
+        metadata = result2.new_metadata;
+
+        let command3: Command = Command::CreateArea {
+            bid_year: BidYear::new(2026),
+            area_id: String::from("South"),
+        };
+        let result3: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command3,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result3).unwrap();
+
+        let areas: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
+
+        assert_eq!(areas.len(), 2);
+        assert!(areas.iter().any(|a| a.id() == "North"));
+        assert!(areas.iter().any(|a| a.id() == "South"));
+    }
+
+    #[test]
+    fn test_list_areas_isolated_by_bid_year() {
+        use zab_bid::{Command, apply_bootstrap};
+
+        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        // Create two bid years
+        let command1: Command = Command::CreateBidYear { year: 2026 };
+        let result1: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result1).unwrap();
+        metadata = result1.new_metadata;
+
+        let command2: Command = Command::CreateBidYear { year: 2027 };
+        let result2: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command2,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result2).unwrap();
+        metadata = result2.new_metadata;
+
+        // Create area in 2026
+        let command3: Command = Command::CreateArea {
+            bid_year: BidYear::new(2026),
+            area_id: String::from("North"),
+        };
+        let result3: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command3,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result3).unwrap();
+        metadata = result3.new_metadata;
+
+        // Create area in 2027
+        let command4: Command = Command::CreateArea {
+            bid_year: BidYear::new(2027),
+            area_id: String::from("South"),
+        };
+        let result4: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command4,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result4).unwrap();
+
+        let areas_2026: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
+        let areas_2027: Vec<Area> = persistence.list_areas(&BidYear::new(2027)).unwrap();
+
+        assert_eq!(areas_2026.len(), 1);
+        assert_eq!(areas_2026[0].id(), "North");
+
+        assert_eq!(areas_2027.len(), 1);
+        assert_eq!(areas_2027[0].id(), "South");
+    }
+
+    #[test]
+    fn test_bootstrap_persistence_is_deterministic() {
+        use zab_bid::{Command, apply_bootstrap};
+
+        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        // Create bid year and area
+        let command1: Command = Command::CreateBidYear { year: 2026 };
+        let result1: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result1).unwrap();
+        metadata = result1.new_metadata;
+
+        let command2: Command = Command::CreateArea {
+            bid_year: BidYear::new(2026),
+            area_id: String::from("North"),
+        };
+        let result2: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command2,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result2).unwrap();
+
+        // Query metadata multiple times
+        let metadata1: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+        let metadata2: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+        let metadata3: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+
+        assert_eq!(metadata1.bid_years.len(), metadata2.bid_years.len());
+        assert_eq!(metadata2.bid_years.len(), metadata3.bid_years.len());
+        assert_eq!(metadata1.areas.len(), metadata2.areas.len());
+        assert_eq!(metadata2.areas.len(), metadata3.areas.len());
+    }
+
+    #[test]
+    fn test_bootstrap_read_operations_do_not_mutate() {
+        use zab_bid::{Command, apply_bootstrap};
+
+        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        let command: Command = Command::CreateBidYear { year: 2026 };
+        let result: BootstrapResult =
+            apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause()).unwrap();
+        persistence.persist_bootstrap(&result).unwrap();
+
+        // Get initial event count
+        let initial_count: i64 = persistence
+            .conn
+            .query_row("SELECT COUNT(*) FROM audit_events", [], |row| row.get(0))
+            .unwrap();
+
+        // Perform multiple reads
+        let _metadata1: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+        let _bid_years1: Vec<BidYear> = persistence.list_bid_years().unwrap();
+        let _areas1: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
+        let _metadata2: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+        let _bid_years2: Vec<BidYear> = persistence.list_bid_years().unwrap();
+        let _areas2: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
+
+        // Verify event count unchanged
+        let final_count: i64 = persistence
+            .conn
+            .query_row("SELECT COUNT(*) FROM audit_events", [], |row| row.get(0))
+            .unwrap();
+
+        assert_eq!(initial_count, final_count);
+    }
+
+    #[test]
+    fn test_create_area_creates_initial_snapshot() {
+        use zab_bid::{Command, apply_bootstrap};
+
+        let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+        // Create bid year
+        let command1: Command = Command::CreateBidYear { year: 2026 };
+        let result1: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command1,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result1).unwrap();
+        metadata = result1.new_metadata;
+
+        // Create area
+        let command2: Command = Command::CreateArea {
+            bid_year: BidYear::new(2026),
+            area_id: String::from("North"),
+        };
+        let result2: BootstrapResult = apply_bootstrap(
+            &metadata,
+            command2,
+            create_test_actor(),
+            create_test_cause(),
+        )
+        .unwrap();
+        persistence.persist_bootstrap(&result2).unwrap();
+
+        // Verify we can get_current_state for this area (should not fail)
+        let state: State = persistence
+            .get_current_state(&BidYear::new(2026), &Area::new(String::from("North")))
+            .unwrap();
+
+        assert_eq!(state.bid_year.year(), 2026);
+        assert_eq!(state.area.id(), "North");
+        assert_eq!(state.users.len(), 0);
     }
 }
