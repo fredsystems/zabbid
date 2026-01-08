@@ -108,6 +108,16 @@ All changes must advance these goals. If unsure, stop and ask.
 - A user must belong to exactly one area
 - A user must belong to exactly one crew
 
+### Crews
+
+- Crews are a fixed, global set of predefined scheduling groups
+- Exactly seven crews exist, identified by numbers 1 through 7
+- Each crew has a predefined RDO pattern
+- Crews are domain constants and are not created, modified, or deleted
+- Crews are not persisted as mutable data
+- A user may have zero or one crew assignment at any given time
+- Crew assignment is a state transition and must be explicitly audited
+
 ### Seniority Data
 
 - Seniority-related fields exist as domain data
