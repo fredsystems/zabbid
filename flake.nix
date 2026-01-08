@@ -108,6 +108,7 @@
                 cargo-machete
                 typos
                 cargo-llvm-cov
+                sqlite
               ]
               ++ (chk.passthru.devPackages or [ ])
               ++ chk.enabledPackages;
