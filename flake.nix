@@ -78,7 +78,7 @@
 
           check_rust = true;
           check_docker = false;
-          check_python = false;
+          check_python = true;
 
           enableXtask = true;
 

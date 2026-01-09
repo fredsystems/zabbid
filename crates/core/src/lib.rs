@@ -259,7 +259,7 @@ pub fn apply_bootstrap(
             );
 
             // Use a placeholder area for global operations
-            let placeholder_area: Area = Area::new(String::from("_global"));
+            let placeholder_area: Area = Area::new("_global");
             let audit_event: AuditEvent = AuditEvent::new(
                 actor,
                 cause,
@@ -283,7 +283,7 @@ pub fn apply_bootstrap(
                 )));
             }
 
-            let area: Area = Area::new(area_id.clone());
+            let area: Area = Area::new(&area_id);
 
             // Check for duplicate
             if metadata.has_area(&bid_year, &area) {
@@ -548,19 +548,19 @@ mod tests {
     fn create_test_metadata() -> BootstrapMetadata {
         let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
         metadata.add_bid_year(BidYear::new(2026));
-        metadata.add_area(BidYear::new(2026), Area::new(String::from("North")));
+        metadata.add_area(BidYear::new(2026), Area::new("North"));
         metadata
     }
 
     #[test]
     fn test_valid_command_returns_new_state() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -581,12 +581,12 @@ mod tests {
     #[test]
     fn test_valid_command_emits_audit_event() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -616,12 +616,12 @@ mod tests {
     #[test]
     fn test_audit_event_contains_before_and_after_state() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -644,14 +644,14 @@ mod tests {
     #[test]
     fn test_duplicate_initials_returns_error() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let mut state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let mut state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // First user
         let command1: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -667,9 +667,9 @@ mod tests {
         // Second user with same initials in same bid year
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")), // Duplicate!
+            initials: Initials::new("AB"), // Duplicate!
             name: String::from("Jane Smith"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(2).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -688,14 +688,14 @@ mod tests {
     #[test]
     fn test_duplicate_initials_in_different_bid_years_allowed() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // User in 2026
         let command1: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -717,12 +717,12 @@ mod tests {
     #[test]
     fn test_invalid_command_with_empty_initials_returns_error() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::new()), // Invalid: empty
+            initials: Initials::new(""), // Invalid: empty
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -743,12 +743,12 @@ mod tests {
     #[test]
     fn test_invalid_command_with_empty_name_returns_error() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::new(), // Invalid: empty
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -769,12 +769,12 @@ mod tests {
     #[test]
     fn test_invalid_command_with_empty_area_returns_error() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("John Doe"),
-            area: Area::new(String::new()), // Invalid: empty (doesn't exist in metadata)
+            area: Area::new(""), // Invalid: empty (doesn't exist in metadata)
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -795,12 +795,12 @@ mod tests {
     #[test]
     fn test_user_with_no_crew_is_valid() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: None, // No crew is valid
             seniority_data: create_test_seniority_data(),
@@ -820,12 +820,12 @@ mod tests {
     #[test]
     fn test_invalid_command_does_not_mutate_state() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::new()), // Invalid: empty
+            initials: Initials::new(""), // Invalid: empty
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -844,12 +844,12 @@ mod tests {
     #[test]
     fn test_invalid_command_does_not_emit_audit_event() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::new()), // Invalid: empty
+            initials: Initials::new(""), // Invalid: empty
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -868,16 +868,16 @@ mod tests {
     #[test]
     fn test_multiple_valid_transitions() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let mut state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let mut state: State = State::new(BidYear::new(2026), Area::new("North"));
         let actor: Actor = create_test_actor();
         let cause: Cause = create_test_cause();
 
         // First user
         let command1: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -891,9 +891,9 @@ mod tests {
         // Second user with different initials
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("XY")),
+            initials: Initials::new("XY"),
             name: String::from("Jane Smith"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CpcIt,
             crew: Some(Crew::new(2).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -911,14 +911,14 @@ mod tests {
     #[test]
     fn test_failed_duplicate_initials_transition_does_not_mutate_state() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let mut state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let mut state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // First user
         let command1: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -934,9 +934,9 @@ mod tests {
         // Second user with duplicate initials (should fail)
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")), // Duplicate!
+            initials: Initials::new("AB"), // Duplicate!
             name: String::from("Jane Smith"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(2).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -1046,7 +1046,7 @@ mod tests {
         let bootstrap_result: BootstrapResult = result.unwrap();
         assert_eq!(bootstrap_result.new_metadata.areas.len(), 1);
         assert_eq!(bootstrap_result.new_metadata.areas[0].0.year(), 2026);
-        assert_eq!(bootstrap_result.new_metadata.areas[0].1.id(), "North");
+        assert_eq!(bootstrap_result.new_metadata.areas[0].1.id(), "NORTH");
     }
 
     #[test]
@@ -1074,10 +1074,10 @@ mod tests {
                 .details
                 .as_ref()
                 .unwrap()
-                .contains("North")
+                .contains("NORTH")
         );
         assert_eq!(bootstrap_result.audit_event.bid_year.year(), 2026);
-        assert_eq!(bootstrap_result.audit_event.area.id(), "North");
+        assert_eq!(bootstrap_result.audit_event.area.id(), "NORTH");
     }
 
     #[test]
@@ -1104,7 +1104,7 @@ mod tests {
     fn test_create_duplicate_area_fails() {
         let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
         metadata.add_bid_year(BidYear::new(2026));
-        metadata.add_area(BidYear::new(2026), Area::new(String::from("North")));
+        metadata.add_area(BidYear::new(2026), Area::new("North"));
 
         let command: Command = Command::CreateArea {
             bid_year: BidYear::new(2026),
@@ -1126,12 +1126,12 @@ mod tests {
     #[test]
     fn test_register_user_without_bid_year_fails() {
         let metadata: BootstrapMetadata = BootstrapMetadata::new();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -1155,12 +1155,12 @@ mod tests {
         metadata.add_bid_year(BidYear::new(2026));
         // Area not added
 
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -1252,7 +1252,7 @@ mod tests {
         metadata = result4.unwrap().new_metadata;
 
         assert_eq!(metadata.areas.len(), 2);
-        assert!(metadata.has_area(&BidYear::new(2026), &Area::new(String::from("North"))));
-        assert!(metadata.has_area(&BidYear::new(2027), &Area::new(String::from("North"))));
+        assert!(metadata.has_area(&BidYear::new(2026), &Area::new("North")));
+        assert!(metadata.has_area(&BidYear::new(2027), &Area::new("North")));
     }
 }

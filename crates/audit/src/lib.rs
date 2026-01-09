@@ -275,7 +275,7 @@ mod tests {
         let after: StateSnapshot = StateSnapshot::new(String::from("after-state"));
 
         let bid_year: BidYear = BidYear::new(2026);
-        let area: Area = Area::new(String::from("North"));
+        let area: Area = Area::new("North");
 
         let event: AuditEvent = AuditEvent::new(
             actor.clone(),
@@ -306,7 +306,7 @@ mod tests {
         let after: StateSnapshot = StateSnapshot::new(String::from("after-state"));
 
         let bid_year: BidYear = BidYear::new(2026);
-        let area: Area = Area::new(String::from("North"));
+        let area: Area = Area::new("North");
 
         let event: AuditEvent =
             AuditEvent::new(actor, cause, action, before, after, bid_year, area);
@@ -324,7 +324,7 @@ mod tests {
         assert_eq!(event.before.data, "before-state");
         assert_eq!(event.after.data, "after-state");
         assert_eq!(event.bid_year.year(), 2026);
-        assert_eq!(event.area.id(), "North");
+        assert_eq!(event.area.id(), "NORTH");
     }
 
     #[test]
@@ -346,7 +346,7 @@ mod tests {
         let after: StateSnapshot = StateSnapshot::new(String::from("after-state"));
 
         let bid_year: BidYear = BidYear::new(2026);
-        let area: Area = Area::new(String::from("North"));
+        let area: Area = Area::new("North");
 
         let event1: AuditEvent = AuditEvent::new(
             actor.clone(),
@@ -372,7 +372,7 @@ mod tests {
         let before: StateSnapshot = StateSnapshot::new(String::from("before-state"));
         let after: StateSnapshot = StateSnapshot::new(String::from("after-state"));
         let bid_year: BidYear = BidYear::new(2026);
-        let area: Area = Area::new(String::from("North"));
+        let area: Area = Area::new("North");
 
         let event: AuditEvent =
             AuditEvent::with_id(42, actor, cause, action, before, after, bid_year, area);

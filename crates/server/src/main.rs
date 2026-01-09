@@ -612,7 +612,25 @@ async fn handle_list_users(
 
     let persistence = app_state.persistence.lock().await;
     let bid_year: BidYear = BidYear::new(query.bid_year);
-    let area: Area = Area::new(query.area.clone());
+    let area: Area = Area::new(&query.area);
+
+    // Validate that the bid year and area exist
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    if !metadata.has_bid_year(&bid_year) {
+        return Err(HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Bid year {} does not exist", query.bid_year),
+        });
+    }
+    if !metadata.has_area(&bid_year, &area) {
+        return Err(HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!(
+                "Area '{}' does not exist in bid year {}",
+                query.area, query.bid_year
+            ),
+        });
+    }
 
     let state: State = persistence
         .get_current_state(&bid_year, &area)
@@ -666,7 +684,7 @@ async fn handle_register_user(
     let persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let bid_year: BidYear = BidYear::new(req.bid_year);
-    let area: Area = Area::new(req.area.clone());
+    let area: Area = Area::new(&req.area);
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
@@ -745,7 +763,7 @@ async fn handle_checkpoint(
     let persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let bid_year: BidYear = BidYear::new(req.bid_year);
-    let area: Area = Area::new(req.area.clone());
+    let area: Area = Area::new(&req.area);
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
@@ -800,7 +818,7 @@ async fn handle_finalize(
     let persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let bid_year: BidYear = BidYear::new(req.bid_year);
-    let area: Area = Area::new(req.area.clone());
+    let area: Area = Area::new(&req.area);
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
@@ -861,7 +879,7 @@ async fn handle_rollback(
     let persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let bid_year: BidYear = BidYear::new(req.bid_year);
-    let area: Area = Area::new(req.area.clone());
+    let area: Area = Area::new(&req.area);
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
@@ -907,7 +925,7 @@ async fn handle_get_current_state(
     );
 
     let bid_year: BidYear = BidYear::new(params.bid_year);
-    let area: Area = Area::new(params.area);
+    let area: Area = Area::new(&params.area);
 
     let persistence = app_state.persistence.lock().await;
     let state: State = persistence
@@ -935,7 +953,7 @@ async fn handle_get_historical_state(
     );
 
     let bid_year: BidYear = BidYear::new(params.bid_year);
-    let area: Area = Area::new(params.area);
+    let area: Area = Area::new(&params.area);
 
     let persistence = app_state.persistence.lock().await;
     let state: State = persistence.get_historical_state(&bid_year, &area, &params.timestamp)?;
@@ -960,7 +978,7 @@ async fn handle_get_audit_timeline(
     );
 
     let bid_year: BidYear = BidYear::new(params.bid_year);
-    let area: Area = Area::new(params.area);
+    let area: Area = Area::new(&params.area);
 
     let persistence = app_state.persistence.lock().await;
     let events: Vec<AuditEvent> = persistence.get_audit_timeline(&bid_year, &area)?;
@@ -1933,7 +1951,7 @@ mod tests {
         let list_result: ListAreasApiResponse = serde_json::from_slice(&body_bytes).unwrap();
 
         assert_eq!(list_result.areas.len(), 1);
-        assert_eq!(list_result.areas[0], "North");
+        assert_eq!(list_result.areas[0], "NORTH");
     }
 
     #[tokio::test]
@@ -1941,6 +1959,52 @@ mod tests {
         let app_state: AppState = create_test_app_state();
         let app: Router = build_router(app_state);
 
+        // Create bid year
+        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("test"),
+            cause_description: String::from("Create bid year"),
+            year: 2026,
+        };
+
+        let _by_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/bid_years")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Create area
+        let area_req: CreateAreaApiRequest = CreateAreaApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("test"),
+            cause_description: String::from("Create area"),
+            bid_year: 2026,
+            area_id: String::from("North"),
+        };
+
+        let _area_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/areas")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&area_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // List users (should be empty)
         let response = app
             .oneshot(
                 Request::builder()
@@ -2127,5 +2191,67 @@ mod tests {
             3,
             "Expected CreateArea, RegisterUser, and Checkpoint events"
         );
+    }
+
+    #[tokio::test]
+    async fn test_list_users_nonexistent_bid_year_returns_not_found() {
+        let app_state: AppState = create_test_app_state();
+        let app: Router = build_router(app_state);
+
+        // Try to list users for a bid year that doesn't exist
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/users?bid_year=9999&area=North")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), HttpStatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_list_users_nonexistent_area_returns_not_found() {
+        let app_state: AppState = create_test_app_state();
+        let app: Router = build_router(app_state.clone());
+
+        // Create bid year but no area
+        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("test"),
+            cause_description: String::from("Create bid year"),
+            year: 2026,
+        };
+
+        let _by_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/bid_years")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Try to list users for an area that doesn't exist
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/users?bid_year=2026&area=NonExistent")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), HttpStatusCode::NOT_FOUND);
     }
 }
