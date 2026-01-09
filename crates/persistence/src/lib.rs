@@ -426,7 +426,7 @@ impl SqlitePersistence {
                     user.initials.value(),
                     user.name,
                     user.user_type.as_str(),
-                    user.crew.as_ref().map(|c| c.number()),
+                    user.crew.as_ref().map(Crew::number),
                     user.seniority_data.cumulative_natca_bu_date,
                     user.seniority_data.natca_bu_date,
                     user.seniority_data.eod_faa_date,
@@ -494,7 +494,7 @@ impl SqlitePersistence {
                     StateSnapshot::new(before_data.data),
                     StateSnapshot::new(after_data.data),
                     BidYear::new(bid_year),
-                    Area::new(area),
+                    Area::new(&area),
                 ))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => {
@@ -537,7 +537,7 @@ impl SqlitePersistence {
                 Ok((
                     State {
                         bid_year: BidYear::new(state_data.bid_year),
-                        area: Area::new(state_data.area),
+                        area: Area::new(&state_data.area),
                         users,
                     },
                     event_id,
@@ -615,7 +615,7 @@ impl SqlitePersistence {
                     StateSnapshot::new(before_data.data),
                     StateSnapshot::new(after_data.data),
                     BidYear::new(bid_year),
-                    Area::new(area),
+                    Area::new(&area),
                 ))
             })
             .collect();
@@ -689,7 +689,7 @@ impl SqlitePersistence {
                 lottery_value,
             ) = row_result?;
 
-            let initials: Initials = Initials::new(initials_str);
+            let initials: Initials = Initials::new(&initials_str);
             let user_type: UserType = UserType::parse(&user_type_str)
                 .map_err(|e| PersistenceError::ReconstructionError(e.to_string()))?;
             let crew: Option<Crew> =
@@ -847,7 +847,7 @@ impl SqlitePersistence {
                     StateSnapshot::new(before_data.data),
                     StateSnapshot::new(after_data.data),
                     BidYear::new(bid_year),
-                    Area::new(area),
+                    Area::new(&area),
                 ))
             })
             .collect();
@@ -890,7 +890,7 @@ impl SqlitePersistence {
                 Ok((
                     State {
                         bid_year: BidYear::new(state_data.bid_year),
-                        area: Area::new(state_data.area),
+                        area: Area::new(&state_data.area),
                         users,
                     },
                     event_id,
@@ -951,7 +951,7 @@ impl SqlitePersistence {
             let bid_year: BidYear = BidYear::new(
                 u16::try_from(bid_year_value).expect("bid_year value out of u16 range"),
             );
-            let area: Area = Area::new(area_id);
+            let area: Area = Area::new(&area_id);
             metadata.areas.push((bid_year, area));
         }
 
@@ -1018,7 +1018,7 @@ impl SqlitePersistence {
         let mut areas: Vec<Area> = Vec::new();
         for row_result in rows {
             let area_id: String = row_result?;
-            areas.push(Area::new(area_id));
+            areas.push(Area::new(&area_id));
         }
 
         Ok(areas)
@@ -1078,7 +1078,7 @@ impl SqlitePersistence {
                 lottery_value,
             ) = row_result?;
 
-            let initials: Initials = Initials::new(initials_str);
+            let initials: Initials = Initials::new(&initials_str);
             let user_type: UserType = UserType::parse(&user_type_str)
                 .map_err(|e| PersistenceError::ReconstructionError(e.to_string()))?;
             let crew: Option<Crew> =
@@ -1136,7 +1136,7 @@ mod tests {
         metadata.bid_years.push(BidYear::new(2026));
         metadata
             .areas
-            .push((BidYear::new(2026), Area::new(String::from("North"))));
+            .push((BidYear::new(2026), Area::new("North")));
         metadata
     }
 
@@ -1186,12 +1186,12 @@ mod tests {
     #[test]
     fn test_persist_and_retrieve_audit_event() {
         let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("John Doe"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -1216,7 +1216,7 @@ mod tests {
     #[test]
     fn test_persist_with_snapshot() {
         let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         let command: Command = Command::Checkpoint;
         let result: TransitionResult = apply(
@@ -1231,18 +1231,18 @@ mod tests {
         let event_id: i64 = persistence.persist_transition(&result, true).unwrap();
 
         let (snapshot, snapshot_event_id): (State, i64) = persistence
-            .get_latest_snapshot(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_latest_snapshot(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         assert_eq!(snapshot_event_id, event_id);
         assert_eq!(snapshot.bid_year.year(), 2026);
-        assert_eq!(snapshot.area.id(), "North");
+        assert_eq!(snapshot.area.id(), "NORTH");
     }
 
     #[test]
     fn test_get_events_after() {
         let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create first event
         let command1: Command = Command::Checkpoint;
@@ -1270,11 +1270,7 @@ mod tests {
 
         // Retrieve events after first
         let events: Vec<AuditEvent> = persistence
-            .get_events_after(
-                &BidYear::new(2026),
-                &Area::new(String::from("North")),
-                event_id1,
-            )
+            .get_events_after(&BidYear::new(2026), &Area::new("North"), event_id1)
             .unwrap();
 
         assert_eq!(events.len(), 1);
@@ -1299,7 +1295,7 @@ mod tests {
         // Try to create a new one and verify it works
         persistence = SqlitePersistence::new_in_memory().unwrap();
 
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let command: Command = Command::Checkpoint;
         let result: TransitionResult = apply(
             &create_test_metadata(),
@@ -1317,7 +1313,7 @@ mod tests {
     #[test]
     fn test_get_current_state_with_no_deltas() {
         let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create a snapshot
         let command: Command = Command::Checkpoint;
@@ -1333,18 +1329,18 @@ mod tests {
 
         // Retrieve current state
         let current_state: State = persistence
-            .get_current_state(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_current_state(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         assert_eq!(current_state.bid_year.year(), 2026);
-        assert_eq!(current_state.area.id(), "North");
+        assert_eq!(current_state.area.id(), "NORTH");
         assert_eq!(current_state.users.len(), 0);
     }
 
     #[test]
     fn test_get_current_state_after_snapshot_with_user() {
         let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create initial empty snapshot
         let command1: Command = Command::Checkpoint;
@@ -1361,9 +1357,9 @@ mod tests {
         // Register a user (delta event, no snapshot)
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("Alice Blue"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -1392,11 +1388,11 @@ mod tests {
 
         // Retrieve current state - should include the user from most recent snapshot
         let current_state: State = persistence
-            .get_current_state(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_current_state(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         assert_eq!(current_state.bid_year.year(), 2026);
-        assert_eq!(current_state.area.id(), "North");
+        assert_eq!(current_state.area.id(), "NORTH");
         assert_eq!(current_state.users.len(), 1);
         assert_eq!(current_state.users[0].initials.value(), "AB");
     }
@@ -1408,7 +1404,7 @@ mod tests {
         // Try to retrieve current state with no users added yet
         // With canonical tables (Phase 7), an empty state is valid (no users yet)
         let result: Result<State, PersistenceError> =
-            persistence.get_current_state(&BidYear::new(2026), &Area::new(String::from("North")));
+            persistence.get_current_state(&BidYear::new(2026), &Area::new("North"));
 
         // Should succeed with empty user list
         assert!(result.is_ok());
@@ -1419,7 +1415,7 @@ mod tests {
     #[test]
     fn test_get_audit_timeline_returns_events_in_order() {
         let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create multiple events
         let command1: Command = Command::Checkpoint;
@@ -1457,7 +1453,7 @@ mod tests {
 
         // Retrieve timeline
         let timeline: Vec<AuditEvent> = persistence
-            .get_audit_timeline(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         assert_eq!(timeline.len(), 3);
@@ -1476,7 +1472,7 @@ mod tests {
 
         // Retrieve timeline for non-existent scope
         let timeline: Vec<AuditEvent> = persistence
-            .get_audit_timeline(&BidYear::new(2026), &Area::new(String::from("South")))
+            .get_audit_timeline(&BidYear::new(2026), &Area::new("South"))
             .unwrap();
 
         assert_eq!(timeline.len(), 0);
@@ -1485,7 +1481,7 @@ mod tests {
     #[test]
     fn test_get_audit_timeline_includes_rollback_events() {
         let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create checkpoint
         let command1: Command = Command::Checkpoint;
@@ -1515,7 +1511,7 @@ mod tests {
 
         // Retrieve timeline
         let timeline: Vec<AuditEvent> = persistence
-            .get_audit_timeline(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         assert_eq!(timeline.len(), 2);
@@ -1526,7 +1522,7 @@ mod tests {
     #[test]
     fn test_get_current_state_is_deterministic() {
         let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create initial snapshot
         let command1: Command = Command::Checkpoint;
@@ -1543,9 +1539,9 @@ mod tests {
         // Register a user
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("XY")),
+            initials: Initials::new("XY"),
             name: String::from("Xavier Young"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(2).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -1574,15 +1570,15 @@ mod tests {
 
         // Retrieve current state multiple times
         let state1: State = persistence
-            .get_current_state(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_current_state(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         let state2: State = persistence
-            .get_current_state(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_current_state(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         let state3: State = persistence
-            .get_current_state(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_current_state(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         // All retrievals should produce identical results
@@ -1597,7 +1593,7 @@ mod tests {
     #[test]
     fn test_get_current_state_does_not_mutate() {
         let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create a snapshot
         let command: Command = Command::Checkpoint;
@@ -1613,17 +1609,17 @@ mod tests {
 
         // Count events before read
         let timeline_before: Vec<AuditEvent> = persistence
-            .get_audit_timeline(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         // Perform read
         let _current_state: State = persistence
-            .get_current_state(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_current_state(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         // Count events after read
         let timeline_after: Vec<AuditEvent> = persistence
-            .get_audit_timeline(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         // No new events should be created
@@ -1633,7 +1629,7 @@ mod tests {
     #[test]
     fn test_get_audit_timeline_does_not_mutate() {
         let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create events
         let command: Command = Command::Checkpoint;
@@ -1649,12 +1645,12 @@ mod tests {
 
         // Retrieve timeline
         let timeline1: Vec<AuditEvent> = persistence
-            .get_audit_timeline(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         // Retrieve again
         let timeline2: Vec<AuditEvent> = persistence
-            .get_audit_timeline(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         // Should be identical
@@ -1665,7 +1661,7 @@ mod tests {
     #[test]
     fn test_get_current_state_with_multiple_users() {
         let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create initial snapshot
         let command1: Command = Command::Checkpoint;
@@ -1682,9 +1678,9 @@ mod tests {
         // Register first user
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AA")),
+            initials: Initials::new("AA"),
             name: String::from("Alice Anderson"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -1702,9 +1698,9 @@ mod tests {
         // Register second user
         let command3: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("BB")),
+            initials: Initials::new("BB"),
             name: String::from("Bob Brown"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(2).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -1733,7 +1729,7 @@ mod tests {
 
         // Retrieve current state
         let current_state: State = persistence
-            .get_current_state(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_current_state(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         assert_eq!(current_state.users.len(), 2);
@@ -1744,7 +1740,7 @@ mod tests {
         let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
 
         // Create state for North area
-        let state_north: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state_north: State = State::new(BidYear::new(2026), Area::new("North"));
         let command_north: Command = Command::Checkpoint;
         let result_north: TransitionResult = apply(
             &create_test_metadata(),
@@ -1757,7 +1753,7 @@ mod tests {
         persistence.persist_transition(&result_north, true).unwrap();
 
         // Create state for South area
-        let state_south: State = State::new(BidYear::new(2026), Area::new(String::from("South")));
+        let state_south: State = State::new(BidYear::new(2026), Area::new("South"));
         let command_south: Command = Command::Checkpoint;
         let result_south: TransitionResult = apply(
             &create_test_metadata(),
@@ -1771,21 +1767,21 @@ mod tests {
 
         // Retrieve both states
         let current_north: State = persistence
-            .get_current_state(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_current_state(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         let current_south: State = persistence
-            .get_current_state(&BidYear::new(2026), &Area::new(String::from("South")))
+            .get_current_state(&BidYear::new(2026), &Area::new("South"))
             .unwrap();
 
-        assert_eq!(current_north.area.id(), "North");
-        assert_eq!(current_south.area.id(), "South");
+        assert_eq!(current_north.area.id(), "NORTH");
+        assert_eq!(current_south.area.id(), "SOUTH");
     }
 
     #[test]
     fn test_state_reconstruction_with_snapshot_then_deltas() {
         let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create initial snapshot
         let command1: Command = Command::Checkpoint;
@@ -1802,9 +1798,9 @@ mod tests {
         // Add user (delta)
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("TS")),
+            initials: Initials::new("TS"),
             name: String::from("Test User"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -1833,7 +1829,7 @@ mod tests {
 
         // Current state should use most recent snapshot
         let current_state: State = persistence
-            .get_current_state(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_current_state(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         assert_eq!(current_state.users.len(), 1);
@@ -1843,7 +1839,7 @@ mod tests {
     #[test]
     fn test_get_historical_state_at_specific_timestamp() {
         let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create first snapshot with no users
         let command1: Command = Command::Checkpoint;
@@ -1860,9 +1856,9 @@ mod tests {
         // Register a user (non-snapshot event)
         let command2: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("NE")),
+            initials: Initials::new("NE"),
             name: String::from("New User"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::CPC,
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -1893,7 +1889,7 @@ mod tests {
         let early_timestamp: String = String::from("1970-01-01 00:00:00");
         let result_early: Result<State, PersistenceError> = persistence.get_historical_state(
             &BidYear::new(2026),
-            &Area::new(String::from("North")),
+            &Area::new("North"),
             &early_timestamp,
         );
         assert!(result_early.is_err());
@@ -1901,11 +1897,7 @@ mod tests {
         // Query historical state at far future time - should use most recent snapshot (with user)
         let future_timestamp: String = String::from("9999-12-31 23:59:59");
         let historical_state: State = persistence
-            .get_historical_state(
-                &BidYear::new(2026),
-                &Area::new(String::from("North")),
-                &future_timestamp,
-            )
+            .get_historical_state(&BidYear::new(2026), &Area::new("North"), &future_timestamp)
             .unwrap();
 
         assert_eq!(historical_state.users.len(), 1);
@@ -1915,7 +1907,7 @@ mod tests {
     #[test]
     fn test_get_historical_state_before_any_snapshot_returns_error() {
         let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create a snapshot
         let command: Command = Command::Checkpoint;
@@ -1933,7 +1925,7 @@ mod tests {
         let early_timestamp: String = String::from("2020-01-01 00:00:00");
         let result: Result<State, PersistenceError> = persistence.get_historical_state(
             &BidYear::new(2026),
-            &Area::new(String::from("North")),
+            &Area::new("North"),
             &early_timestamp,
         );
 
@@ -1947,7 +1939,7 @@ mod tests {
     #[test]
     fn test_get_historical_state_is_deterministic() {
         let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create snapshot
         let command: Command = Command::Checkpoint;
@@ -1973,27 +1965,15 @@ mod tests {
 
         // Query multiple times
         let state1: State = persistence
-            .get_historical_state(
-                &BidYear::new(2026),
-                &Area::new(String::from("North")),
-                &timestamp,
-            )
+            .get_historical_state(&BidYear::new(2026), &Area::new("North"), &timestamp)
             .unwrap();
 
         let state2: State = persistence
-            .get_historical_state(
-                &BidYear::new(2026),
-                &Area::new(String::from("North")),
-                &timestamp,
-            )
+            .get_historical_state(&BidYear::new(2026), &Area::new("North"), &timestamp)
             .unwrap();
 
         let state3: State = persistence
-            .get_historical_state(
-                &BidYear::new(2026),
-                &Area::new(String::from("North")),
-                &timestamp,
-            )
+            .get_historical_state(&BidYear::new(2026), &Area::new("North"), &timestamp)
             .unwrap();
 
         // All should be identical
@@ -2005,7 +1985,7 @@ mod tests {
     #[test]
     fn test_get_historical_state_does_not_mutate() {
         let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create snapshot
         let command: Command = Command::Checkpoint;
@@ -2023,21 +2003,17 @@ mod tests {
 
         // Count events before read
         let timeline_before: Vec<AuditEvent> = persistence
-            .get_audit_timeline(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         // Perform historical read
         let _historical_state: State = persistence
-            .get_historical_state(
-                &BidYear::new(2026),
-                &Area::new(String::from("North")),
-                &timestamp,
-            )
+            .get_historical_state(&BidYear::new(2026), &Area::new("North"), &timestamp)
             .unwrap();
 
         // Count events after read
         let timeline_after: Vec<AuditEvent> = persistence
-            .get_audit_timeline(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         // No new events should be created
@@ -2047,7 +2023,7 @@ mod tests {
     #[test]
     fn test_read_operations_are_side_effect_free() {
         let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
         // Create initial snapshot
         let command: Command = Command::Checkpoint;
@@ -2063,47 +2039,39 @@ mod tests {
 
         // Capture initial event count
         let initial_timeline: Vec<AuditEvent> = persistence
-            .get_audit_timeline(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
         let initial_count: usize = initial_timeline.len();
 
         // Perform multiple read operations
         let _current1: State = persistence
-            .get_current_state(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_current_state(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         let _current2: State = persistence
-            .get_current_state(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_current_state(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         let _timeline1: Vec<AuditEvent> = persistence
-            .get_audit_timeline(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         let _timeline2: Vec<AuditEvent> = persistence
-            .get_audit_timeline(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         let timestamp: String = String::from("9999-12-31 23:59:59");
         let _historical1: State = persistence
-            .get_historical_state(
-                &BidYear::new(2026),
-                &Area::new(String::from("North")),
-                &timestamp,
-            )
+            .get_historical_state(&BidYear::new(2026), &Area::new("North"), &timestamp)
             .unwrap();
 
         let _historical2: State = persistence
-            .get_historical_state(
-                &BidYear::new(2026),
-                &Area::new(String::from("North")),
-                &timestamp,
-            )
+            .get_historical_state(&BidYear::new(2026), &Area::new("North"), &timestamp)
             .unwrap();
 
         // Verify no new events were created
         let final_timeline: Vec<AuditEvent> = persistence
-            .get_audit_timeline(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         assert_eq!(final_timeline.len(), initial_count);
@@ -2283,12 +2251,8 @@ mod tests {
 
         assert_eq!(retrieved_metadata.bid_years.len(), 1);
         assert_eq!(retrieved_metadata.areas.len(), 2);
-        assert!(
-            retrieved_metadata.has_area(&BidYear::new(2026), &Area::new(String::from("North")))
-        );
-        assert!(
-            retrieved_metadata.has_area(&BidYear::new(2026), &Area::new(String::from("South")))
-        );
+        assert!(retrieved_metadata.has_area(&BidYear::new(2026), &Area::new("North")));
+        assert!(retrieved_metadata.has_area(&BidYear::new(2026), &Area::new("South")));
     }
 
     #[test]
@@ -2324,12 +2288,12 @@ mod tests {
         persistence.persist_bootstrap(&result2).unwrap();
 
         // Add a regular user registration event
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let user_command: Command = Command::RegisterUser {
             bid_year: BidYear::new(2026),
-            initials: Initials::new(String::from("AB")),
+            initials: Initials::new("AB"),
             name: String::from("Test User"),
-            area: Area::new(String::from("North")),
+            area: Area::new("North"),
             user_type: UserType::parse("CPC").unwrap(),
             crew: Some(Crew::new(1).unwrap()),
             seniority_data: create_test_seniority_data(),
@@ -2454,8 +2418,8 @@ mod tests {
         let areas: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
 
         assert_eq!(areas.len(), 2);
-        assert!(areas.iter().any(|a| a.id() == "North"));
-        assert!(areas.iter().any(|a| a.id() == "South"));
+        assert!(areas.iter().any(|a| a.id() == "NORTH"));
+        assert!(areas.iter().any(|a| a.id() == "SOUTH"));
     }
 
     #[test]
@@ -2521,10 +2485,10 @@ mod tests {
         let areas_2027: Vec<Area> = persistence.list_areas(&BidYear::new(2027)).unwrap();
 
         assert_eq!(areas_2026.len(), 1);
-        assert_eq!(areas_2026[0].id(), "North");
+        assert_eq!(areas_2026[0].id(), "NORTH");
 
         assert_eq!(areas_2027.len(), 1);
-        assert_eq!(areas_2027[0].id(), "South");
+        assert_eq!(areas_2027[0].id(), "SOUTH");
     }
 
     #[test]
@@ -2640,11 +2604,11 @@ mod tests {
 
         // Verify we can get_current_state for this area (should not fail)
         let state: State = persistence
-            .get_current_state(&BidYear::new(2026), &Area::new(String::from("North")))
+            .get_current_state(&BidYear::new(2026), &Area::new("North"))
             .unwrap();
 
         assert_eq!(state.bid_year.year(), 2026);
-        assert_eq!(state.area.id(), "North");
+        assert_eq!(state.area.id(), "NORTH");
         assert_eq!(state.users.len(), 0);
     }
 }

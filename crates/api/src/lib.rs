@@ -503,8 +503,8 @@ pub fn register_user(
     let actor: Actor = authenticated_actor.to_audit_actor();
     // Translate API request into domain types
     let bid_year: BidYear = BidYear::new(request.bid_year);
-    let initials: Initials = Initials::new(request.initials.clone());
-    let area: Area = Area::new(request.area.clone());
+    let initials: Initials = Initials::new(&request.initials);
+    let area: Area = Area::new(&request.area);
 
     // Parse user type
     let user_type: UserType =
@@ -965,7 +965,7 @@ mod tests {
     fn create_test_metadata() -> BootstrapMetadata {
         let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
         let bid_year: BidYear = BidYear::new(2026);
-        let area: Area = Area::new(String::from("North"));
+        let area: Area = Area::new("North");
         metadata.bid_years.push(bid_year.clone());
         metadata.areas.push((bid_year, area));
         metadata
@@ -990,7 +990,7 @@ mod tests {
     #[test]
     fn test_valid_api_request_succeeds() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let request: RegisterUserRequest = create_valid_request();
         let admin: AuthenticatedActor = create_test_admin();
         let cause: Cause = create_test_cause();
@@ -1014,7 +1014,7 @@ mod tests {
     #[test]
     fn test_valid_api_request_emits_audit_event() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let request: RegisterUserRequest = create_valid_request();
         let admin: AuthenticatedActor = create_test_admin();
         let cause: Cause = create_test_cause();
@@ -1033,7 +1033,7 @@ mod tests {
     #[test]
     fn test_valid_api_request_returns_new_state() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let request: RegisterUserRequest = create_valid_request();
         let admin: AuthenticatedActor = create_test_admin();
         let cause: Cause = create_test_cause();
@@ -1050,7 +1050,7 @@ mod tests {
     #[test]
     fn test_duplicate_initials_returns_api_error() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let mut state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let mut state: State = State::new(BidYear::new(2026), Area::new("North"));
         let request1: RegisterUserRequest = create_valid_request();
         let admin: AuthenticatedActor = create_test_admin();
         let cause: Cause = create_test_cause();
@@ -1092,7 +1092,7 @@ mod tests {
     #[test]
     fn test_failed_api_request_does_not_mutate_state() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let mut state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let mut state: State = State::new(BidYear::new(2026), Area::new("North"));
         let request1: RegisterUserRequest = create_valid_request();
         let admin: AuthenticatedActor = create_test_admin();
         let cause: Cause = create_test_cause();
@@ -1130,7 +1130,7 @@ mod tests {
     #[test]
     fn test_invalid_empty_initials_returns_api_error() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let request: RegisterUserRequest = RegisterUserRequest {
             bid_year: 2026,
             initials: String::new(), // Invalid
@@ -1162,7 +1162,7 @@ mod tests {
     #[test]
     fn test_invalid_empty_name_returns_api_error() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let request: RegisterUserRequest = RegisterUserRequest {
             bid_year: 2026,
             initials: String::from("AB"),
@@ -1193,7 +1193,7 @@ mod tests {
     #[test]
     fn test_invalid_empty_area_returns_api_error() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let request: RegisterUserRequest = RegisterUserRequest {
             bid_year: 2026,
             initials: String::from("AB"),
@@ -1224,7 +1224,7 @@ mod tests {
     #[test]
     fn test_invalid_crew_number_returns_api_error() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let request: RegisterUserRequest = RegisterUserRequest {
             bid_year: 2026,
             initials: String::from("AB"),
@@ -1260,13 +1260,13 @@ mod tests {
         metadata.bid_years.push(BidYear::new(2027));
         metadata
             .areas
-            .push((BidYear::new(2026), Area::new(String::from("North"))));
+            .push((BidYear::new(2026), Area::new("North")));
         metadata
             .areas
-            .push((BidYear::new(2027), Area::new(String::from("South"))));
+            .push((BidYear::new(2027), Area::new("South")));
 
-        let state1: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
-        let state2: State = State::new(BidYear::new(2027), Area::new(String::from("South")));
+        let state1: State = State::new(BidYear::new(2026), Area::new("North"));
+        let state2: State = State::new(BidYear::new(2027), Area::new("South"));
         let admin: AuthenticatedActor = create_test_admin();
         let cause: Cause = create_test_cause();
 
@@ -1324,7 +1324,7 @@ mod tests {
     #[test]
     fn test_successful_api_call_updates_state() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let request: RegisterUserRequest = create_valid_request();
         let admin: AuthenticatedActor = create_test_admin();
         let cause: Cause = create_test_cause();
@@ -1391,7 +1391,7 @@ mod tests {
     #[test]
     fn test_bidder_cannot_register_user() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let request: RegisterUserRequest = create_valid_request();
         let bidder: AuthenticatedActor = create_test_bidder();
         let cause: Cause = create_test_cause();
@@ -1415,7 +1415,7 @@ mod tests {
     #[test]
     fn test_unauthorized_action_does_not_mutate_state() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let request: RegisterUserRequest = create_valid_request();
         let bidder: AuthenticatedActor = create_test_bidder();
         let cause: Cause = create_test_cause();
@@ -1431,7 +1431,7 @@ mod tests {
     #[test]
     fn test_unauthorized_action_does_not_emit_audit_event() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let request: RegisterUserRequest = create_valid_request();
         let bidder: AuthenticatedActor = create_test_bidder();
         let cause: Cause = create_test_cause();
@@ -1446,7 +1446,7 @@ mod tests {
     #[test]
     fn test_admin_can_create_checkpoint() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let admin: AuthenticatedActor = create_test_admin();
         let cause: Cause = create_test_cause();
 
@@ -1463,7 +1463,7 @@ mod tests {
     #[test]
     fn test_bidder_cannot_create_checkpoint() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let bidder: AuthenticatedActor = create_test_bidder();
         let cause: Cause = create_test_cause();
 
@@ -1486,7 +1486,7 @@ mod tests {
     #[test]
     fn test_admin_can_finalize() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let admin: AuthenticatedActor = create_test_admin();
         let cause: Cause = create_test_cause();
 
@@ -1502,7 +1502,7 @@ mod tests {
     #[test]
     fn test_bidder_cannot_finalize() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let bidder: AuthenticatedActor = create_test_bidder();
         let cause: Cause = create_test_cause();
 
@@ -1525,7 +1525,7 @@ mod tests {
     #[test]
     fn test_admin_can_rollback() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let admin: AuthenticatedActor = create_test_admin();
         let cause: Cause = create_test_cause();
 
@@ -1542,7 +1542,7 @@ mod tests {
     #[test]
     fn test_bidder_cannot_rollback() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let bidder: AuthenticatedActor = create_test_bidder();
         let cause: Cause = create_test_cause();
 
@@ -1771,18 +1771,18 @@ mod tests {
         metadata.bid_years.push(BidYear::new(2026));
         metadata
             .areas
-            .push((BidYear::new(2026), Area::new(String::from("North"))));
+            .push((BidYear::new(2026), Area::new("North")));
         metadata
             .areas
-            .push((BidYear::new(2026), Area::new(String::from("South"))));
+            .push((BidYear::new(2026), Area::new("South")));
 
         let request: ListAreasRequest = ListAreasRequest { bid_year: 2026 };
         let response: ListAreasResponse = list_areas(&metadata, &request);
 
         assert_eq!(response.bid_year, 2026);
         assert_eq!(response.areas.len(), 2);
-        assert!(response.areas.contains(&String::from("North")));
-        assert!(response.areas.contains(&String::from("South")));
+        assert!(response.areas.contains(&String::from("NORTH")));
+        assert!(response.areas.contains(&String::from("SOUTH")));
     }
 
     #[test]
@@ -1792,38 +1792,38 @@ mod tests {
         metadata.bid_years.push(BidYear::new(2027));
         metadata
             .areas
-            .push((BidYear::new(2026), Area::new(String::from("North"))));
+            .push((BidYear::new(2026), Area::new("North")));
         metadata
             .areas
-            .push((BidYear::new(2027), Area::new(String::from("South"))));
+            .push((BidYear::new(2027), Area::new("South")));
 
         let request_2026: ListAreasRequest = ListAreasRequest { bid_year: 2026 };
         let response_2026: ListAreasResponse = list_areas(&metadata, &request_2026);
 
         assert_eq!(response_2026.areas.len(), 1);
-        assert_eq!(response_2026.areas[0], "North");
+        assert_eq!(response_2026.areas[0], "NORTH");
 
         let request_2027: ListAreasRequest = ListAreasRequest { bid_year: 2027 };
         let response_2027: ListAreasResponse = list_areas(&metadata, &request_2027);
 
         assert_eq!(response_2027.areas.len(), 1);
-        assert_eq!(response_2027.areas[0], "South");
+        assert_eq!(response_2027.areas[0], "SOUTH");
     }
 
     #[test]
     fn test_list_users_empty() {
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let response: ListUsersResponse = list_users(&state);
 
         assert_eq!(response.bid_year, 2026);
-        assert_eq!(response.area, "North");
+        assert_eq!(response.area, "NORTH");
         assert_eq!(response.users.len(), 0);
     }
 
     #[test]
     fn test_list_users_with_users() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let admin: AuthenticatedActor = create_test_admin();
         let cause: Cause = create_test_cause();
 
@@ -1869,7 +1869,7 @@ mod tests {
         let response: ListUsersResponse = list_users(&final_state);
 
         assert_eq!(response.bid_year, 2026);
-        assert_eq!(response.area, "North");
+        assert_eq!(response.area, "NORTH");
         assert_eq!(response.users.len(), 2);
 
         let ab_user = response.users.iter().find(|u| u.initials == "AB").unwrap();
@@ -1884,7 +1884,7 @@ mod tests {
     #[test]
     fn test_list_users_with_no_crew() {
         let metadata: BootstrapMetadata = create_test_metadata();
-        let state: State = State::new(BidYear::new(2026), Area::new(String::from("North")));
+        let state: State = State::new(BidYear::new(2026), Area::new("North"));
         let admin: AuthenticatedActor = create_test_admin();
         let cause: Cause = create_test_cause();
 
