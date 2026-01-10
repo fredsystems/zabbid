@@ -288,6 +288,30 @@ They act as trusted operators entering data provided by many users.
 - Core state transitions must be role-agnostic
 - All state-changing actions must record the acting actor in the audit log
 
+## Module & File Structure Rules
+
+- `lib.rs` files must be small and act as module indices only
+- Substantial logic must not live directly in `lib.rs`
+- Files should be split by domain responsibility, not by layer or convenience
+
+### File Size Guidance
+
+- If a file exceeds ~300–500 lines of non-test code, it should be split
+- Test code should not exceed logic code within the same file
+- Large test suites must live in a `tests/` submodule
+
+### Test Organization
+
+- Tests should be grouped by behavior or invariant
+- Prefer `crate/tests/*.rs` or `module/tests/*.rs` over large inline `#[cfg(test)]` blocks
+- Inline tests are acceptable only for small, local invariants
+
+### Refactoring Expectation
+
+- When adding new functionality, prefer creating a new module over extending an existing large file
+- Refactoring existing code to improve structure is allowed **within the current phase**
+- Structural refactors must not change observable behavior
+
 ## When to Stop
 
 If any of the following are true:
