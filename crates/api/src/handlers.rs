@@ -7,7 +7,7 @@
 
 use zab_bid::{
     BootstrapMetadata, BootstrapResult, Command, CoreError, State, TransitionResult, apply,
-    apply_bootstrap,
+    apply_bootstrap, validate_area_exists, validate_bid_year_exists,
 };
 use zab_bid_audit::{Actor, AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, Crew, Initials, SeniorityData, UserType};
@@ -409,7 +409,6 @@ pub fn list_bid_years(metadata: &BootstrapMetadata) -> ListBidYearsResponse {
 /// Lists all areas for a given bid year.
 ///
 /// This is a read-only operation that requires no authorization.
-/// Returns an empty list if the bid year has no areas.
 ///
 /// # Arguments
 ///
@@ -418,10 +417,21 @@ pub fn list_bid_years(metadata: &BootstrapMetadata) -> ListBidYearsResponse {
 ///
 /// # Returns
 ///
-/// A response containing all areas for the bid year.
-#[must_use]
-pub fn list_areas(metadata: &BootstrapMetadata, request: &ListAreasRequest) -> ListAreasResponse {
+/// * `Ok(ListAreasResponse)` containing all areas for the bid year
+/// * `Err(ApiError)` if the bid year does not exist
+///
+/// # Errors
+///
+/// Returns an error if the bid year has not been created.
+pub fn list_areas(
+    metadata: &BootstrapMetadata,
+    request: &ListAreasRequest,
+) -> Result<ListAreasResponse, ApiError> {
     let bid_year: BidYear = BidYear::new(request.bid_year);
+
+    // Validate bid year exists before querying
+    validate_bid_year_exists(metadata, &bid_year).map_err(translate_domain_error)?;
+
     let areas: Vec<String> = metadata
         .areas
         .iter()
@@ -429,26 +439,42 @@ pub fn list_areas(metadata: &BootstrapMetadata, request: &ListAreasRequest) -> L
         .map(|(_, area)| area.id().to_string())
         .collect();
 
-    ListAreasResponse {
+    Ok(ListAreasResponse {
         bid_year: request.bid_year,
         areas,
-    }
+    })
 }
 
 /// Lists all users for a given bid year and area.
 ///
 /// This is a read-only operation that requires no authorization.
-/// Returns an empty list if no users exist for the given scope.
 ///
 /// # Arguments
 ///
+/// * `metadata` - The current bootstrap metadata
+/// * `bid_year` - The bid year to list users for
+/// * `area` - The area to list users for
 /// * `state` - The current state for the bid year and area
 ///
 /// # Returns
 ///
-/// A response containing all users.
-#[must_use]
-pub fn list_users(state: &State) -> ListUsersResponse {
+/// * `Ok(ListUsersResponse)` containing all users for the scope
+/// * `Err(ApiError)` if the bid year or area does not exist
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The bid year has not been created
+/// - The area has not been created in the bid year
+pub fn list_users(
+    metadata: &BootstrapMetadata,
+    bid_year: &BidYear,
+    area: &Area,
+    state: &State,
+) -> Result<ListUsersResponse, ApiError> {
+    // Validate bid year and area exist before processing
+    validate_area_exists(metadata, bid_year, area).map_err(translate_domain_error)?;
+
     let users: Vec<UserInfo> = state
         .users
         .iter()
@@ -459,9 +485,79 @@ pub fn list_users(state: &State) -> ListUsersResponse {
         })
         .collect();
 
-    ListUsersResponse {
+    Ok(ListUsersResponse {
         bid_year: state.bid_year.year(),
         area: state.area.id().to_string(),
         users,
-    }
+    })
+}
+
+/// Gets the current state for a given bid year and area.
+///
+/// This is a read-only operation that requires no authorization.
+/// This function validates that the bid year and area exist before
+/// attempting to load state from persistence.
+///
+/// # Arguments
+///
+/// * `metadata` - The current bootstrap metadata
+/// * `bid_year` - The bid year to get state for
+/// * `area` - The area to get state for
+/// * `state` - The current state (if it exists)
+///
+/// # Returns
+///
+/// * `Ok(State)` - The current state for the scope
+/// * `Err(ApiError)` if the bid year or area does not exist
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The bid year has not been created
+/// - The area has not been created in the bid year
+pub fn get_current_state(
+    metadata: &BootstrapMetadata,
+    bid_year: &BidYear,
+    area: &Area,
+    state: State,
+) -> Result<State, ApiError> {
+    // Validate bid year and area exist before returning state
+    validate_area_exists(metadata, bid_year, area).map_err(translate_domain_error)?;
+
+    Ok(state)
+}
+
+/// Gets the historical state for a given bid year and area at a specific timestamp.
+///
+/// This is a read-only operation that requires no authorization.
+/// This function validates that the bid year and area exist before
+/// attempting to load historical state from persistence.
+///
+/// # Arguments
+///
+/// * `metadata` - The current bootstrap metadata
+/// * `bid_year` - The bid year to get state for
+/// * `area` - The area to get state for
+/// * `state` - The historical state (if it exists)
+///
+/// # Returns
+///
+/// * `Ok(State)` - The historical state for the scope at the timestamp
+/// * `Err(ApiError)` if the bid year or area does not exist
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The bid year has not been created
+/// - The area has not been created in the bid year
+pub fn get_historical_state(
+    metadata: &BootstrapMetadata,
+    bid_year: &BidYear,
+    area: &Area,
+    state: State,
+) -> Result<State, ApiError> {
+    // Validate bid year and area exist before returning state
+    validate_area_exists(metadata, bid_year, area).map_err(translate_domain_error)?;
+
+    Ok(state)
 }

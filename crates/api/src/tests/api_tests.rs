@@ -13,7 +13,8 @@ use crate::{
     ApiError, ApiResult, AuthError, AuthenticatedActor, CreateAreaRequest, CreateBidYearRequest,
     ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListUsersResponse,
     RegisterUserRequest, RegisterUserResponse, Role, authenticate_stub, checkpoint, create_area,
-    create_bid_year, finalize, list_areas, list_bid_years, list_users, register_user, rollback,
+    create_bid_year, finalize, get_current_state, get_historical_state, list_areas, list_bid_years,
+    list_users, register_user, rollback,
 };
 
 use super::helpers::{
@@ -518,10 +519,8 @@ fn test_invalid_empty_area_returns_api_error() {
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
-    assert!(matches!(err, ApiError::DomainRuleViolation { .. }));
-    if let ApiError::DomainRuleViolation { rule, .. } = err {
-        assert_eq!(rule, "area_exists");
-    }
+    // Empty area won't exist in metadata, so we get ResourceNotFound
+    assert!(matches!(err, ApiError::ResourceNotFound { .. }));
 }
 
 #[test]
@@ -710,7 +709,7 @@ fn test_create_area_without_bid_year_fails() {
     assert!(result.is_err());
     assert!(matches!(
         result.unwrap_err(),
-        ApiError::DomainRuleViolation { .. }
+        ApiError::ResourceNotFound { .. }
     ));
 }
 
@@ -754,10 +753,11 @@ fn test_list_bid_years_with_multiple_years() {
 
 #[test]
 fn test_list_areas_empty() {
-    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+    metadata.bid_years.push(BidYear::new(2026));
     let request: ListAreasRequest = ListAreasRequest { bid_year: 2026 };
 
-    let response: ListAreasResponse = list_areas(&metadata, &request);
+    let response: ListAreasResponse = list_areas(&metadata, &request).unwrap();
 
     assert_eq!(response.bid_year, 2026);
     assert_eq!(response.areas.len(), 0);
@@ -775,7 +775,7 @@ fn test_list_areas_for_bid_year() {
         .push((BidYear::new(2026), Area::new("South")));
 
     let request: ListAreasRequest = ListAreasRequest { bid_year: 2026 };
-    let response: ListAreasResponse = list_areas(&metadata, &request);
+    let response: ListAreasResponse = list_areas(&metadata, &request).unwrap();
 
     assert_eq!(response.bid_year, 2026);
     assert_eq!(response.areas.len(), 2);
@@ -796,22 +796,51 @@ fn test_list_areas_isolated_by_bid_year() {
         .push((BidYear::new(2027), Area::new("South")));
 
     let request_2026: ListAreasRequest = ListAreasRequest { bid_year: 2026 };
-    let response_2026: ListAreasResponse = list_areas(&metadata, &request_2026);
+    let response_2026: ListAreasResponse = list_areas(&metadata, &request_2026).unwrap();
 
     assert_eq!(response_2026.areas.len(), 1);
     assert_eq!(response_2026.areas[0], "NORTH");
 
     let request_2027: ListAreasRequest = ListAreasRequest { bid_year: 2027 };
-    let response_2027: ListAreasResponse = list_areas(&metadata, &request_2027);
+    let response_2027: ListAreasResponse = list_areas(&metadata, &request_2027).unwrap();
 
     assert_eq!(response_2027.areas.len(), 1);
     assert_eq!(response_2027.areas[0], "SOUTH");
 }
 
 #[test]
+fn test_list_areas_nonexistent_bid_year() {
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let request: ListAreasRequest = ListAreasRequest { bid_year: 9999 };
+
+    let result = list_areas(&metadata, &request);
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    match err {
+        ApiError::ResourceNotFound {
+            resource_type,
+            message,
+        } => {
+            assert_eq!(resource_type, "Bid year");
+            assert!(message.contains("9999"));
+        }
+        _ => panic!("Expected ResourceNotFound error"),
+    }
+}
+
+#[test]
 fn test_list_users_empty() {
-    let state: State = State::new(BidYear::new(2026), Area::new("North"));
-    let response: ListUsersResponse = list_users(&state);
+    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+    metadata.bid_years.push(BidYear::new(2026));
+    metadata
+        .areas
+        .push((BidYear::new(2026), Area::new("North")));
+
+    let bid_year: BidYear = BidYear::new(2026);
+    let area: Area = Area::new("North");
+    let state: State = State::new(bid_year.clone(), area.clone());
+    let response: ListUsersResponse = list_users(&metadata, &bid_year, &area, &state).unwrap();
 
     assert_eq!(response.bid_year, 2026);
     assert_eq!(response.area, "NORTH");
@@ -821,7 +850,9 @@ fn test_list_users_empty() {
 #[test]
 fn test_list_users_with_users() {
     let metadata: BootstrapMetadata = create_test_metadata();
-    let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let bid_year: BidYear = BidYear::new(2026);
+    let area: Area = Area::new("North");
+    let state: State = State::new(bid_year.clone(), area.clone());
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
@@ -864,7 +895,8 @@ fn test_list_users_with_users() {
     assert!(result2.is_ok());
 
     let final_state: State = result2.unwrap().new_state;
-    let response: ListUsersResponse = list_users(&final_state);
+    let response: ListUsersResponse =
+        list_users(&metadata, &bid_year, &area, &final_state).unwrap();
 
     assert_eq!(response.bid_year, 2026);
     assert_eq!(response.area, "NORTH");
@@ -882,7 +914,9 @@ fn test_list_users_with_users() {
 #[test]
 fn test_list_users_with_no_crew() {
     let metadata: BootstrapMetadata = create_test_metadata();
-    let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let bid_year: BidYear = BidYear::new(2026);
+    let area: Area = Area::new("North");
+    let state: State = State::new(bid_year.clone(), area.clone());
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
@@ -905,12 +939,134 @@ fn test_list_users_with_no_crew() {
     assert!(result.is_ok());
 
     let final_state: State = result.unwrap().new_state;
-    let response: ListUsersResponse = list_users(&final_state);
+    let response: ListUsersResponse =
+        list_users(&metadata, &bid_year, &area, &final_state).unwrap();
 
     assert_eq!(response.users.len(), 1);
     assert_eq!(response.users[0].initials, "EF");
     assert_eq!(response.users[0].name, "Eve Foster");
     assert_eq!(response.users[0].crew, None);
+}
+
+#[test]
+fn test_list_users_nonexistent_bid_year() {
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let bid_year: BidYear = BidYear::new(9999);
+    let area: Area = Area::new("North");
+    let state: State = State::new(bid_year.clone(), area.clone());
+
+    let result = list_users(&metadata, &bid_year, &area, &state);
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    match err {
+        ApiError::ResourceNotFound {
+            resource_type,
+            message,
+        } => {
+            assert_eq!(resource_type, "Bid year");
+            assert!(message.contains("9999"));
+        }
+        _ => panic!("Expected ResourceNotFound error"),
+    }
+}
+
+#[test]
+fn test_list_users_nonexistent_area() {
+    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+    metadata.bid_years.push(BidYear::new(2026));
+
+    let bid_year: BidYear = BidYear::new(2026);
+    let area: Area = Area::new("NonExistent");
+    let state: State = State::new(bid_year.clone(), area.clone());
+
+    let result = list_users(&metadata, &bid_year, &area, &state);
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    match err {
+        ApiError::ResourceNotFound {
+            resource_type,
+            message,
+        } => {
+            assert_eq!(resource_type, "Area");
+            assert!(message.contains("NONEXISTENT"));
+            assert!(message.contains("2026"));
+        }
+        _ => panic!("Expected ResourceNotFound error"),
+    }
+}
+
+#[test]
+fn test_get_current_state_nonexistent_bid_year() {
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let bid_year: BidYear = BidYear::new(9999);
+    let area: Area = Area::new("North");
+    let state: State = State::new(bid_year.clone(), area.clone());
+
+    let result = get_current_state(&metadata, &bid_year, &area, state);
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    match err {
+        ApiError::ResourceNotFound {
+            resource_type,
+            message,
+        } => {
+            assert_eq!(resource_type, "Bid year");
+            assert!(message.contains("9999"));
+        }
+        _ => panic!("Expected ResourceNotFound error"),
+    }
+}
+
+#[test]
+fn test_get_current_state_nonexistent_area() {
+    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+    metadata.bid_years.push(BidYear::new(2026));
+
+    let bid_year: BidYear = BidYear::new(2026);
+    let area: Area = Area::new("NonExistent");
+    let state: State = State::new(bid_year.clone(), area.clone());
+
+    let result = get_current_state(&metadata, &bid_year, &area, state);
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    match err {
+        ApiError::ResourceNotFound {
+            resource_type,
+            message,
+        } => {
+            assert_eq!(resource_type, "Area");
+            assert!(message.contains("NONEXISTENT"));
+            assert!(message.contains("2026"));
+        }
+        _ => panic!("Expected ResourceNotFound error"),
+    }
+}
+
+#[test]
+fn test_get_historical_state_nonexistent_bid_year() {
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let bid_year: BidYear = BidYear::new(9999);
+    let area: Area = Area::new("North");
+    let state: State = State::new(bid_year.clone(), area.clone());
+
+    let result = get_historical_state(&metadata, &bid_year, &area, state);
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    match err {
+        ApiError::ResourceNotFound {
+            resource_type,
+            message,
+        } => {
+            assert_eq!(resource_type, "Bid year");
+            assert!(message.contains("9999"));
+        }
+        _ => panic!("Expected ResourceNotFound error"),
+    }
 }
 
 // ============================================================================
