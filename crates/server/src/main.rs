@@ -178,6 +178,8 @@ struct BidYearInfoApiResponse {
     start_date: String,
     /// The number of pay periods.
     num_pay_periods: u8,
+    /// The derived end date (ISO 8601).
+    end_date: String,
 }
 
 /// API response for listing bid years.
@@ -605,7 +607,7 @@ async fn handle_list_bid_years(
         persistence.list_bid_years()?;
     drop(persistence);
 
-    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years);
+    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years)?;
 
     // Convert to API response format with ISO 8601 date strings
     let api_bid_years: Vec<BidYearInfoApiResponse> = response
@@ -615,6 +617,7 @@ async fn handle_list_bid_years(
             year: info.year,
             start_date: info.start_date.to_string(),
             num_pay_periods: info.num_pay_periods,
+            end_date: info.end_date.to_string(),
         })
         .collect();
 

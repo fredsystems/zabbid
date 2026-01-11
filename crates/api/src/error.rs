@@ -203,6 +203,21 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
             field: String::from("date"),
             message: format!("Date arithmetic overflow while {operation}"),
         },
+        DomainError::InvalidStartDateWeekday {
+            start_date,
+            weekday,
+        } => ApiError::InvalidInput {
+            field: String::from("start_date"),
+            message: format!(
+                "Bid year start date must be a Sunday, but {start_date} is a {weekday}"
+            ),
+        },
+        DomainError::InvalidStartDateMonth { start_date, month } => ApiError::InvalidInput {
+            field: String::from("start_date"),
+            message: format!(
+                "Bid year start date must be in January, but {start_date} is in {month}"
+            ),
+        },
     }
 }
 

@@ -27,6 +27,8 @@ pub struct CreateBidYearResponse {
     pub start_date: Date,
     /// The number of pay periods.
     pub num_pay_periods: u8,
+    /// The derived end date of the bid year (inclusive).
+    pub end_date: Date,
     /// A success message.
     pub message: String,
 }
@@ -104,6 +106,8 @@ pub struct BidYearInfo {
     pub start_date: Date,
     /// The number of pay periods.
     pub num_pay_periods: u8,
+    /// The derived end date of the bid year (inclusive).
+    pub end_date: Date,
 }
 
 /// API response for listing bid years.

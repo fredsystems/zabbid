@@ -51,32 +51,32 @@ pub fn create_valid_request() -> RegisterUserRequest {
 
 /// Creates a test start date for bid year tests.
 ///
-/// Returns January 4, 2026 (a Saturday) as a valid test start date.
+/// Returns January 4, 2026 (a Sunday) as a valid test start date.
 pub fn create_test_start_date() -> Date {
     Date::from_calendar_date(2026, time::Month::January, 4).expect("Valid test date")
 }
 
 /// Creates test start date for a specific year.
 ///
-/// Returns the first Saturday of January for the given year.
+/// Returns the first Sunday of January for the given year.
 pub fn create_test_start_date_for_year(year: i32) -> Date {
     // Start with January 1st
     let jan_1 = Date::from_calendar_date(year, time::Month::January, 1).expect("Valid January 1st");
 
-    // Find the first Saturday
+    // Find the first Sunday
     let weekday = jan_1.weekday();
-    let days_until_saturday: i64 = match weekday {
-        time::Weekday::Sunday => 6,
-        time::Weekday::Monday => 5,
-        time::Weekday::Tuesday => 4,
-        time::Weekday::Wednesday => 3,
-        time::Weekday::Thursday => 2,
-        time::Weekday::Friday => 1,
-        time::Weekday::Saturday => 0,
+    let days_until_sunday: i64 = match weekday {
+        time::Weekday::Sunday => 0,
+        time::Weekday::Monday => 6,
+        time::Weekday::Tuesday => 5,
+        time::Weekday::Wednesday => 4,
+        time::Weekday::Thursday => 3,
+        time::Weekday::Friday => 2,
+        time::Weekday::Saturday => 1,
     };
 
     jan_1
-        .checked_add(time::Duration::days(days_until_saturday))
+        .checked_add(time::Duration::days(days_until_sunday))
         .expect("Valid date calculation")
 }
 
