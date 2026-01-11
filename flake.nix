@@ -79,6 +79,7 @@
           check_rust = true;
           check_docker = false;
           check_python = true;
+          check_javascript = true;
 
           enableXtask = true;
 
@@ -109,6 +110,7 @@
                 typos
                 cargo-llvm-cov
                 sqlite
+                nodejs
               ]
               ++ (chk.passthru.devPackages or [ ])
               ++ chk.enabledPackages;

@@ -44,6 +44,7 @@ All changes must advance these goals. If unsure, stop and ask.
   - Response schemas change
 - CLI updates are considered **required**, not optional
 - CLI behavior must remain aligned with the current API surface
+- CLI drift is considered a correctness failure, not a tooling issue
 
 ## Audit & Data Integrity Rules
 
@@ -321,6 +322,29 @@ They act as trusted operators entering data provided by many users.
 - When adding new functionality, prefer creating a new module over extending an existing large file
 - Refactoring existing code to improve structure is allowed **within the current phase**
 - Structural refactors must not change observable behavior
+
+## Frontend Validation Rules
+
+- Frontend validation is permitted for user experience and early error detection
+- Frontend validation must never be authoritative
+- All domain validation must be enforced by the backend
+- Backend validation failures must be explicit and surfaced to the frontend
+- Frontend validation must not encode domain rules as decision logic
+
+## API Ergonomics & Read Models
+
+- Read-only APIs may be reshaped to support operator workflows
+- Composite or aggregated read endpoints are allowed
+- Ergonomic APIs must not introduce new domain logic
+- Read APIs must remain side-effect free
+- Domain invariants must not be bypassed for convenience
+
+## Bid Years
+
+- Exactly one bid year may be active at any given time
+- All operational workflows are scoped to the active bid year
+- APIs must not support simultaneous multi-bid-year operation
+- Historical bid years may be queried only via explicit historical read APIs
 
 ## When to Stop
 
