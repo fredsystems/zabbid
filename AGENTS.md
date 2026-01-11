@@ -36,6 +36,15 @@ All changes must advance these goals. If unsure, stop and ask.
   the correct action is to update the Nix environment or ask for intervention
 - Environment-related failures must not trigger refactors or logic changes
 
+## API changes
+
+- `api_cli.py` must be updated whenever:
+  - API endpoints change
+  - Request schemas change
+  - Response schemas change
+- CLI updates are considered **required**, not optional
+- CLI behavior must remain aligned with the current API surface
+
 ## Audit & Data Integrity Rules
 
 - All state changes must be attributable to an actor and a cause
