@@ -11,17 +11,23 @@
  * Allows navigation into a specific area to view users.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { listAreas } from "../api";
-import type { AreaInfo } from "../types";
+import { listAreas, NetworkError } from "../api";
+import type { AreaInfo, ConnectionState, LiveEvent } from "../types";
 
-export function AreaView() {
+interface AreaViewProps {
+  connectionState: ConnectionState;
+  lastEvent: LiveEvent | null;
+}
+
+export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
   const { year } = useParams<{ year: string }>();
   const navigate = useNavigate();
   const [areas, setAreas] = useState<AreaInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const previousConnectionState = useRef<ConnectionState | null>(null);
 
   const bidYear = year ? parseInt(year, 10) : null;
 
@@ -39,7 +45,13 @@ export function AreaView() {
         const response = await listAreas(bidYear);
         setAreas(response.areas);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load areas");
+        if (err instanceof NetworkError) {
+          setError(
+            "Backend is unavailable. Please ensure the server is running.",
+          );
+        } else {
+          setError(err instanceof Error ? err.message : "Failed to load areas");
+        }
       } finally {
         setLoading(false);
       }
@@ -47,6 +59,68 @@ export function AreaView() {
 
     void loadAreas();
   }, [bidYear]);
+
+  // Auto-refresh when connection is restored
+  useEffect(() => {
+    console.log(
+      "[AreaView] Connection state changed:",
+      previousConnectionState.current,
+      "->",
+      connectionState,
+    );
+
+    const wasNotConnected = previousConnectionState.current !== "connected";
+    const nowConnected = connectionState === "connected";
+
+    if (wasNotConnected && nowConnected && bidYear) {
+      console.log("[AreaView] Connection established, refreshing data");
+      const loadAreas = async () => {
+        try {
+          setLoading(true);
+          setError(null);
+          const response = await listAreas(bidYear);
+          setAreas(response.areas);
+        } catch (err) {
+          if (err instanceof NetworkError) {
+            setError(
+              "Backend is unavailable. Please ensure the server is running.",
+            );
+          } else {
+            setError(
+              err instanceof Error ? err.message : "Failed to load areas",
+            );
+          }
+        } finally {
+          setLoading(false);
+        }
+      };
+      void loadAreas();
+    }
+
+    previousConnectionState.current = connectionState;
+  }, [connectionState, bidYear]);
+
+  // Refresh when relevant live events occur
+  useEffect(() => {
+    if (!lastEvent || !bidYear) return;
+
+    if (
+      (lastEvent.type === "area_created" && lastEvent.bid_year === bidYear) ||
+      (lastEvent.type === "user_registered" && lastEvent.bid_year === bidYear)
+    ) {
+      console.log("[AreaView] Relevant event received, refreshing data");
+      const loadAreas = async () => {
+        try {
+          const response = await listAreas(bidYear);
+          setAreas(response.areas);
+        } catch (err) {
+          // Silently fail on live event refresh - connection state will show the issue
+          console.error("Failed to refresh after live event:", err);
+        }
+      };
+      void loadAreas();
+    }
+  }, [lastEvent, bidYear]);
 
   if (!bidYear) {
     return (
@@ -67,8 +141,14 @@ export function AreaView() {
   if (error) {
     return (
       <div className="error">
-        <h2>Error Loading Areas</h2>
+        <h2>Unable to Load Areas</h2>
         <p>{error}</p>
+        {error.includes("unavailable") && (
+          <p style={{ marginTop: "1rem", fontSize: "0.9rem", color: "#666" }}>
+            Check the connection status indicator in the header. The UI will
+            automatically refresh when the backend becomes available.
+          </p>
+        )}
         <button type="button" onClick={() => navigate("/")}>
           Back to Overview
         </button>

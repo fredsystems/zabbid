@@ -16,12 +16,24 @@
  * This is a read-only view in Phase 12.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getLeaveAvailability } from "../api";
-import type { LeaveAvailabilityResponse } from "../types";
+import { getLeaveAvailability, NetworkError } from "../api";
+import type {
+  ConnectionState,
+  LeaveAvailabilityResponse,
+  LiveEvent,
+} from "../types";
 
-export function UserDetailView() {
+interface UserDetailViewProps {
+  connectionState: ConnectionState;
+  lastEvent: LiveEvent | null;
+}
+
+export function UserDetailView({
+  connectionState,
+  lastEvent,
+}: UserDetailViewProps) {
   const { year, areaId, initials } = useParams<{
     year: string;
     areaId: string;
@@ -33,6 +45,7 @@ export function UserDetailView() {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const previousConnectionState = useRef<ConnectionState | null>(null);
 
   const bidYear = year ? parseInt(year, 10) : null;
 
@@ -50,9 +63,15 @@ export function UserDetailView() {
         const response = await getLeaveAvailability(bidYear, areaId, initials);
         setLeaveData(response);
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load leave data",
-        );
+        if (err instanceof NetworkError) {
+          setError(
+            "Backend is unavailable. Please ensure the server is running.",
+          );
+        } else {
+          setError(
+            err instanceof Error ? err.message : "Failed to load leave data",
+          );
+        }
       } finally {
         setLoading(false);
       }
@@ -60,6 +79,82 @@ export function UserDetailView() {
 
     void loadLeaveData();
   }, [bidYear, areaId, initials]);
+
+  // Auto-refresh when connection is restored
+  useEffect(() => {
+    console.log(
+      "[UserDetailView] Connection state changed:",
+      previousConnectionState.current,
+      "->",
+      connectionState,
+    );
+
+    const wasNotConnected = previousConnectionState.current !== "connected";
+    const nowConnected = connectionState === "connected";
+
+    if (wasNotConnected && nowConnected && bidYear && areaId && initials) {
+      console.log("[UserDetailView] Connection established, refreshing data");
+      const loadLeaveData = async () => {
+        try {
+          setLoading(true);
+          setError(null);
+          const response = await getLeaveAvailability(
+            bidYear,
+            areaId,
+            initials,
+          );
+          setLeaveData(response);
+        } catch (err) {
+          if (err instanceof NetworkError) {
+            setError(
+              "Backend is unavailable. Please ensure the server is running.",
+            );
+          } else {
+            setError(
+              err instanceof Error ? err.message : "Failed to load leave data",
+            );
+          }
+        } finally {
+          setLoading(false);
+        }
+      };
+      void loadLeaveData();
+    }
+
+    previousConnectionState.current = connectionState;
+  }, [connectionState, bidYear, areaId, initials]);
+
+  // Refresh when relevant live events occur
+  useEffect(() => {
+    if (!lastEvent || !bidYear || !areaId || !initials) return;
+
+    if (
+      (lastEvent.type === "user_registered" &&
+        lastEvent.bid_year === bidYear &&
+        lastEvent.area === areaId &&
+        lastEvent.initials === initials) ||
+      (lastEvent.type === "user_updated" &&
+        lastEvent.bid_year === bidYear &&
+        lastEvent.area === areaId &&
+        lastEvent.initials === initials)
+    ) {
+      console.log("[UserDetailView] Relevant event received, refreshing data");
+      const loadLeaveData = async () => {
+        try {
+          const response = await getLeaveAvailability(
+            bidYear,
+            areaId,
+            initials,
+          );
+          setLeaveData(response);
+        } catch (err) {
+          // Silently fail on live event refresh - connection state will show the issue
+          console.error("Failed to refresh after live event:", err);
+        }
+      };
+      void loadLeaveData();
+    }
+  }, [lastEvent, bidYear, areaId, initials]);
 
   if (!bidYear || !areaId || !initials) {
     return (
@@ -80,8 +175,14 @@ export function UserDetailView() {
   if (error) {
     return (
       <div className="error">
-        <h2>Error Loading User Details</h2>
+        <h2>Unable to Load User Details</h2>
         <p>{error}</p>
+        {error.includes("unavailable") && (
+          <p style={{ marginTop: "1rem", fontSize: "0.9rem", color: "#666" }}>
+            Check the connection status indicator in the header. The UI will
+            automatically refresh when the backend becomes available.
+          </p>
+        )}
         <button
           type="button"
           onClick={() =>

@@ -13,6 +13,8 @@
 )]
 #![allow(clippy::multiple_crate_versions)]
 
+mod live;
+
 use axum::{
     Json, Router,
     extract::{Path, Query, State as AxumState},
@@ -21,6 +23,7 @@ use axum::{
     routing::{get, post},
 };
 use clap::Parser;
+use live::{LiveEvent, LiveEventBroadcaster};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -54,11 +57,13 @@ struct Args {
 /// Application state shared across handlers.
 ///
 /// This contains the persistence layer wrapped in a Mutex to allow
-/// safe concurrent access.
+/// safe concurrent access, and a live event broadcaster for WebSocket streaming.
 #[derive(Clone)]
 struct AppState {
     /// The persistence layer for audit events and state snapshots.
     persistence: Arc<Mutex<SqlitePersistence>>,
+    /// Live event broadcaster for streaming state changes to connected clients.
+    live_events: Arc<LiveEventBroadcaster>,
 }
 
 /// API request for registering a user.
@@ -536,6 +541,7 @@ async fn handle_create_bid_year(
     AxumState(app_state): AxumState<AppState>,
     Json(req): Json<CreateBidYearApiRequest>,
 ) -> Result<Json<WriteResponse>, HttpError> {
+    let _state = &app_state;
     info!(
         actor_id = %req.actor_id,
         role = %req.actor_role,
@@ -590,6 +596,11 @@ async fn handle_create_bid_year(
         "Successfully created bid year"
     );
 
+    // Broadcast live event
+    app_state
+        .live_events
+        .broadcast(&LiveEvent::BidYearCreated { year: req.year });
+
     Ok(Json(WriteResponse {
         success: true,
         message: Some(format!("Created bid year {}", req.year)),
@@ -604,6 +615,7 @@ async fn handle_create_area(
     AxumState(app_state): AxumState<AppState>,
     Json(req): Json<CreateAreaApiRequest>,
 ) -> Result<Json<WriteResponse>, HttpError> {
+    let _state = &app_state;
     info!(
         actor_id = %req.actor_id,
         role = %req.actor_role,
@@ -647,6 +659,12 @@ async fn handle_create_area(
         area_id = %req.area_id,
         "Successfully created area"
     );
+
+    // Broadcast live event
+    app_state.live_events.broadcast(&LiveEvent::AreaCreated {
+        bid_year: req.bid_year,
+        area: req.area_id.clone(),
+    });
 
     Ok(Json(WriteResponse {
         success: true,
@@ -860,6 +878,7 @@ async fn handle_register_user(
     AxumState(app_state): AxumState<AppState>,
     Json(req): Json<RegisterUserApiRequest>,
 ) -> Result<Json<RegisterUserApiResponse>, HttpError> {
+    let _state = &app_state;
     info!(
         actor_id = %req.actor_id,
         role = %req.actor_role,
@@ -892,7 +911,7 @@ async fn handle_register_user(
         bid_year: req.bid_year,
         initials: req.initials,
         name: req.name,
-        area: req.area,
+        area: req.area.clone(),
         user_type: req.user_type,
         crew: req.crew,
         cumulative_natca_bu_date: req.cumulative_natca_bu_date,
@@ -921,6 +940,13 @@ async fn handle_register_user(
         "Successfully registered user"
     );
 
+    // Broadcast live event
+    app_state.live_events.broadcast(&LiveEvent::UserRegistered {
+        bid_year: result.response.bid_year,
+        area: req.area.clone(),
+        initials: result.response.initials.clone(),
+    });
+
     Ok(Json(RegisterUserApiResponse {
         success: true,
         bid_year: result.response.bid_year,
@@ -938,6 +964,7 @@ async fn handle_checkpoint(
     AxumState(app_state): AxumState<AppState>,
     Json(req): Json<AdminActionRequest>,
 ) -> Result<Json<WriteResponse>, HttpError> {
+    let _state = &app_state;
     info!(
         actor_id = %req.actor_id,
         role = %req.actor_role,
@@ -979,6 +1006,14 @@ async fn handle_checkpoint(
 
     info!(event_id = event_id, "Successfully created checkpoint");
 
+    // Broadcast live event
+    app_state
+        .live_events
+        .broadcast(&LiveEvent::CheckpointCreated {
+            bid_year: req.bid_year,
+            area: req.area.clone(),
+        });
+
     Ok(Json(WriteResponse {
         success: true,
         message: Some(String::from("Checkpoint created successfully")),
@@ -993,6 +1028,7 @@ async fn handle_finalize(
     AxumState(app_state): AxumState<AppState>,
     Json(req): Json<AdminActionRequest>,
 ) -> Result<Json<WriteResponse>, HttpError> {
+    let _state = &app_state;
     info!(
         actor_id = %req.actor_id,
         role = %req.actor_role,
@@ -1034,6 +1070,12 @@ async fn handle_finalize(
 
     info!(event_id = event_id, "Successfully finalized round");
 
+    // Broadcast live event
+    app_state.live_events.broadcast(&LiveEvent::RoundFinalized {
+        bid_year: req.bid_year,
+        area: req.area.clone(),
+    });
+
     Ok(Json(WriteResponse {
         success: true,
         message: Some(String::from("Round finalized successfully")),
@@ -1048,6 +1090,7 @@ async fn handle_rollback(
     AxumState(app_state): AxumState<AppState>,
     Json(req): Json<AdminActionRequest>,
 ) -> Result<Json<WriteResponse>, HttpError> {
+    let _state = &app_state;
     info!(
         actor_id = %req.actor_id,
         role = %req.actor_role,
@@ -1098,6 +1141,12 @@ async fn handle_rollback(
         target_event_id = target_event_id,
         "Successfully rolled back to event"
     );
+
+    // Broadcast live event
+    app_state.live_events.broadcast(&LiveEvent::RolledBack {
+        bid_year: req.bid_year,
+        area: req.area.clone(),
+    });
 
     Ok(Json(WriteResponse {
         success: true,
@@ -1235,14 +1284,16 @@ async fn handle_get_bootstrap_status(
 }
 
 /// Builds the application router with all endpoints.
-fn build_router(app_state: AppState) -> Router {
-    Router::new()
+fn build_router(state: AppState) -> Router {
+    let live_broadcaster = Arc::clone(&state.live_events);
+
+    let api_router = Router::new()
         .route("/bid_years", post(handle_create_bid_year))
         .route("/bid_years", get(handle_list_bid_years))
         .route("/areas", post(handle_create_area))
         .route("/areas", get(handle_list_areas))
+        .route("/users", post(handle_register_user))
         .route("/users", get(handle_list_users))
-        .route("/register_user", post(handle_register_user))
         .route("/leave/availability", get(handle_get_leave_availability))
         .route("/checkpoint", post(handle_checkpoint))
         .route("/finalize", post(handle_finalize))
@@ -1250,9 +1301,17 @@ fn build_router(app_state: AppState) -> Router {
         .route("/state/current", get(handle_get_current_state))
         .route("/state/historical", get(handle_get_historical_state))
         .route("/audit/timeline", get(handle_get_audit_timeline))
-        .route("/audit/event/{event_id}", get(handle_get_audit_event))
+        .route("/audit/event/{id}", get(handle_get_audit_event))
         .route("/bootstrap/status", get(handle_get_bootstrap_status))
-        .with_state(app_state)
+        .with_state(state);
+
+    let live_router = Router::new()
+        .route("/live", axum::routing::get(live::live_events_handler))
+        .with_state(live_broadcaster);
+
+    Router::new()
+        .nest("/api", api_router)
+        .nest("/api", live_router)
 }
 
 #[tokio::main]
@@ -1281,6 +1340,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app_state: AppState = AppState {
         persistence: Arc::new(Mutex::new(persistence)),
+        live_events: Arc::new(LiveEventBroadcaster::new()),
     };
 
     // Build router
@@ -1312,6 +1372,7 @@ mod tests {
             SqlitePersistence::new_in_memory().expect("Failed to create in-memory persistence");
         AppState {
             persistence: Arc::new(Mutex::new(persistence)),
+            live_events: Arc::new(LiveEventBroadcaster::new()),
         }
     }
 
@@ -1373,7 +1434,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
                     .unwrap(),
@@ -1394,7 +1455,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/areas")
+                    .uri("/api/areas")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&area_req).unwrap()))
                     .unwrap(),
@@ -1409,7 +1470,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/register_user")
+                    .uri("/api/users")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&req_body).unwrap()))
                     .unwrap(),
@@ -1441,7 +1502,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/register_user")
+                    .uri("/api/users")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&req_body).unwrap()))
                     .unwrap(),
@@ -1474,7 +1535,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/register_user")
+                    .uri("/api/users")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&req_body).unwrap()))
                     .unwrap(),
@@ -1489,7 +1550,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/audit/timeline?bid_year=2026&area=TestArea")
+                    .uri("/api/audit/timeline?bid_year=2026&area=TestArea")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1516,7 +1577,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
                     .unwrap(),
@@ -1537,7 +1598,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/areas")
+                    .uri("/api/areas")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&area_req).unwrap()))
                     .unwrap(),
@@ -1554,7 +1615,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/register_user")
+                    .uri("/api/users")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&req_body).unwrap()))
                     .unwrap(),
@@ -1569,7 +1630,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/audit/timeline?bid_year=2026&area=TestArea")
+                    .uri("/api/audit/timeline?bid_year=2026&area=TestArea")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1604,7 +1665,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
                     .unwrap(),
@@ -1625,7 +1686,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/areas")
+                    .uri("/api/areas")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&area_req).unwrap()))
                     .unwrap(),
@@ -1642,7 +1703,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/register_user")
+                    .uri("/api/users")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&req_body).unwrap()))
                     .unwrap(),
@@ -1657,7 +1718,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/audit/timeline?bid_year=2026&area=TestArea")
+                    .uri("/api/audit/timeline?bid_year=2026&area=TestArea")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1693,7 +1754,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/checkpoint")
+                    .uri("/api/checkpoint")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&req_body).unwrap()))
                     .unwrap(),
@@ -1731,7 +1792,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/checkpoint")
+                    .uri("/api/checkpoint")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&req_body).unwrap()))
                     .unwrap(),
@@ -1754,7 +1815,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
                     .unwrap(),
@@ -1775,7 +1836,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/areas")
+                    .uri("/api/areas")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&area_req).unwrap()))
                     .unwrap(),
@@ -1792,7 +1853,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/register_user")
+                    .uri("/api/users")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&req_body).unwrap()))
                     .unwrap(),
@@ -1812,7 +1873,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/audit/event/{event_id}"))
+                    .uri(format!("/api/audit/event/{event_id}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1842,7 +1903,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/register_user")
+                    .uri("/api/users")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&req_body).unwrap()))
                     .unwrap(),
@@ -1865,7 +1926,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&req_body).unwrap()))
                     .unwrap(),
@@ -1896,7 +1957,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&req_body).unwrap()))
                     .unwrap(),
@@ -1916,7 +1977,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1947,7 +2008,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&create_req).unwrap()))
                     .unwrap(),
@@ -1963,7 +2024,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1995,7 +2056,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
                     .unwrap(),
@@ -2019,7 +2080,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/areas")
+                    .uri("/api/areas")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&area_req).unwrap()))
                     .unwrap(),
@@ -2056,7 +2117,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/areas")
+                    .uri("/api/areas")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&request).unwrap()))
                     .unwrap(),
@@ -2081,7 +2142,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
                     .unwrap(),
@@ -2093,7 +2154,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/areas?bid_year=2026")
+                    .uri("/api/areas?bid_year=2026")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -2124,7 +2185,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
                     .unwrap(),
@@ -2146,7 +2207,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/areas")
+                    .uri("/api/areas")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&area_req).unwrap()))
                     .unwrap(),
@@ -2159,7 +2220,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/areas?bid_year=2026")
+                    .uri("/api/areas?bid_year=2026")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -2192,7 +2253,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
                     .unwrap(),
@@ -2215,7 +2276,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/areas")
+                    .uri("/api/areas")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&area_req).unwrap()))
                     .unwrap(),
@@ -2228,7 +2289,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/users?bid_year=2026&area=North")
+                    .uri("/api/users?bid_year=2026&area=North")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -2261,7 +2322,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
                     .unwrap(),
@@ -2286,7 +2347,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/areas")
+                    .uri("/api/areas")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&area_req).unwrap()))
                     .unwrap(),
@@ -2305,7 +2366,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/register_user")
+                    .uri("/api/users")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&user_req).unwrap()))
                     .unwrap(),
@@ -2336,7 +2397,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/checkpoint")
+                    .uri("/api/checkpoint")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&checkpoint_req).unwrap()))
                     .unwrap(),
@@ -2351,7 +2412,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -2370,7 +2431,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/areas?bid_year=2026")
+                    .uri("/api/areas?bid_year=2026")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -2388,7 +2449,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/audit/timeline?bid_year=2026&area=TestArea")
+                    .uri("/api/audit/timeline?bid_year=2026&area=TestArea")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -2418,7 +2479,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/users?bid_year=9999&area=North")
+                    .uri("/api/users?bid_year=9999&area=North")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -2442,7 +2503,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/bid_years")
+                    .uri("/api/bid_years")
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
                     .unwrap(),
@@ -2455,7 +2516,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/users?bid_year=2026&area=NonExistent")
+                    .uri("/api/users?bid_year=2026&area=NonExistent")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -2475,7 +2536,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/areas?bid_year=9999")
+                    .uri("/api/areas?bid_year=9999")
                     .body(Body::empty())
                     .unwrap(),
             )

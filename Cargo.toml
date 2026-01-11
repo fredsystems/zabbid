@@ -13,15 +13,16 @@ keywords = ["zab", "bid", "monitoring"]
 categories = ["monitoring"]
 
 [workspace.dependencies]
-axum = "0.8.1"
+axum = { version = "0.8.1", features = ["ws"] }
 cargo_metadata = "0.23.1"
 clap = { version = "4.5.54", features = ["derive"] }
 clap-cargo = "0.18.3"
 clap-verbosity-flag = "3.0.4"
 color-eyre = "0.6.5"
 duct = "1.1.1"
-num-traits = "0.2"
-rusqlite = { version = "0.32.1", features = ["bundled"] }
+futures = "0.3.31"
+num-traits = "0.2.19"
+rusqlite = { version = "0.38.0", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 time = { version = "0.3.44", features = ["serde", "macros", "parsing", "formatting"] }

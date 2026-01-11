@@ -158,3 +158,36 @@ export interface ErrorResponse {
   error: string;
   message: string;
 }
+
+/**
+ * Live event types for WebSocket streaming.
+ * These represent read-only state change notifications from the backend.
+ */
+export type LiveEvent =
+  | { type: "bid_year_created"; year: number }
+  | { type: "area_created"; bid_year: number; area: string }
+  | {
+      type: "user_registered";
+      bid_year: number;
+      area: string;
+      initials: string;
+    }
+  | {
+      type: "user_updated";
+      bid_year: number;
+      area: string;
+      initials: string;
+    }
+  | { type: "checkpoint_created"; bid_year: number; area: string }
+  | { type: "rolled_back"; bid_year: number; area: string }
+  | { type: "round_finalized"; bid_year: number; area: string }
+  | { type: "connected"; timestamp: string };
+
+/**
+ * Connection state for backend connectivity.
+ */
+export type ConnectionState =
+  | "connecting"
+  | "connected"
+  | "disconnected"
+  | "error";
