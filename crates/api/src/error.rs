@@ -218,6 +218,14 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
                 "Bid year start date must be in January, but {start_date} is in {month}"
             ),
         },
+        DomainError::InvalidServiceComputationDate { reason } => ApiError::InvalidInput {
+            field: String::from("service_computation_date"),
+            message: format!("Invalid service computation date: {reason}"),
+        },
+        DomainError::DateParseError { date_string, error } => ApiError::InvalidInput {
+            field: String::from("date"),
+            message: format!("Failed to parse date '{date_string}': {error}"),
+        },
     }
 }
 
