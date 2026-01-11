@@ -30,7 +30,8 @@ use zab_bid_api::{
     ApiError, ApiResult, AuthenticatedActor, CreateAreaRequest, CreateBidYearRequest,
     ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListUsersResponse,
     RegisterUserRequest, RegisterUserResponse, Role, authenticate_stub, checkpoint, create_area,
-    create_bid_year, finalize, list_areas, list_bid_years, list_users, register_user, rollback,
+    create_bid_year, finalize, get_current_state, get_historical_state, list_areas, list_bid_years,
+    list_users, register_user, rollback,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear};
@@ -370,6 +371,10 @@ impl From<ApiError> for HttpError {
                 status: StatusCode::BAD_REQUEST,
                 message: err.to_string(),
             },
+            ApiError::ResourceNotFound { .. } => Self {
+                status: StatusCode::NOT_FOUND,
+                message: err.to_string(),
+            },
         }
     }
 }
@@ -589,7 +594,7 @@ async fn handle_list_areas(
     let request: ListAreasRequest = ListAreasRequest {
         bid_year: query.bid_year,
     };
-    let response: ListAreasResponse = list_areas(&metadata, &request);
+    let response: ListAreasResponse = list_areas(&metadata, &request)?;
 
     Ok(Json(ListAreasApiResponse {
         bid_year: response.bid_year,
@@ -614,30 +619,13 @@ async fn handle_list_users(
     let bid_year: BidYear = BidYear::new(query.bid_year);
     let area: Area = Area::new(&query.area);
 
-    // Validate that the bid year and area exist
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    if !metadata.has_bid_year(&bid_year) {
-        return Err(HttpError {
-            status: StatusCode::NOT_FOUND,
-            message: format!("Bid year {} does not exist", query.bid_year),
-        });
-    }
-    if !metadata.has_area(&bid_year, &area) {
-        return Err(HttpError {
-            status: StatusCode::NOT_FOUND,
-            message: format!(
-                "Area '{}' does not exist in bid year {}",
-                query.area, query.bid_year
-            ),
-        });
-    }
-
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
     drop(persistence);
 
-    let response: ListUsersResponse = list_users(&state);
+    let response: ListUsersResponse = list_users(&metadata, &bid_year, &area, &state)?;
 
     let users: Vec<UserInfoResponse> = response
         .users
@@ -928,12 +916,14 @@ async fn handle_get_current_state(
     let area: Area = Area::new(&params.area);
 
     let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
     drop(persistence);
 
-    let response: StateResponse = state_to_response(&state);
+    let validated_state: State = get_current_state(&metadata, &bid_year, &area, state)?;
+    let response: StateResponse = state_to_response(&validated_state);
 
     Ok(Json(response))
 }
@@ -956,10 +946,12 @@ async fn handle_get_historical_state(
     let area: Area = Area::new(&params.area);
 
     let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let state: State = persistence.get_historical_state(&bid_year, &area, &params.timestamp)?;
     drop(persistence);
 
-    let response: StateResponse = state_to_response(&state);
+    let validated_state: State = get_historical_state(&metadata, &bid_year, &area, state)?;
+    let response: StateResponse = state_to_response(&validated_state);
 
     Ok(Json(response))
 }
@@ -1833,10 +1825,10 @@ mod tests {
         let app_state: AppState = create_test_app_state();
         let app: Router = build_router(app_state);
 
-        let area_req: CreateAreaApiRequest = CreateAreaApiRequest {
+        let request: CreateAreaApiRequest = CreateAreaApiRequest {
             actor_id: String::from("admin1"),
             actor_role: String::from("admin"),
-            cause_id: String::from("bootstrap"),
+            cause_id: String::from("test"),
             cause_description: String::from("Create area"),
             bid_year: 2026,
             area_id: String::from("North"),
@@ -1848,19 +1840,41 @@ mod tests {
                     .method("POST")
                     .uri("/areas")
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_string(&area_req).unwrap()))
+                    .body(Body::from(serde_json::to_string(&request).unwrap()))
                     .unwrap(),
             )
             .await
             .unwrap();
 
-        assert_eq!(response.status(), HttpStatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(response.status(), HttpStatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
     async fn test_list_areas_empty() {
         let app_state: AppState = create_test_app_state();
-        let app: Router = build_router(app_state);
+        let app: Router = build_router(app_state.clone());
+
+        // Create bid year first
+        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
+            actor_id: String::from("admin1"),
+            actor_role: String::from("admin"),
+            cause_id: String::from("test"),
+            cause_description: String::from("Create bid year"),
+            year: 2026,
+        };
+
+        let _by_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/bid_years")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&bid_year_req).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
         let response = app
             .oneshot(
@@ -2246,6 +2260,26 @@ mod tests {
                 Request::builder()
                     .method("GET")
                     .uri("/users?bid_year=2026&area=NonExistent")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), HttpStatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_list_areas_nonexistent_bid_year_returns_not_found() {
+        let app_state: AppState = create_test_app_state();
+        let app: Router = build_router(app_state);
+
+        // Try to list areas for a bid year that doesn't exist
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/areas?bid_year=9999")
                     .body(Body::empty())
                     .unwrap(),
             )

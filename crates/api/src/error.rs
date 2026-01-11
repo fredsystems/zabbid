@@ -73,6 +73,13 @@ pub enum ApiError {
         /// A human-readable description of the error.
         message: String,
     },
+    /// A requested resource was not found.
+    ResourceNotFound {
+        /// The type of resource that was not found.
+        resource_type: String,
+        /// A human-readable description of what was not found.
+        message: String,
+    },
 }
 
 impl std::fmt::Display for ApiError {
@@ -92,6 +99,12 @@ impl std::fmt::Display for ApiError {
             }
             Self::InvalidInput { field, message } => {
                 write!(f, "Invalid input for field '{field}': {message}")
+            }
+            Self::ResourceNotFound {
+                resource_type,
+                message,
+            } => {
+                write!(f, "{resource_type} not found: {message}")
             }
         }
     }
@@ -147,13 +160,13 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
             field: String::from("user_type"),
             message: msg,
         },
-        DomainError::BidYearNotFound(year) => ApiError::DomainRuleViolation {
-            rule: String::from("bid_year_exists"),
-            message: format!("Bid year {year} not found"),
+        DomainError::BidYearNotFound(year) => ApiError::ResourceNotFound {
+            resource_type: String::from("Bid year"),
+            message: format!("Bid year {year} does not exist"),
         },
-        DomainError::AreaNotFound { bid_year, area } => ApiError::DomainRuleViolation {
-            rule: String::from("area_exists"),
-            message: format!("Area '{area}' not found in bid year {bid_year}"),
+        DomainError::AreaNotFound { bid_year, area } => ApiError::ResourceNotFound {
+            resource_type: String::from("Area"),
+            message: format!("Area '{area}' does not exist in bid year {bid_year}"),
         },
         DomainError::DuplicateBidYear(year) => ApiError::DomainRuleViolation {
             rule: String::from("unique_bid_year"),
