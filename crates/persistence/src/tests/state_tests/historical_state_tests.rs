@@ -6,7 +6,8 @@
 use crate::SqlitePersistence;
 use crate::error::PersistenceError;
 use crate::tests::{
-    create_test_actor, create_test_cause, create_test_metadata, create_test_seniority_data,
+    create_test_actor, create_test_cause, create_test_metadata, create_test_pay_periods,
+    create_test_seniority_data, create_test_start_date,
 };
 use zab_bid::{Command, State, TransitionResult, apply};
 use zab_bid_audit::AuditEvent;
@@ -18,7 +19,11 @@ fn create_bootstrapped_persistence() -> SqlitePersistence {
     let mut metadata = zab_bid::BootstrapMetadata::new();
 
     // Bootstrap bid year
-    let create_bid_year_cmd: Command = Command::CreateBidYear { year: 2026 };
+    let create_bid_year_cmd: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let bid_year_result = zab_bid::apply_bootstrap(
         &metadata,
         create_bid_year_cmd,

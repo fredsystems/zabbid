@@ -23,7 +23,7 @@ use rusqlite::Connection;
 use std::path::Path;
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_audit::AuditEvent;
-use zab_bid_domain::{Area, BidYear, User};
+use zab_bid_domain::{Area, BidYear, CanonicalBidYear, User};
 
 pub use error::PersistenceError;
 
@@ -246,19 +246,21 @@ impl SqlitePersistence {
         sqlite::get_bootstrap_metadata(&self.conn)
     }
 
-    /// Lists all bid years that have been created.
+    /// Lists all bid years that have been created with their canonical metadata.
     ///
-    /// This queries the canonical `bid_years` table directly.
+    /// This queries the canonical `bid_years` table directly and returns full
+    /// canonical bid year definitions including start date and pay period count.
     ///
     /// # Errors
     ///
-    /// Returns an error if the database cannot be queried.
+    /// Returns an error if the database cannot be queried or if the data cannot
+    /// be reconstructed into valid `CanonicalBidYear` instances.
     ///
     /// # Panics
     ///
     /// Panics if a bid year value from the database cannot be converted to `u16`.
     /// This should never happen in practice as the schema enforces valid ranges.
-    pub fn list_bid_years(&self) -> Result<Vec<BidYear>, PersistenceError> {
+    pub fn list_bid_years(&self) -> Result<Vec<CanonicalBidYear>, PersistenceError> {
         sqlite::list_bid_years(&self.conn)
     }
 

@@ -28,9 +28,9 @@ pub use error::{ApiError, AuthError, translate_core_error, translate_domain_erro
 
 // Re-export public types from request_response module
 pub use request_response::{
-    CreateAreaRequest, CreateAreaResponse, CreateBidYearRequest, CreateBidYearResponse,
-    ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListUsersRequest, ListUsersResponse,
-    RegisterUserRequest, RegisterUserResponse, UserInfo,
+    BidYearInfo, CreateAreaRequest, CreateAreaResponse, CreateBidYearRequest,
+    CreateBidYearResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
+    ListUsersRequest, ListUsersResponse, RegisterUserRequest, RegisterUserResponse, UserInfo,
 };
 
 // Re-export public functions from handlers module

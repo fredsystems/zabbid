@@ -130,6 +130,10 @@ struct CreateBidYearApiRequest {
     cause_description: String,
     /// The year value (e.g., 2026).
     year: u16,
+    /// The start date of the bid year (ISO 8601).
+    start_date: String,
+    /// The number of pay periods (must be 26 or 27).
+    num_pay_periods: u8,
 }
 
 /// API request for creating an area.
@@ -165,11 +169,22 @@ struct ListUsersQuery {
     area: String,
 }
 
+/// Bid year information for API responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BidYearInfoApiResponse {
+    /// The year value.
+    year: u16,
+    /// The start date (ISO 8601).
+    start_date: String,
+    /// The number of pay periods.
+    num_pay_periods: u8,
+}
+
 /// API response for listing bid years.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ListBidYearsApiResponse {
-    /// The list of bid years.
-    bid_years: Vec<u16>,
+    /// The list of bid years with canonical metadata.
+    bid_years: Vec<BidYearInfoApiResponse>,
 }
 
 /// API response for listing areas.
@@ -478,7 +493,21 @@ async fn handle_create_bid_year(
     drop(persistence);
 
     // Build API request
-    let create_request: CreateBidYearRequest = CreateBidYearRequest { year: req.year };
+    // Parse start date from ISO 8601 string
+    let start_date: time::Date = time::Date::parse(
+        &req.start_date,
+        &time::format_description::well_known::Iso8601::DEFAULT,
+    )
+    .map_err(|e| HttpError {
+        status: StatusCode::BAD_REQUEST,
+        message: format!("Invalid start_date format: {e}"),
+    })?;
+
+    let create_request: CreateBidYearRequest = CreateBidYearRequest {
+        year: req.year,
+        start_date,
+        num_pay_periods: req.num_pay_periods,
+    };
 
     // Execute command via API
     let bootstrap_result: BootstrapResult =
@@ -572,13 +601,25 @@ async fn handle_list_bid_years(
     info!("Handling list_bid_years request");
 
     let persistence = app_state.persistence.lock().await;
-    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
+        persistence.list_bid_years()?;
     drop(persistence);
 
-    let response: ListBidYearsResponse = list_bid_years(&metadata);
+    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years);
+
+    // Convert to API response format with ISO 8601 date strings
+    let api_bid_years: Vec<BidYearInfoApiResponse> = response
+        .bid_years
+        .iter()
+        .map(|info| BidYearInfoApiResponse {
+            year: info.year,
+            start_date: info.start_date.to_string(),
+            num_pay_periods: info.num_pay_periods,
+        })
+        .collect();
 
     Ok(Json(ListBidYearsApiResponse {
-        bid_years: response.bid_years,
+        bid_years: api_bid_years,
     }))
 }
 
@@ -1107,19 +1148,35 @@ mod tests {
         }
     }
 
+    /// Helper to create a test `CreateBidYearApiRequest` with canonical metadata.
+    fn create_test_bid_year_request(
+        actor_id: &str,
+        role: &str,
+        year: u16,
+    ) -> CreateBidYearApiRequest {
+        // Use January 4, 2026 as test start date (a Saturday)
+        let start_date = time::Date::from_calendar_date(i32::from(year), time::Month::January, 4)
+            .expect("Valid test date");
+
+        CreateBidYearApiRequest {
+            actor_id: actor_id.to_string(),
+            actor_role: role.to_string(),
+            cause_id: String::from("bootstrap"),
+            cause_description: String::from("Create bid year"),
+            year,
+            start_date: start_date.to_string(),
+            num_pay_periods: 26,
+        }
+    }
+
     #[tokio::test]
     async fn test_register_user_as_admin_succeeds() {
         let app_state: AppState = create_test_app_state();
         let app: Router = build_router(app_state.clone());
 
         // Bootstrap: Create bid year
-        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
-            actor_id: String::from("admin1"),
-            actor_role: String::from("admin"),
-            cause_id: String::from("bootstrap"),
-            cause_description: String::from("Create bid year"),
-            year: 2026,
-        };
+        let bid_year_req: CreateBidYearApiRequest =
+            create_test_bid_year_request("admin1", "admin", 2026);
         app.clone()
             .oneshot(
                 Request::builder()
@@ -1261,13 +1318,8 @@ mod tests {
         let app: Router = build_router(app_state);
 
         // Bootstrap: Create bid year
-        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
-            actor_id: String::from("admin1"),
-            actor_role: String::from("admin"),
-            cause_id: String::from("bootstrap"),
-            cause_description: String::from("Create bid year"),
-            year: 2026,
-        };
+        let bid_year_req: CreateBidYearApiRequest =
+            create_test_bid_year_request("admin1", "admin", 2026);
         app.clone()
             .oneshot(
                 Request::builder()
@@ -1354,13 +1406,8 @@ mod tests {
         let app: Router = build_router(app_state);
 
         // Bootstrap: Create bid year
-        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
-            actor_id: String::from("admin1"),
-            actor_role: String::from("admin"),
-            cause_id: String::from("bootstrap"),
-            cause_description: String::from("Create bid year"),
-            year: 2026,
-        };
+        let bid_year_req: CreateBidYearApiRequest =
+            create_test_bid_year_request("admin1", "admin", 2026);
         app.clone()
             .oneshot(
                 Request::builder()
@@ -1509,13 +1556,8 @@ mod tests {
         let app: Router = build_router(app_state.clone());
 
         // Bootstrap: Create bid year
-        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
-            actor_id: String::from("admin1"),
-            actor_role: String::from("admin"),
-            cause_id: String::from("bootstrap"),
-            cause_description: String::from("Create bid year"),
-            year: 2026,
-        };
+        let bid_year_req: CreateBidYearApiRequest =
+            create_test_bid_year_request("admin1", "admin", 2026);
         app.clone()
             .oneshot(
                 Request::builder()
@@ -1624,13 +1666,8 @@ mod tests {
         let app_state: AppState = create_test_app_state();
         let app: Router = build_router(app_state);
 
-        let req_body: CreateBidYearApiRequest = CreateBidYearApiRequest {
-            actor_id: String::from("admin1"),
-            actor_role: String::from("admin"),
-            cause_id: String::from("bootstrap"),
-            cause_description: String::from("Create initial bid year"),
-            year: 2026,
-        };
+        let req_body: CreateBidYearApiRequest =
+            create_test_bid_year_request("admin1", "admin", 2026);
 
         let response = app
             .oneshot(
@@ -1660,13 +1697,8 @@ mod tests {
         let app_state: AppState = create_test_app_state();
         let app: Router = build_router(app_state);
 
-        let req_body: CreateBidYearApiRequest = CreateBidYearApiRequest {
-            actor_id: String::from("bidder1"),
-            actor_role: String::from("bidder"),
-            cause_id: String::from("bootstrap"),
-            cause_description: String::from("Create initial bid year"),
-            year: 2026,
-        };
+        let req_body: CreateBidYearApiRequest =
+            create_test_bid_year_request("bidder1", "bidder", 2026);
 
         let response = app
             .oneshot(
@@ -1715,13 +1747,8 @@ mod tests {
         let app: Router = build_router(app_state);
 
         // 1. Create a bid year
-        let create_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
-            actor_id: String::from("admin1"),
-            actor_role: String::from("admin"),
-            cause_id: String::from("bootstrap"),
-            cause_description: String::from("Create initial bid year"),
-            year: 2026,
-        };
+        let create_req: CreateBidYearApiRequest =
+            create_test_bid_year_request("admin1", "admin", 2026);
 
         let create_response = app
             .clone()
@@ -1759,7 +1786,7 @@ mod tests {
         let list_result: ListBidYearsApiResponse = serde_json::from_slice(&body_bytes).unwrap();
 
         assert_eq!(list_result.bid_years.len(), 1);
-        assert_eq!(list_result.bid_years[0], 2026);
+        assert_eq!(list_result.bid_years[0].year, 2026);
     }
 
     #[tokio::test]
@@ -1768,13 +1795,8 @@ mod tests {
         let app: Router = build_router(app_state);
 
         // First create a bid year
-        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
-            actor_id: String::from("admin1"),
-            actor_role: String::from("admin"),
-            cause_id: String::from("bootstrap"),
-            cause_description: String::from("Create bid year"),
-            year: 2026,
-        };
+        let bid_year_req: CreateBidYearApiRequest =
+            create_test_bid_year_request("admin1", "admin", 2026);
 
         let by_response = app
             .clone()
@@ -1859,13 +1881,8 @@ mod tests {
         let app: Router = build_router(app_state.clone());
 
         // Create bid year first
-        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
-            actor_id: String::from("admin1"),
-            actor_role: String::from("admin"),
-            cause_id: String::from("test"),
-            cause_description: String::from("Create bid year"),
-            year: 2026,
-        };
+        let bid_year_req: CreateBidYearApiRequest =
+            create_test_bid_year_request("admin1", "admin", 2026);
 
         let _by_response = app
             .clone()
@@ -1907,13 +1924,9 @@ mod tests {
         let app: Router = build_router(app_state);
 
         // Create bid year
-        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
-            actor_id: String::from("admin1"),
-            actor_role: String::from("admin"),
-            cause_id: String::from("bootstrap"),
-            cause_description: String::from("Create bid year"),
-            year: 2026,
-        };
+        // First create a bid year
+        let bid_year_req: CreateBidYearApiRequest =
+            create_test_bid_year_request("admin1", "admin", 2026);
 
         app.clone()
             .oneshot(
@@ -1978,13 +1991,8 @@ mod tests {
         let app: Router = build_router(app_state);
 
         // Create bid year
-        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
-            actor_id: String::from("admin1"),
-            actor_role: String::from("admin"),
-            cause_id: String::from("test"),
-            cause_description: String::from("Create bid year"),
-            year: 2026,
-        };
+        let bid_year_req: CreateBidYearApiRequest =
+            create_test_bid_year_request("admin1", "admin", 2026);
 
         let _by_response = app
             .clone()
@@ -2051,13 +2059,9 @@ mod tests {
         let app: Router = build_router(app_state);
 
         // 1. Create bid year
-        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
-            actor_id: String::from("admin1"),
-            actor_role: String::from("admin"),
-            cause_id: String::from("bootstrap"),
-            cause_description: String::from("Create bid year"),
-            year: 2026,
-        };
+        // First create a bid year
+        let bid_year_req: CreateBidYearApiRequest =
+            create_test_bid_year_request("admin1", "admin", 2026);
 
         let by_response = app
             .clone()
@@ -2237,13 +2241,8 @@ mod tests {
         let app: Router = build_router(app_state.clone());
 
         // Create bid year but no area
-        let bid_year_req: CreateBidYearApiRequest = CreateBidYearApiRequest {
-            actor_id: String::from("admin1"),
-            actor_role: String::from("admin"),
-            cause_id: String::from("test"),
-            cause_description: String::from("Create bid year"),
-            year: 2026,
-        };
+        let bid_year_req: CreateBidYearApiRequest =
+            create_test_bid_year_request("admin1", "admin", 2026);
 
         let _by_response = app
             .clone()

@@ -24,7 +24,9 @@ pub fn initialize_schema(conn: &Connection) -> Result<(), PersistenceError> {
         "
         -- Canonical state tables (Phase 7)
         CREATE TABLE IF NOT EXISTS bid_years (
-            year INTEGER PRIMARY KEY NOT NULL
+            year INTEGER PRIMARY KEY NOT NULL,
+            start_date TEXT NOT NULL,
+            num_pay_periods INTEGER NOT NULL CHECK(num_pay_periods IN (26, 27))
         );
 
         CREATE TABLE IF NOT EXISTS areas (

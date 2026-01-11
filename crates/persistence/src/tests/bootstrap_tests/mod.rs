@@ -5,13 +5,14 @@
 
 use crate::SqlitePersistence;
 use crate::tests::{
-    create_test_actor, create_test_cause, create_test_metadata, create_test_seniority_data,
+    create_test_actor, create_test_cause, create_test_metadata, create_test_pay_periods,
+    create_test_seniority_data, create_test_start_date, create_test_start_date_for_year,
 };
 use zab_bid::{
     BootstrapMetadata, BootstrapResult, Command, State, TransitionResult, apply, apply_bootstrap,
 };
 use zab_bid_audit::AuditEvent;
-use zab_bid_domain::{Area, BidYear, Crew, Initials, User, UserType};
+use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Crew, Initials, User, UserType};
 
 /// Creates a fully bootstrapped test persistence instance with bid year 2026 and area "North".
 fn create_bootstrapped_persistence() -> SqlitePersistence {
@@ -19,7 +20,11 @@ fn create_bootstrapped_persistence() -> SqlitePersistence {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Bootstrap bid year
-    let create_bid_year_cmd: Command = Command::CreateBidYear { year: 2026 };
+    let create_bid_year_cmd: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let bid_year_result: BootstrapResult = apply_bootstrap(
         &metadata,
         create_bid_year_cmd,
@@ -52,7 +57,11 @@ fn test_persist_bootstrap_bid_year() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
 
-    let command: Command = Command::CreateBidYear { year: 2026 };
+    let command: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result: BootstrapResult =
         apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause()).unwrap();
 
@@ -71,7 +80,11 @@ fn test_persist_bootstrap_area() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // First create the bid year
-    let create_bid_year_cmd: Command = Command::CreateBidYear { year: 2026 };
+    let create_bid_year_cmd: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let bid_year_result: BootstrapResult = apply_bootstrap(
         &metadata,
         create_bid_year_cmd,
@@ -113,7 +126,11 @@ fn test_get_bootstrap_metadata_with_bid_year() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
 
-    let command: Command = Command::CreateBidYear { year: 2026 };
+    let command: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result: BootstrapResult =
         apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause()).unwrap();
 
@@ -132,7 +149,11 @@ fn test_get_bootstrap_metadata_with_multiple_bid_years() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create first bid year
-    let command1: Command = Command::CreateBidYear { year: 2026 };
+    let command1: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
         command1,
@@ -144,7 +165,11 @@ fn test_get_bootstrap_metadata_with_multiple_bid_years() {
     metadata = result1.new_metadata;
 
     // Create second bid year
-    let command2: Command = Command::CreateBidYear { year: 2027 };
+    let command2: Command = Command::CreateBidYear {
+        year: 2027,
+        start_date: create_test_start_date_for_year(2027),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result2: BootstrapResult = apply_bootstrap(
         &metadata,
         command2,
@@ -167,7 +192,11 @@ fn test_get_bootstrap_metadata_with_areas() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create bid year
-    let command1: Command = Command::CreateBidYear { year: 2026 };
+    let command1: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
         command1,
@@ -221,7 +250,11 @@ fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create bid year and area
-    let command1: Command = Command::CreateBidYear { year: 2026 };
+    let command1: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
         command1,
@@ -276,7 +309,7 @@ fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
 #[test]
 fn test_list_bid_years_empty() {
     let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
-    let bid_years: Vec<BidYear> = persistence.list_bid_years().unwrap();
+    let bid_years: Vec<CanonicalBidYear> = persistence.list_bid_years().unwrap();
 
     assert_eq!(bid_years.len(), 0);
 }
@@ -287,7 +320,11 @@ fn test_list_bid_years() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create first bid year
-    let command1: Command = Command::CreateBidYear { year: 2026 };
+    let command1: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
         command1,
@@ -299,7 +336,11 @@ fn test_list_bid_years() {
     metadata = result1.new_metadata;
 
     // Create second bid year
-    let command2: Command = Command::CreateBidYear { year: 2027 };
+    let command2: Command = Command::CreateBidYear {
+        year: 2027,
+        start_date: create_test_start_date_for_year(2027),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result2: BootstrapResult = apply_bootstrap(
         &metadata,
         command2,
@@ -309,7 +350,7 @@ fn test_list_bid_years() {
     .unwrap();
     persistence.persist_bootstrap(&result2).unwrap();
 
-    let bid_years: Vec<BidYear> = persistence.list_bid_years().unwrap();
+    let bid_years: Vec<CanonicalBidYear> = persistence.list_bid_years().unwrap();
 
     assert_eq!(bid_years.len(), 2);
     assert!(bid_years.iter().any(|by| by.year() == 2026));
@@ -330,7 +371,11 @@ fn test_list_areas_for_bid_year() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create bid year
-    let command1: Command = Command::CreateBidYear { year: 2026 };
+    let command1: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
         command1,
@@ -382,7 +427,11 @@ fn test_list_areas_isolated_by_bid_year() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create two bid years
-    let command1: Command = Command::CreateBidYear { year: 2026 };
+    let command1: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
         command1,
@@ -393,7 +442,11 @@ fn test_list_areas_isolated_by_bid_year() {
     persistence.persist_bootstrap(&result1).unwrap();
     metadata = result1.new_metadata;
 
-    let command2: Command = Command::CreateBidYear { year: 2027 };
+    let command2: Command = Command::CreateBidYear {
+        year: 2027,
+        start_date: create_test_start_date_for_year(2027),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result2: BootstrapResult = apply_bootstrap(
         &metadata,
         command2,
@@ -449,7 +502,11 @@ fn test_bootstrap_persistence_is_deterministic() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create bid year and area
-    let command1: Command = Command::CreateBidYear { year: 2026 };
+    let command1: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
         command1,
@@ -489,7 +546,11 @@ fn test_bootstrap_read_operations_do_not_mutate() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
 
-    let command: Command = Command::CreateBidYear { year: 2026 };
+    let command: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result: BootstrapResult =
         apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause()).unwrap();
     persistence.persist_bootstrap(&result).unwrap();
@@ -502,10 +563,10 @@ fn test_bootstrap_read_operations_do_not_mutate() {
 
     // Perform multiple reads
     let _metadata1: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
-    let _bid_years1: Vec<BidYear> = persistence.list_bid_years().unwrap();
+    let _bid_years1: Vec<CanonicalBidYear> = persistence.list_bid_years().unwrap();
     let _areas1: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
     let _metadata2: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
-    let _bid_years2: Vec<BidYear> = persistence.list_bid_years().unwrap();
+    let _bid_years2: Vec<CanonicalBidYear> = persistence.list_bid_years().unwrap();
     let _areas2: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
 
     // Verify event count unchanged
@@ -523,7 +584,11 @@ fn test_create_area_creates_initial_snapshot() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create bid year
-    let command1: Command = Command::CreateBidYear { year: 2026 };
+    let command1: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
         command1,

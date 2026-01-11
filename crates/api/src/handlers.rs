@@ -10,12 +10,12 @@ use zab_bid::{
     validate_area_exists, validate_bid_year_exists,
 };
 use zab_bid_audit::{Actor, AuditEvent, Cause};
-use zab_bid_domain::{Area, BidYear, Crew, Initials, SeniorityData, UserType};
+use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Crew, Initials, SeniorityData, UserType};
 
 use crate::auth::{AuthenticatedActor, AuthorizationService, Role};
 use crate::error::{ApiError, translate_core_error, translate_domain_error};
 use crate::request_response::{
-    CreateAreaRequest, CreateBidYearRequest, ListAreasRequest, ListAreasResponse,
+    BidYearInfo, CreateAreaRequest, CreateBidYearRequest, ListAreasRequest, ListAreasResponse,
     ListBidYearsResponse, ListUsersResponse, RegisterUserRequest, RegisterUserResponse, UserInfo,
 };
 
@@ -309,8 +309,12 @@ pub fn create_bid_year(
     // Convert authenticated actor to audit actor for attribution
     let actor: Actor = authenticated_actor.to_audit_actor();
 
-    // Create command
-    let command: Command = Command::CreateBidYear { year: request.year };
+    // Create command with canonical metadata
+    let command: Command = Command::CreateBidYear {
+        year: request.year,
+        start_date: request.start_date,
+        num_pay_periods: request.num_pay_periods,
+    };
 
     // Apply command via core bootstrap
     let bootstrap_result: BootstrapResult =
@@ -375,21 +379,28 @@ pub fn create_area(
     Ok(bootstrap_result)
 }
 
-/// Lists all bid years.
+/// Lists all bid years with their canonical metadata.
 ///
 /// This operation never fails and requires no authorization.
 /// Returns an empty list if no bid years have been created.
 ///
 /// # Arguments
 ///
-/// * `metadata` - The current bootstrap metadata
+/// * `canonical_bid_years` - The list of canonical bid years from persistence
 ///
 /// # Returns
 ///
-/// A response containing all bid years.
+/// A response containing all bid years with canonical metadata.
 #[must_use]
-pub fn list_bid_years(metadata: &BootstrapMetadata) -> ListBidYearsResponse {
-    let bid_years: Vec<u16> = metadata.bid_years.iter().map(BidYear::year).collect();
+pub fn list_bid_years(canonical_bid_years: &[CanonicalBidYear]) -> ListBidYearsResponse {
+    let bid_years: Vec<BidYearInfo> = canonical_bid_years
+        .iter()
+        .map(|c| BidYearInfo {
+            year: c.year(),
+            start_date: c.start_date(),
+            num_pay_periods: c.num_pay_periods(),
+        })
+        .collect();
 
     ListBidYearsResponse { bid_years }
 }

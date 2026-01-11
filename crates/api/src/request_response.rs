@@ -5,11 +5,17 @@
 
 //! API request and response data transfer objects.
 
-/// API request to create a new bid year.
+use time::Date;
+
+/// API request to create a new bid year with canonical metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateBidYearRequest {
     /// The year value (e.g., 2026).
     pub year: u16,
+    /// The start date of the bid year.
+    pub start_date: Date,
+    /// The number of pay periods (must be 26 or 27).
+    pub num_pay_periods: u8,
 }
 
 /// API response for a successful bid year creation.
@@ -17,6 +23,10 @@ pub struct CreateBidYearRequest {
 pub struct CreateBidYearResponse {
     /// The created bid year.
     pub year: u16,
+    /// The start date of the bid year.
+    pub start_date: Date,
+    /// The number of pay periods.
+    pub num_pay_periods: u8,
     /// A success message.
     pub message: String,
 }
@@ -85,11 +95,22 @@ pub struct RegisterUserResponse {
     pub message: String,
 }
 
+/// Canonical bid year information.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BidYearInfo {
+    /// The year value.
+    pub year: u16,
+    /// The start date of the bid year.
+    pub start_date: Date,
+    /// The number of pay periods.
+    pub num_pay_periods: u8,
+}
+
 /// API response for listing bid years.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListBidYearsResponse {
-    /// The list of bid years.
-    pub bid_years: Vec<u16>,
+    /// The list of bid years with canonical metadata.
+    pub bid_years: Vec<BidYearInfo>,
 }
 
 /// API request to list areas for a bid year.
