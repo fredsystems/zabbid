@@ -8,7 +8,7 @@
 use time::Date;
 use zab_bid::BootstrapMetadata;
 use zab_bid_audit::Cause;
-use zab_bid_domain::{Area, BidYear};
+use zab_bid_domain::{Area, BidYear, CanonicalBidYear};
 
 use crate::{AuthenticatedActor, RegisterUserRequest, Role};
 
@@ -83,4 +83,12 @@ pub fn create_test_start_date_for_year(year: i32) -> Date {
 /// Returns a valid test pay period count (26).
 pub fn create_test_pay_periods() -> u8 {
     26
+}
+
+/// Creates a test canonical bid year.
+///
+/// Returns a canonical bid year for 2026 with standard test parameters.
+pub fn create_test_canonical_bid_year() -> CanonicalBidYear {
+    CanonicalBidYear::new(2026, create_test_start_date(), create_test_pay_periods())
+        .expect("Valid test canonical bid year")
 }

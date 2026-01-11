@@ -27,11 +27,12 @@ use tokio::sync::Mutex;
 use tracing::{error, info};
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_api::{
-    ApiError, ApiResult, AuthenticatedActor, CreateAreaRequest, CreateBidYearRequest,
-    GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
-    ListUsersResponse, RegisterUserRequest, RegisterUserResponse, Role, authenticate_stub,
-    checkpoint, create_area, create_bid_year, finalize, get_current_state, get_historical_state,
-    get_leave_availability, list_areas, list_bid_years, list_users, register_user, rollback,
+    ApiError, ApiResult, AuthenticatedActor, BootstrapStatusResponse, CreateAreaRequest,
+    CreateBidYearRequest, GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse,
+    ListBidYearsResponse, ListUsersResponse, RegisterUserRequest, RegisterUserResponse, Role,
+    authenticate_stub, checkpoint, create_area, create_bid_year, finalize, get_bootstrap_status,
+    get_current_state, get_historical_state, get_leave_availability, list_areas, list_bid_years,
+    list_users, register_user, rollback,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials};
@@ -178,8 +179,12 @@ struct BidYearInfoApiResponse {
     start_date: String,
     /// The number of pay periods.
     num_pay_periods: u8,
-    /// The derived end date (ISO 8601).
+    /// The end date (ISO 8601).
     end_date: String,
+    /// The number of areas in this bid year.
+    area_count: usize,
+    /// The total number of users across all areas in this bid year.
+    total_user_count: usize,
 }
 
 /// API response for listing bid years.
@@ -194,8 +199,17 @@ struct ListBidYearsApiResponse {
 struct ListAreasApiResponse {
     /// The bid year.
     bid_year: u16,
-    /// The list of area identifiers.
-    areas: Vec<String>,
+    /// The list of areas with metadata.
+    areas: Vec<AreaInfoResponse>,
+}
+
+/// Area information response for API.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct AreaInfoResponse {
+    /// The area identifier.
+    area_id: String,
+    /// The number of users in this area.
+    user_count: usize,
 }
 
 /// API response for listing users.
@@ -218,6 +232,20 @@ struct UserInfoResponse {
     name: String,
     /// The user's crew (optional).
     crew: Option<u8>,
+    /// The user's type classification (CPC, CPC-IT, Dev-R, Dev-D).
+    user_type: String,
+    /// Total hours earned (from Phase 9, post-rounding).
+    earned_hours: u16,
+    /// Total days earned.
+    earned_days: u16,
+    /// Remaining hours available (may be negative if overdrawn).
+    remaining_hours: i32,
+    /// Remaining days available (may be negative if overdrawn).
+    remaining_days: i32,
+    /// Whether all leave has been exhausted.
+    is_exhausted: bool,
+    /// Whether leave balance is overdrawn.
+    is_overdrawn: bool,
 }
 
 /// Query parameters for leave availability.
@@ -641,19 +669,35 @@ async fn handle_list_bid_years(
     let persistence = app_state.persistence.lock().await;
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
         persistence.list_bid_years()?;
+
+    // Get aggregate counts
+    let area_counts: Vec<(u16, usize)> = persistence.count_areas_by_bid_year()?;
+    let user_counts: Vec<(u16, usize)> = persistence.count_users_by_bid_year()?;
     drop(persistence);
 
     let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years)?;
 
-    // Convert to API response format with ISO 8601 date strings
+    // Convert to API response format with ISO 8601 date strings and counts
     let api_bid_years: Vec<BidYearInfoApiResponse> = response
         .bid_years
         .iter()
-        .map(|info| BidYearInfoApiResponse {
-            year: info.year,
-            start_date: info.start_date.to_string(),
-            num_pay_periods: info.num_pay_periods,
-            end_date: info.end_date.to_string(),
+        .map(|info| {
+            let area_count: usize = area_counts
+                .iter()
+                .find(|(year, _)| *year == info.year)
+                .map_or(0, |(_, count)| *count);
+            let total_user_count: usize = user_counts
+                .iter()
+                .find(|(year, _)| *year == info.year)
+                .map_or(0, |(_, count)| *count);
+            BidYearInfoApiResponse {
+                year: info.year,
+                start_date: info.start_date.to_string(),
+                num_pay_periods: info.num_pay_periods,
+                end_date: info.end_date.to_string(),
+                area_count,
+                total_user_count,
+            }
         })
         .collect();
 
@@ -673,6 +717,10 @@ async fn handle_list_areas(
 
     let persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    let bid_year: BidYear = BidYear::new(query.bid_year);
+
+    // Get user counts per area
+    let user_counts: Vec<(String, usize)> = persistence.count_users_by_area(&bid_year)?;
     drop(persistence);
 
     let request: ListAreasRequest = ListAreasRequest {
@@ -680,9 +728,25 @@ async fn handle_list_areas(
     };
     let response: ListAreasResponse = list_areas(&metadata, &request)?;
 
+    // Build area info with user counts
+    let areas_with_counts: Vec<AreaInfoResponse> = response
+        .areas
+        .into_iter()
+        .map(|area_info| {
+            let user_count: usize = user_counts
+                .iter()
+                .find(|(area_id, _)| area_id == &area_info.area_id)
+                .map_or(0, |(_, count)| *count);
+            AreaInfoResponse {
+                area_id: area_info.area_id,
+                user_count,
+            }
+        })
+        .collect();
+
     Ok(Json(ListAreasApiResponse {
         bid_year: response.bid_year,
-        areas: response.areas,
+        areas: areas_with_counts,
     }))
 }
 
@@ -704,12 +768,14 @@ async fn handle_list_users(
     let area: Area = Area::new(&query.area);
 
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    let canonical_bid_years: Vec<CanonicalBidYear> = persistence.list_bid_years()?;
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
     drop(persistence);
 
-    let response: ListUsersResponse = list_users(&metadata, &bid_year, &area, &state)?;
+    let response: ListUsersResponse =
+        list_users(&metadata, &canonical_bid_years, &bid_year, &area, &state)?;
 
     let users: Vec<UserInfoResponse> = response
         .users
@@ -718,6 +784,13 @@ async fn handle_list_users(
             initials: u.initials,
             name: u.name,
             crew: u.crew,
+            user_type: u.user_type,
+            earned_hours: u.earned_hours,
+            earned_days: u.earned_days,
+            remaining_hours: u.remaining_hours,
+            remaining_days: u.remaining_days,
+            is_exhausted: u.is_exhausted,
+            is_overdrawn: u.is_overdrawn,
         })
         .collect();
 
@@ -1135,6 +1208,32 @@ async fn handle_get_audit_event(
     Ok(Json(response))
 }
 
+/// Handler for GET `/bootstrap/status` endpoint.
+///
+/// Returns a comprehensive bootstrap status summary.
+async fn handle_get_bootstrap_status(
+    AxumState(app_state): AxumState<AppState>,
+) -> Result<Json<BootstrapStatusResponse>, HttpError> {
+    info!("Handling get_bootstrap_status request");
+
+    let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    let area_counts: Vec<(u16, usize)> = persistence.count_areas_by_bid_year()?;
+    let user_counts_by_year: Vec<(u16, usize)> = persistence.count_users_by_bid_year()?;
+    let user_counts_by_area: Vec<(u16, String, usize)> =
+        persistence.count_users_by_bid_year_and_area()?;
+    drop(persistence);
+
+    let response: BootstrapStatusResponse = get_bootstrap_status(
+        &metadata,
+        &area_counts,
+        &user_counts_by_year,
+        &user_counts_by_area,
+    )?;
+
+    Ok(Json(response))
+}
+
 /// Builds the application router with all endpoints.
 fn build_router(app_state: AppState) -> Router {
     Router::new()
@@ -1152,6 +1251,7 @@ fn build_router(app_state: AppState) -> Router {
         .route("/state/historical", get(handle_get_historical_state))
         .route("/audit/timeline", get(handle_get_audit_timeline))
         .route("/audit/event/{event_id}", get(handle_get_audit_event))
+        .route("/bootstrap/status", get(handle_get_bootstrap_status))
         .with_state(app_state)
 }
 
@@ -2074,7 +2174,8 @@ mod tests {
         let list_result: ListAreasApiResponse = serde_json::from_slice(&body_bytes).unwrap();
 
         assert_eq!(list_result.areas.len(), 1);
-        assert_eq!(list_result.areas[0], "NORTH");
+        assert_eq!(list_result.areas[0].area_id, "NORTH");
+        assert_eq!(list_result.areas[0].user_count, 0);
     }
 
     #[tokio::test]

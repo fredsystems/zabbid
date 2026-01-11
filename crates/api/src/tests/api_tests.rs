@@ -18,9 +18,9 @@ use crate::{
 };
 
 use super::helpers::{
-    create_test_admin, create_test_bidder, create_test_cause, create_test_metadata,
-    create_test_pay_periods, create_test_start_date, create_test_start_date_for_year,
-    create_valid_request,
+    create_test_admin, create_test_bidder, create_test_canonical_bid_year, create_test_cause,
+    create_test_metadata, create_test_pay_periods, create_test_start_date,
+    create_test_start_date_for_year, create_valid_request,
 };
 
 // ============================================================================
@@ -938,8 +938,18 @@ fn test_list_areas_for_bid_year() {
 
     assert_eq!(response.bid_year, 2026);
     assert_eq!(response.areas.len(), 2);
-    assert!(response.areas.contains(&String::from("NORTH")));
-    assert!(response.areas.contains(&String::from("SOUTH")));
+    assert!(
+        response
+            .areas
+            .iter()
+            .any(|a| a.area_id == "NORTH" && a.user_count == 0)
+    );
+    assert!(
+        response
+            .areas
+            .iter()
+            .any(|a| a.area_id == "SOUTH" && a.user_count == 0)
+    );
 }
 
 #[test]
@@ -958,13 +968,15 @@ fn test_list_areas_isolated_by_bid_year() {
     let response_2026: ListAreasResponse = list_areas(&metadata, &request_2026).unwrap();
 
     assert_eq!(response_2026.areas.len(), 1);
-    assert_eq!(response_2026.areas[0], "NORTH");
+    assert_eq!(response_2026.areas[0].area_id, "NORTH");
+    assert_eq!(response_2026.areas[0].user_count, 0);
 
     let request_2027: ListAreasRequest = ListAreasRequest { bid_year: 2027 };
     let response_2027: ListAreasResponse = list_areas(&metadata, &request_2027).unwrap();
 
     assert_eq!(response_2027.areas.len(), 1);
-    assert_eq!(response_2027.areas[0], "SOUTH");
+    assert_eq!(response_2027.areas[0].area_id, "SOUTH");
+    assert_eq!(response_2027.areas[0].user_count, 0);
 }
 
 #[test]
@@ -996,10 +1008,13 @@ fn test_list_users_empty() {
         .areas
         .push((BidYear::new(2026), Area::new("North")));
 
+    let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
+        vec![create_test_canonical_bid_year()];
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
     let state: State = State::new(bid_year.clone(), area.clone());
-    let response: ListUsersResponse = list_users(&metadata, &bid_year, &area, &state).unwrap();
+    let response: ListUsersResponse =
+        list_users(&metadata, &canonical_bid_years, &bid_year, &area, &state).unwrap();
 
     assert_eq!(response.bid_year, 2026);
     assert_eq!(response.area, "NORTH");
@@ -1054,8 +1069,16 @@ fn test_list_users_with_users() {
     assert!(result2.is_ok());
 
     let final_state: State = result2.unwrap().new_state;
-    let response: ListUsersResponse =
-        list_users(&metadata, &bid_year, &area, &final_state).unwrap();
+    let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
+        vec![create_test_canonical_bid_year()];
+    let response: ListUsersResponse = list_users(
+        &metadata,
+        &canonical_bid_years,
+        &bid_year,
+        &area,
+        &final_state,
+    )
+    .unwrap();
 
     assert_eq!(response.bid_year, 2026);
     assert_eq!(response.area, "NORTH");
@@ -1064,10 +1087,22 @@ fn test_list_users_with_users() {
     let ab_user = response.users.iter().find(|u| u.initials == "AB").unwrap();
     assert_eq!(ab_user.name, "Alice Brown");
     assert_eq!(ab_user.crew, Some(1));
+    assert_eq!(ab_user.user_type, "CPC");
+    assert!(ab_user.earned_hours > 0);
+    assert!(ab_user.earned_days > 0);
+    assert_eq!(ab_user.remaining_hours, i32::from(ab_user.earned_hours));
+    assert!(!ab_user.is_exhausted);
+    assert!(!ab_user.is_overdrawn);
 
     let cd_user = response.users.iter().find(|u| u.initials == "CD").unwrap();
     assert_eq!(cd_user.name, "Charlie Davis");
     assert_eq!(cd_user.crew, Some(2));
+    assert_eq!(cd_user.user_type, "CPC");
+    assert!(cd_user.earned_hours > 0);
+    assert!(cd_user.earned_days > 0);
+    assert_eq!(cd_user.remaining_hours, i32::from(cd_user.earned_hours));
+    assert!(!cd_user.is_exhausted);
+    assert!(!cd_user.is_overdrawn);
 }
 
 #[test]
@@ -1098,23 +1133,35 @@ fn test_list_users_with_no_crew() {
     assert!(result.is_ok());
 
     let final_state: State = result.unwrap().new_state;
-    let response: ListUsersResponse =
-        list_users(&metadata, &bid_year, &area, &final_state).unwrap();
+    let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
+        vec![create_test_canonical_bid_year()];
+    let response: ListUsersResponse = list_users(
+        &metadata,
+        &canonical_bid_years,
+        &bid_year,
+        &area,
+        &final_state,
+    )
+    .unwrap();
 
     assert_eq!(response.users.len(), 1);
     assert_eq!(response.users[0].initials, "EF");
     assert_eq!(response.users[0].name, "Eve Foster");
     assert_eq!(response.users[0].crew, None);
+    assert_eq!(response.users[0].user_type, "Dev-R");
+    assert!(response.users[0].earned_hours > 0);
+    assert!(!response.users[0].is_exhausted);
 }
 
 #[test]
 fn test_list_users_nonexistent_bid_year() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> = vec![];
     let bid_year: BidYear = BidYear::new(9999);
     let area: Area = Area::new("North");
     let state: State = State::new(bid_year.clone(), area.clone());
 
-    let result = list_users(&metadata, &bid_year, &area, &state);
+    let result = list_users(&metadata, &canonical_bid_years, &bid_year, &area, &state);
 
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1135,11 +1182,13 @@ fn test_list_users_nonexistent_area() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
     metadata.bid_years.push(BidYear::new(2026));
 
+    let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
+        vec![create_test_canonical_bid_year()];
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("NonExistent");
     let state: State = State::new(bid_year.clone(), area.clone());
 
-    let result = list_users(&metadata, &bid_year, &area, &state);
+    let result = list_users(&metadata, &canonical_bid_years, &bid_year, &area, &state);
 
     assert!(result.is_err());
     let err = result.unwrap_err();

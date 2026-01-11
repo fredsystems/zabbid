@@ -133,14 +133,15 @@ ENDPOINTS: Sequence[Endpoint] = (
     Endpoint("5", "Register User", "POST", "/register_user"),
     Endpoint("6", "List Users", "GET", "/users"),
     Endpoint("7", "Leave Availability", "GET", "/leave/availability"),
-    Endpoint("8", "Checkpoint", "POST", "/checkpoint"),
-    Endpoint("9", "Finalize", "POST", "/finalize"),
-    Endpoint("10", "Rollback", "POST", "/rollback"),
-    Endpoint("11", "Current State", "GET", "/state/current"),
-    Endpoint("12", "Historical State", "GET", "/state/historical"),
-    Endpoint("13", "Audit Timeline", "GET", "/audit/timeline"),
+    Endpoint("8", "Bootstrap Status", "GET", "/bootstrap/status"),
+    Endpoint("9", "Checkpoint", "POST", "/checkpoint"),
+    Endpoint("10", "Finalize", "POST", "/finalize"),
+    Endpoint("11", "Rollback", "POST", "/rollback"),
+    Endpoint("12", "Current State", "GET", "/state/current"),
+    Endpoint("13", "Historical State", "GET", "/state/historical"),
+    Endpoint("14", "Audit Timeline", "GET", "/audit/timeline"),
     # Router: /audit/event/{event_id} — we model this as: base path + prompted event id
-    Endpoint("14", "Audit Event by ID", "GET", "/audit/event"),
+    Endpoint("15", "Audit Event by ID", "GET", "/audit/event"),
 )
 
 
@@ -352,6 +353,9 @@ def build_get_params(path: str) -> Mapping[str, str]:
     if path == "/audit/event":
         event_id = prompt_int("Event ID")
         return {"__event_id_path__": str(event_id)}
+
+    if path == "/bootstrap/status":
+        return {}
 
     return {}
 

@@ -11,8 +11,8 @@ use zab_bid::{
 };
 use zab_bid_audit::{Actor, AuditEvent, Cause};
 use zab_bid_domain::{
-    Area, BidYear, CanonicalBidYear, Crew, Initials, LeaveAvailabilityResult, LeaveUsage,
-    SeniorityData, UserType, calculate_leave_accrual, calculate_leave_availability,
+    Area, BidYear, CanonicalBidYear, Crew, Initials, LeaveAccrualResult, LeaveAvailabilityResult,
+    LeaveUsage, SeniorityData, UserType, calculate_leave_accrual, calculate_leave_availability,
 };
 
 use crate::auth::{AuthenticatedActor, AuthorizationService, Role};
@@ -411,6 +411,8 @@ pub fn list_bid_years(
                 start_date: c.start_date(),
                 num_pay_periods: c.num_pay_periods(),
                 end_date,
+                area_count: 0,       // Will be populated by server layer
+                total_user_count: 0, // Will be populated by server layer
             })
         })
         .collect();
@@ -446,11 +448,14 @@ pub fn list_areas(
     // Validate bid year exists before querying
     validate_bid_year_exists(metadata, &bid_year).map_err(translate_domain_error)?;
 
-    let areas: Vec<String> = metadata
+    let areas: Vec<crate::request_response::AreaInfo> = metadata
         .areas
         .iter()
         .filter(|(by, _)| by.year() == bid_year.year())
-        .map(|(_, area)| area.id().to_string())
+        .map(|(_, area)| crate::request_response::AreaInfo {
+            area_id: area.id().to_string(),
+            user_count: 0, // Will be populated by server layer with actual counts
+        })
         .collect();
 
     Ok(ListAreasResponse {
@@ -482,6 +487,7 @@ pub fn list_areas(
 /// - The area has not been created in the bid year
 pub fn list_users(
     metadata: &BootstrapMetadata,
+    canonical_bid_years: &[CanonicalBidYear],
     bid_year: &BidYear,
     area: &Area,
     state: &State,
@@ -489,13 +495,61 @@ pub fn list_users(
     // Validate bid year and area exist before processing
     validate_area_exists(metadata, bid_year, area).map_err(translate_domain_error)?;
 
+    // Find the canonical bid year metadata for leave calculations
+    let canonical_bid_year: &CanonicalBidYear = canonical_bid_years
+        .iter()
+        .find(|c| c.year() == bid_year.year())
+        .ok_or_else(|| {
+            translate_domain_error(zab_bid_domain::DomainError::InvalidBidYear(format!(
+                "Bid year {} not found",
+                bid_year.year()
+            )))
+        })?;
+
     let users: Vec<UserInfo> = state
         .users
         .iter()
-        .map(|user| UserInfo {
-            initials: user.initials.value().to_string(),
-            name: user.name.clone(),
-            crew: user.crew.as_ref().map(Crew::number),
+        .map(|user| {
+            // Calculate leave accrual for this user
+            let leave_accrual_result: LeaveAccrualResult =
+                calculate_leave_accrual(user, canonical_bid_year).unwrap_or_else(|_| {
+                    LeaveAccrualResult {
+                        total_hours: 0,
+                        total_days: 0,
+                        rounded_up: false,
+                        breakdown: vec![],
+                    }
+                });
+
+            let earned_hours: u16 = leave_accrual_result.total_hours;
+            let earned_days: u16 = leave_accrual_result.total_days;
+
+            // Calculate availability
+            // For Phase 11, we don't have bid records yet, so usage is empty
+            let availability: LeaveAvailabilityResult =
+                calculate_leave_availability(&leave_accrual_result, std::iter::empty())
+                    .unwrap_or_else(|_| LeaveAvailabilityResult {
+                        earned_hours,
+                        earned_days,
+                        used_hours: 0,
+                        remaining_hours: i32::from(earned_hours),
+                        remaining_days: i32::from(earned_days),
+                        is_exhausted: false,
+                        is_overdrawn: false,
+                    });
+
+            UserInfo {
+                initials: user.initials.value().to_string(),
+                name: user.name.clone(),
+                crew: user.crew.as_ref().map(Crew::number),
+                user_type: user.user_type.as_str().to_string(),
+                earned_hours,
+                earned_days,
+                remaining_hours: availability.remaining_hours,
+                remaining_days: availability.remaining_days,
+                is_exhausted: availability.is_exhausted,
+                is_overdrawn: availability.is_overdrawn,
+            }
         })
         .collect();
 
@@ -682,4 +736,81 @@ pub fn get_leave_availability(
         is_overdrawn: availability.is_overdrawn,
         explanation,
     })
+}
+
+/// Gets a comprehensive bootstrap status summary.
+///
+/// This is a read-only operation that provides aggregated information
+/// about all bid years and areas in the system.
+///
+/// # Arguments
+///
+/// * `metadata` - The current bootstrap metadata
+/// * `area_counts` - Area counts per bid year
+/// * `user_counts_by_year` - Total user counts per bid year
+/// * `user_counts_by_area` - User counts per (`bid_year`, `area_id`)
+///
+/// # Returns
+///
+/// * `Ok(BootstrapStatusResponse)` containing all system status information
+///
+/// # Errors
+///
+/// This function does not currently return errors, but the return type supports
+/// future error conditions.
+///
+/// This endpoint is useful for operators to get a complete picture of the
+/// system state in a single API call.
+pub fn get_bootstrap_status(
+    metadata: &BootstrapMetadata,
+    area_counts: &[(u16, usize)],
+    user_counts_by_year: &[(u16, usize)],
+    user_counts_by_area: &[(u16, String, usize)],
+) -> Result<crate::request_response::BootstrapStatusResponse, ApiError> {
+    use crate::request_response::{AreaStatusInfo, BidYearStatusInfo, BootstrapStatusResponse};
+
+    // Build bid year summaries
+    let bid_years: Vec<BidYearStatusInfo> = metadata
+        .bid_years
+        .iter()
+        .map(|bid_year| {
+            let year: u16 = bid_year.year();
+            let area_count: usize = area_counts
+                .iter()
+                .find(|(y, _)| *y == year)
+                .map_or(0, |(_, count)| *count);
+            let total_user_count: usize = user_counts_by_year
+                .iter()
+                .find(|(y, _)| *y == year)
+                .map_or(0, |(_, count)| *count);
+
+            BidYearStatusInfo {
+                year,
+                area_count,
+                total_user_count,
+            }
+        })
+        .collect();
+
+    // Build area summaries
+    let areas: Vec<AreaStatusInfo> = metadata
+        .areas
+        .iter()
+        .map(|(bid_year, area)| {
+            let year: u16 = bid_year.year();
+            let area_id: String = area.id().to_string();
+            let user_count: usize = user_counts_by_area
+                .iter()
+                .find(|(y, a, _)| *y == year && a == &area_id)
+                .map_or(0, |(_, _, count)| *count);
+
+            AreaStatusInfo {
+                bid_year: year,
+                area_id,
+                user_count,
+            }
+        })
+        .collect();
+
+    Ok(BootstrapStatusResponse { bid_years, areas })
 }

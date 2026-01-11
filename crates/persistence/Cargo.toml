@@ -10,6 +10,7 @@ readme.workspace = true
 description = "Persistence layer for the ZAB Bidding System"
 
 [dependencies]
+num-traits.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true

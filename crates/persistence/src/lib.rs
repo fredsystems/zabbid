@@ -299,6 +299,59 @@ impl SqlitePersistence {
         sqlite::list_users(&self.conn, bid_year, area)
     }
 
+    /// Counts users per area for a given bid year.
+    ///
+    /// Returns a vector of tuples containing (`area_id`, `user_count`).
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year` - The bid year to count users for
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn count_users_by_area(
+        &self,
+        bid_year: &BidYear,
+    ) -> Result<Vec<(String, usize)>, PersistenceError> {
+        sqlite::count_users_by_area(&self.conn, bid_year)
+    }
+
+    /// Counts areas per bid year.
+    ///
+    /// Returns a vector of tuples containing (`bid_year`, `area_count`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn count_areas_by_bid_year(&self) -> Result<Vec<(u16, usize)>, PersistenceError> {
+        sqlite::count_areas_by_bid_year(&self.conn)
+    }
+
+    /// Counts total users per bid year across all areas.
+    ///
+    /// Returns a vector of tuples containing (`bid_year`, `total_user_count`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn count_users_by_bid_year(&self) -> Result<Vec<(u16, usize)>, PersistenceError> {
+        sqlite::count_users_by_bid_year(&self.conn)
+    }
+
+    /// Counts users per (`bid_year`, `area_id`) combination.
+    ///
+    /// Returns a vector of tuples containing (`bid_year`, `area_id`, `user_count`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn count_users_by_bid_year_and_area(
+        &self,
+    ) -> Result<Vec<(u16, String, usize)>, PersistenceError> {
+        sqlite::count_users_by_bid_year_and_area(&self.conn)
+    }
+
     /// Determines if a given action requires a full snapshot.
     ///
     /// # Arguments
