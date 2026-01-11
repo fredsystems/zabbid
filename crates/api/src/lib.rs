@@ -11,6 +11,7 @@
     clippy::correctness,
     clippy::all
 )]
+#![allow(deprecated)]
 
 mod auth;
 mod error;

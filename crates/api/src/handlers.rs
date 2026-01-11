@@ -847,7 +847,7 @@ pub fn get_bootstrap_status(
 /// - Database operations fail
 pub fn login(
     persistence: &mut SqlitePersistence,
-    request: LoginRequest,
+    request: &LoginRequest,
 ) -> Result<LoginResponse, ApiError> {
     let (session_token, _authenticated_actor, operator): (
         String,
@@ -901,6 +901,7 @@ pub fn logout(persistence: &mut SqlitePersistence, session_token: &str) -> Resul
 /// # Returns
 ///
 /// * `Ok(WhoAmIResponse)` with operator information
+#[must_use]
 pub fn whoami(operator: &OperatorData) -> WhoAmIResponse {
     WhoAmIResponse {
         login_name: operator.login_name.clone(),

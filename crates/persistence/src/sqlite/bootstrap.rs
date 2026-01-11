@@ -15,7 +15,7 @@ use crate::error::PersistenceError;
 
 /// Verifies that foreign key enforcement is enabled.
 ///
-/// This function checks whether SQLite has foreign key enforcement active.
+/// This function checks whether `SQLite` has foreign key enforcement active.
 /// If foreign keys are not enabled, the database cannot guarantee referential
 /// integrity constraints required by Phase 14 (e.g., preventing deletion of
 /// operators referenced by audit events).
