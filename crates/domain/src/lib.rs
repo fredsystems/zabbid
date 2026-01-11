@@ -14,6 +14,7 @@
 
 mod bid_year;
 mod error;
+mod leave_accrual;
 mod types;
 mod validation;
 
@@ -23,5 +24,8 @@ mod tests;
 // Re-export public types
 pub use bid_year::{CanonicalBidYear, PayPeriod};
 pub use error::DomainError;
+pub use leave_accrual::{
+    AccrualReason, LeaveAccrualResult, PayPeriodAccrual, calculate_leave_accrual,
+};
 pub use types::{Area, BidYear, Crew, Initials, SeniorityData, User, UserType};
 pub use validation::{validate_bid_year, validate_initials_unique, validate_user_fields};

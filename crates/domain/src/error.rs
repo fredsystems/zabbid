@@ -76,6 +76,18 @@ pub enum DomainError {
         /// The actual month.
         month: time::Month,
     },
+    /// Service computation date is missing or invalid.
+    InvalidServiceComputationDate {
+        /// Description of the validation error.
+        reason: String,
+    },
+    /// Failed to parse date from string.
+    DateParseError {
+        /// The invalid date string.
+        date_string: String,
+        /// The parsing error message.
+        error: String,
+    },
 }
 
 impl std::fmt::Display for DomainError {
@@ -132,6 +144,12 @@ impl std::fmt::Display for DomainError {
                     f,
                     "Bid year start date must be in January, but {start_date} is in {month}"
                 )
+            }
+            Self::InvalidServiceComputationDate { reason } => {
+                write!(f, "Invalid service computation date: {reason}")
+            }
+            Self::DateParseError { date_string, error } => {
+                write!(f, "Failed to parse date '{date_string}': {error}")
             }
         }
     }
