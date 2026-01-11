@@ -5,6 +5,7 @@
 
 //! Error types for the API layer.
 
+#[allow(unused_imports)] // False positive: BidYear is used in pattern matching
 use zab_bid_domain::{BidYear, DomainError};
 
 /// Authentication and authorization errors.
@@ -130,6 +131,7 @@ impl From<AuthError> for ApiError {
 /// Translates a domain error into an API error.
 ///
 /// This translation is explicit and ensures domain errors are not leaked directly.
+#[must_use]
 pub fn translate_domain_error(err: DomainError) -> ApiError {
     match err {
         DomainError::DuplicateInitials { bid_year, initials } => ApiError::DomainRuleViolation {
