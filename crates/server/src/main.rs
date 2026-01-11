@@ -375,6 +375,10 @@ impl From<ApiError> for HttpError {
                 status: StatusCode::NOT_FOUND,
                 message: err.to_string(),
             },
+            ApiError::Internal { .. } => Self {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: err.to_string(),
+            },
         }
     }
 }

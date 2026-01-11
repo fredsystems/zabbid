@@ -24,7 +24,7 @@ mod tests;
 pub use auth::{AuthenticatedActor, AuthorizationService, Role, authenticate_stub};
 
 // Re-export public types from error module
-pub use error::{ApiError, AuthError, translate_domain_error};
+pub use error::{ApiError, AuthError, translate_core_error, translate_domain_error};
 
 // Re-export public types from request_response module
 pub use request_response::{

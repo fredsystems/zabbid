@@ -12,6 +12,7 @@
     clippy::all
 )]
 
+mod bid_year;
 mod error;
 mod types;
 mod validation;
@@ -20,6 +21,7 @@ mod validation;
 mod tests;
 
 // Re-export public types
+pub use bid_year::{CanonicalBidYear, PayPeriod};
 pub use error::DomainError;
 pub use types::{Area, BidYear, Crew, Initials, SeniorityData, User, UserType};
 pub use validation::{validate_bid_year, validate_initials_unique, validate_user_fields};

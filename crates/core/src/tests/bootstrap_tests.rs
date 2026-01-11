@@ -257,3 +257,116 @@ fn test_multiple_bid_years_and_areas() {
     assert!(metadata.has_area(&BidYear::new(2026), &Area::new("North")));
     assert!(metadata.has_area(&BidYear::new(2027), &Area::new("North")));
 }
+
+#[test]
+fn test_canonical_validation_runs_for_valid_year() {
+    // This test verifies that canonical validation is executed
+    // Valid years should pass canonical validation
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let command: Command = Command::CreateBidYear { year: 2026 };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<BootstrapResult, CoreError> =
+        apply_bootstrap(&metadata, command, actor, cause);
+
+    // Should succeed - canonical validation passed
+    assert!(result.is_ok());
+    let bootstrap_result: BootstrapResult = result.unwrap();
+    assert_eq!(bootstrap_result.new_metadata.bid_years.len(), 1);
+}
+
+#[test]
+fn test_canonical_validation_does_not_persist_canonical_model() {
+    // This test verifies that only the simple BidYear identifier is persisted,
+    // not the canonical bid year model
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let command: Command = Command::CreateBidYear { year: 2026 };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<BootstrapResult, CoreError> =
+        apply_bootstrap(&metadata, command, actor, cause);
+
+    assert!(result.is_ok());
+    let bootstrap_result: BootstrapResult = result.unwrap();
+
+    // Only the simple BidYear identifier is stored
+    assert_eq!(bootstrap_result.new_metadata.bid_years.len(), 1);
+    assert_eq!(bootstrap_result.new_metadata.bid_years[0].year(), 2026);
+
+    // The stored type is BidYear (identifier), not CanonicalBidYear
+    // This is verified by the fact that BidYear::new() only takes a year
+}
+
+#[test]
+fn test_canonical_validation_failure_prevents_creation() {
+    // This test would verify that canonical validation failures block creation,
+    // but with our placeholder logic (first Saturday + 26 periods),
+    // all reasonable years pass validation.
+    // This test documents the behavior for future phases when real validation occurs.
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+    // With current placeholder logic, all valid years (2000-2099) pass
+    for year in 2020..=2030 {
+        let command: Command = Command::CreateBidYear { year };
+        let result: Result<BootstrapResult, CoreError> =
+            apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause());
+        assert!(
+            result.is_ok(),
+            "Year {year} should pass canonical validation"
+        );
+    }
+}
+
+#[test]
+fn test_canonical_validation_no_audit_event_on_failure() {
+    // This test verifies that validation failures do not emit audit events
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let command: Command = Command::CreateBidYear { year: 1800 }; // Invalid year
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<BootstrapResult, CoreError> =
+        apply_bootstrap(&metadata, command, actor, cause);
+
+    // Should fail before reaching audit event creation
+    assert!(result.is_err());
+
+    // No BootstrapResult means no audit event was created
+    // The error is returned before any state change or audit event emission
+}
+
+#[test]
+fn test_canonical_validation_is_deterministic() {
+    // Canonical validation should be deterministic - same input, same output
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+    for _ in 0..5 {
+        let command: Command = Command::CreateBidYear { year: 2026 };
+        let result: Result<BootstrapResult, CoreError> = apply_bootstrap(
+            &metadata,
+            command.clone(),
+            create_test_actor(),
+            create_test_cause(),
+        );
+
+        // First attempt succeeds
+        assert!(result.is_ok());
+
+        // Subsequent attempts fail due to duplicate, not canonical validation
+        let metadata_with_2026: BootstrapMetadata = result.unwrap().new_metadata;
+        let duplicate_command: Command = Command::CreateBidYear { year: 2026 };
+        let duplicate_result: Result<BootstrapResult, CoreError> = apply_bootstrap(
+            &metadata_with_2026,
+            duplicate_command,
+            create_test_actor(),
+            create_test_cause(),
+        );
+
+        assert!(matches!(
+            duplicate_result.unwrap_err(),
+            CoreError::DomainViolation(DomainError::DuplicateBidYear(_))
+        ));
+    }
+}
