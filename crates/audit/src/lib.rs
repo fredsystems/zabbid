@@ -21,12 +21,20 @@ use zab_bid_domain::{Area, BidYear};
 ///
 /// An actor is any identifiable entity that initiates a state change.
 /// This could be a user, a system process, or an automated trigger.
+///
+/// In Phase 14, actors are backed by operators with persistent identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Actor {
     /// The unique identifier for this actor.
     pub id: String,
     /// The type of actor (e.g., "user", "system", "scheduler").
     pub actor_type: String,
+    /// The operator ID (Phase 14). None for pre-Phase-14 events.
+    pub operator_id: Option<i64>,
+    /// The operator login name at the time of the event (Phase 14).
+    pub operator_login_name: Option<String>,
+    /// The operator display name at the time of the event (Phase 14).
+    pub operator_display_name: Option<String>,
 }
 
 impl Actor {
@@ -38,7 +46,39 @@ impl Actor {
     /// * `actor_type` - The type of actor
     #[must_use]
     pub const fn new(id: String, actor_type: String) -> Self {
-        Self { id, actor_type }
+        Self {
+            id,
+            actor_type,
+            operator_id: None,
+            operator_login_name: None,
+            operator_display_name: None,
+        }
+    }
+
+    /// Creates a new Actor with operator information (Phase 14).
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The unique identifier for this actor
+    /// * `actor_type` - The type of actor
+    /// * `operator_id` - The operator ID
+    /// * `operator_login_name` - The operator login name
+    /// * `operator_display_name` - The operator display name
+    #[must_use]
+    pub const fn with_operator(
+        id: String,
+        actor_type: String,
+        operator_id: i64,
+        operator_login_name: String,
+        operator_display_name: String,
+    ) -> Self {
+        Self {
+            id,
+            actor_type,
+            operator_id: Some(operator_id),
+            operator_login_name: Some(operator_login_name),
+            operator_display_name: Some(operator_display_name),
+        }
     }
 }
 

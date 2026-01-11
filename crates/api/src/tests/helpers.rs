@@ -10,6 +10,8 @@ use zab_bid::BootstrapMetadata;
 use zab_bid_audit::Cause;
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear};
 
+use zab_bid_persistence::OperatorData;
+
 use crate::{AuthenticatedActor, RegisterUserRequest, Role};
 
 pub fn create_test_admin() -> AuthenticatedActor {
@@ -22,6 +24,32 @@ pub fn create_test_bidder() -> AuthenticatedActor {
 
 pub fn create_test_cause() -> Cause {
     Cause::new(String::from("api-req-456"), String::from("API request"))
+}
+
+pub fn create_test_admin_operator() -> OperatorData {
+    OperatorData {
+        operator_id: 1,
+        login_name: String::from("ADMIN-123"),
+        display_name: String::from("Test Admin"),
+        role: String::from("Admin"),
+        is_disabled: false,
+        created_at: String::from("2026-01-01T00:00:00Z"),
+        disabled_at: None,
+        last_login_at: Some(String::from("2026-01-01T00:00:00Z")),
+    }
+}
+
+pub fn create_test_bidder_operator() -> OperatorData {
+    OperatorData {
+        operator_id: 2,
+        login_name: String::from("BIDDER-456"),
+        display_name: String::from("Test Bidder"),
+        role: String::from("Bidder"),
+        is_disabled: false,
+        created_at: String::from("2026-01-01T00:00:00Z"),
+        disabled_at: None,
+        last_login_at: Some(String::from("2026-01-01T00:00:00Z")),
+    }
 }
 
 pub fn create_test_metadata() -> BootstrapMetadata {

@@ -1670,11 +1670,13 @@ dependencies = [
 name = "zab-bid-api"
 version = "0.1.0"
 dependencies = [
+ "rand",
  "serde",
  "time",
  "zab-bid",
  "zab-bid-audit",
  "zab-bid-domain",
+ "zab-bid-persistence",
 ]
 
 [[package]]

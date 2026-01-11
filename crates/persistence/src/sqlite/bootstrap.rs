@@ -5,12 +5,40 @@
 
 use rusqlite::{Connection, params};
 use time::Date;
+use tracing::info;
 use zab_bid::BootstrapMetadata;
 use zab_bid_domain::{
     Area, BidYear, CanonicalBidYear, Crew, Initials, SeniorityData, User, UserType,
 };
 
 use crate::error::PersistenceError;
+
+/// Verifies that foreign key enforcement is enabled.
+///
+/// This function checks whether SQLite has foreign key enforcement active.
+/// If foreign keys are not enabled, the database cannot guarantee referential
+/// integrity constraints required by Phase 14 (e.g., preventing deletion of
+/// operators referenced by audit events).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection to check
+///
+/// # Errors
+///
+/// Returns an error if foreign key enforcement is not enabled.
+pub fn verify_foreign_key_enforcement(conn: &Connection) -> Result<(), PersistenceError> {
+    let foreign_keys_enabled: i32 = conn.query_row("PRAGMA foreign_keys", [], |row| row.get(0))?;
+
+    if foreign_keys_enabled == 0 {
+        return Err(PersistenceError::InitializationError(String::from(
+            "Foreign key enforcement is not enabled. The server cannot start without FK enforcement.",
+        )));
+    }
+
+    info!("Foreign key enforcement is enabled");
+    Ok(())
+}
 
 /// Reconstructs bootstrap metadata from canonical tables.
 ///

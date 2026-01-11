@@ -18,9 +18,10 @@ use crate::{
 };
 
 use super::helpers::{
-    create_test_admin, create_test_bidder, create_test_canonical_bid_year, create_test_cause,
-    create_test_metadata, create_test_pay_periods, create_test_start_date,
-    create_test_start_date_for_year, create_valid_request,
+    create_test_admin, create_test_admin_operator, create_test_bidder, create_test_bidder_operator,
+    create_test_canonical_bid_year, create_test_cause, create_test_metadata,
+    create_test_pay_periods, create_test_start_date, create_test_start_date_for_year,
+    create_valid_request,
 };
 
 // ============================================================================
@@ -55,7 +56,8 @@ fn test_authenticated_actor_to_audit_actor_admin() {
     let _metadata: BootstrapMetadata = create_test_metadata();
     let auth_actor: AuthenticatedActor =
         AuthenticatedActor::new(String::from("admin-1"), Role::Admin);
-    let audit_actor: Actor = auth_actor.to_audit_actor();
+    let operator = create_test_admin_operator();
+    let audit_actor: Actor = auth_actor.to_audit_actor(&operator);
     assert_eq!(audit_actor.id, "admin-1");
     assert_eq!(audit_actor.actor_type, "admin");
 }
@@ -65,7 +67,8 @@ fn test_authenticated_actor_to_audit_actor_bidder() {
     let _metadata: BootstrapMetadata = create_test_metadata();
     let auth_actor: AuthenticatedActor =
         AuthenticatedActor::new(String::from("bidder-1"), Role::Bidder);
-    let audit_actor: Actor = auth_actor.to_audit_actor();
+    let operator = create_test_bidder_operator();
+    let audit_actor: Actor = auth_actor.to_audit_actor(&operator);
     assert_eq!(audit_actor.id, "bidder-1");
     assert_eq!(audit_actor.actor_type, "bidder");
 }
@@ -114,10 +117,11 @@ fn test_bidder_cannot_register_user() {
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request: RegisterUserRequest = create_valid_request();
     let bidder: AuthenticatedActor = create_test_bidder();
+    let operator = create_test_bidder_operator();
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &bidder, cause);
+        register_user(&metadata, &state, request, &bidder, &operator, cause);
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -138,10 +142,11 @@ fn test_unauthorized_action_does_not_mutate_state() {
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request: RegisterUserRequest = create_valid_request();
     let bidder: AuthenticatedActor = create_test_bidder();
+    let operator = create_test_bidder_operator();
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &bidder, cause);
+        register_user(&metadata, &state, request, &bidder, &operator, cause);
 
     assert!(result.is_err());
     // Original state is unchanged
@@ -157,7 +162,7 @@ fn test_unauthorized_action_does_not_emit_audit_event() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &bidder, cause);
+        register_user(&metadata, &state, request, &bidder, &create_test_bidder_operator(), cause);
 
     assert!(result.is_err());
     // No audit event is returned on authorization failure
@@ -170,7 +175,7 @@ fn test_admin_can_create_checkpoint() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<TransitionResult, ApiError> = checkpoint(&metadata, &state, &admin, cause);
+    let result: Result<TransitionResult, ApiError> = checkpoint(&metadata, &state, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_ok());
     let transition: TransitionResult = result.unwrap();
@@ -186,7 +191,7 @@ fn test_bidder_cannot_create_checkpoint() {
     let bidder: AuthenticatedActor = create_test_bidder();
     let cause: Cause = create_test_cause();
 
-    let result: Result<TransitionResult, ApiError> = checkpoint(&metadata, &state, &bidder, cause);
+    let result: Result<TransitionResult, ApiError> = checkpoint(&metadata, &state, &bidder, &create_test_bidder_operator(), cause);
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -208,7 +213,7 @@ fn test_admin_can_finalize() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<TransitionResult, ApiError> = finalize(&metadata, &state, &admin, cause);
+    let result: Result<TransitionResult, ApiError> = finalize(&metadata, &state, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_ok());
     let transition: TransitionResult = result.unwrap();
@@ -224,7 +229,7 @@ fn test_bidder_cannot_finalize() {
     let bidder: AuthenticatedActor = create_test_bidder();
     let cause: Cause = create_test_cause();
 
-    let result: Result<TransitionResult, ApiError> = finalize(&metadata, &state, &bidder, cause);
+    let result: Result<TransitionResult, ApiError> = finalize(&metadata, &state, &bidder, &create_test_bidder_operator(), cause);
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -246,7 +251,7 @@ fn test_admin_can_rollback() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<TransitionResult, ApiError> = rollback(&metadata, &state, 1, &admin, cause);
+    let result: Result<TransitionResult, ApiError> = rollback(&metadata, &state, 1, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_ok());
     let transition: TransitionResult = result.unwrap();
@@ -262,7 +267,7 @@ fn test_bidder_cannot_rollback() {
     let bidder: AuthenticatedActor = create_test_bidder();
     let cause: Cause = create_test_cause();
 
-    let result: Result<TransitionResult, ApiError> = rollback(&metadata, &state, 1, &bidder, cause);
+    let result: Result<TransitionResult, ApiError> = rollback(&metadata, &state, 1, &bidder, &create_test_bidder_operator(), cause);
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -301,7 +306,7 @@ fn test_valid_api_request_succeeds() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, cause);
+        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_ok());
     let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
@@ -325,7 +330,7 @@ fn test_valid_api_request_emits_audit_event() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, cause);
+        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_ok());
     let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
@@ -344,7 +349,7 @@ fn test_valid_api_request_returns_new_state() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, cause);
+        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_ok());
     let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
@@ -453,7 +458,7 @@ fn test_invalid_empty_initials_returns_api_error() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, cause);
+        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -485,7 +490,7 @@ fn test_invalid_empty_name_returns_api_error() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, cause);
+        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -516,7 +521,7 @@ fn test_invalid_empty_area_returns_api_error() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, cause);
+        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -545,7 +550,7 @@ fn test_invalid_crew_number_returns_api_error() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, cause);
+        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -576,7 +581,7 @@ fn test_duplicate_initials_in_different_bid_years_allowed() {
     // Register user in 2026
     let request1: RegisterUserRequest = create_valid_request();
     let result1: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state1, request1, &admin, cause.clone());
+        register_user(&metadata, &state1, request1, &admin, &create_test_admin_operator(), cause.clone());
     assert!(result1.is_ok());
 
     // Same initials in 2027 (different bid year)
@@ -595,7 +600,7 @@ fn test_duplicate_initials_in_different_bid_years_allowed() {
     };
 
     let result2: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state2, request2, &admin, cause);
+        register_user(&metadata, &state2, request2, &admin, &create_test_admin_operator(), cause);
 
     assert!(result2.is_ok());
     let api_result: ApiResult<RegisterUserResponse> = result2.unwrap();
@@ -611,7 +616,7 @@ fn test_successful_api_call_updates_state() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, cause);
+        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_ok());
     let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
@@ -640,7 +645,7 @@ fn test_create_bid_year_succeeds() {
     let cause: Cause = create_test_cause();
 
     let result: Result<BootstrapResult, ApiError> =
-        create_bid_year(&metadata, &request, &admin, cause);
+        create_bid_year(&metadata, &request, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_ok());
     let bootstrap_result: BootstrapResult = result.unwrap();
@@ -678,7 +683,7 @@ fn test_create_area_succeeds() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<BootstrapResult, ApiError> = create_area(&metadata, request, &admin, cause);
+    let result: Result<BootstrapResult, ApiError> = create_area(&metadata, &request, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_ok());
     let bootstrap_result: BootstrapResult = result.unwrap();
@@ -713,7 +718,7 @@ fn test_create_area_without_bid_year_fails() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<BootstrapResult, ApiError> = create_area(&metadata, request, &admin, cause);
+    let result: Result<BootstrapResult, ApiError> = create_area(&metadata, &request, &admin, &create_test_admin_operator(), cause);
 
     assert!(result.is_err());
     assert!(matches!(
@@ -1129,7 +1134,7 @@ fn test_list_users_with_no_crew() {
     };
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, cause);
+        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
     assert!(result.is_ok());
 
     let final_state: State = result.unwrap().new_state;
@@ -1352,7 +1357,7 @@ fn test_get_leave_availability_zero_usage() {
     let cause: Cause = create_test_cause();
 
     let register_result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, cause);
+        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
     assert!(register_result.is_ok());
 
     let new_state: State = register_result.unwrap().new_state;
@@ -1442,7 +1447,7 @@ fn test_get_leave_availability_explanation_text() {
     let cause: Cause = create_test_cause();
 
     let register_result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, cause);
+        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
     assert!(register_result.is_ok());
 
     let new_state: State = register_result.unwrap().new_state;

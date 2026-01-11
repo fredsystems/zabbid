@@ -5,7 +5,9 @@
 
 //! Authentication and authorization types and services.
 
+use time::{Duration, OffsetDateTime};
 use zab_bid_audit::Actor;
+use zab_bid_persistence::{OperatorData, PersistenceError, SessionData, SqlitePersistence};
 
 use crate::error::AuthError;
 
@@ -61,17 +63,27 @@ impl AuthenticatedActor {
         Self { id, role }
     }
 
-    /// Converts this authenticated actor into an audit Actor.
+    /// Converts this authenticated actor into an audit Actor with operator information.
     ///
     /// This is used when recording audit events to attribute actions
     /// to the authenticated operator.
+    ///
+    /// # Arguments
+    ///
+    /// * `operator` - The operator data containing stable snapshot fields
     #[must_use]
-    pub fn to_audit_actor(&self) -> Actor {
+    pub fn to_audit_actor(&self, operator: &OperatorData) -> Actor {
         let actor_type: String = match self.role {
             Role::Admin => String::from("admin"),
             Role::Bidder => String::from("bidder"),
         };
-        Actor::new(self.id.clone(), actor_type)
+        Actor::with_operator(
+            self.id.clone(),
+            actor_type,
+            operator.operator_id,
+            operator.login_name.clone(),
+            operator.display_name.clone(),
+        )
     }
 }
 
@@ -101,6 +113,64 @@ impl AuthorizationService {
                 required_role: String::from("Admin"),
             }),
         }
+    }
+
+    /// Checks if an actor is authorized to create a bid year.
+    ///
+    /// Only Admin actors may create bid years.
+    ///
+    /// # Arguments
+    ///
+    /// * `actor` - The authenticated actor
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the actor does not have the Admin role.
+    pub fn authorize_create_bid_year(actor: &AuthenticatedActor) -> Result<(), AuthError> {
+        match actor.role {
+            Role::Admin => Ok(()),
+            Role::Bidder => Err(AuthError::Unauthorized {
+                action: String::from("create_bid_year"),
+                required_role: String::from("Admin"),
+            }),
+        }
+    }
+
+    /// Checks if an actor is authorized to create an area.
+    ///
+    /// Only Admin actors may create areas.
+    ///
+    /// # Arguments
+    ///
+    /// * `actor` - The authenticated actor
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the actor does not have the Admin role.
+    pub fn authorize_create_area(actor: &AuthenticatedActor) -> Result<(), AuthError> {
+        match actor.role {
+            Role::Admin => Ok(()),
+            Role::Bidder => Err(AuthError::Unauthorized {
+                action: String::from("create_area"),
+                required_role: String::from("Admin"),
+            }),
+        }
+    }
+
+    /// Checks if an actor is authorized to reassign a user's crew.
+    ///
+    /// Both Admin and Bidder actors may reassign crews.
+    ///
+    /// # Arguments
+    ///
+    /// * `actor` - The authenticated actor
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the actor does not have permission.
+    pub fn authorize_reassign_crew(_actor: &AuthenticatedActor) -> Result<(), AuthError> {
+        // Both Admin and Bidder may reassign crews
+        Ok(())
     }
 
     /// Checks if an actor is authorized to create a checkpoint.
@@ -167,13 +237,230 @@ impl AuthorizationService {
     }
 }
 
-/// Stub authentication function.
+/// Authentication service for session-based authentication (Phase 14).
+pub struct AuthenticationService;
+
+impl AuthenticationService {
+    /// Default session expiration duration (30 days).
+    const DEFAULT_SESSION_EXPIRATION: Duration = Duration::days(30);
+
+    /// Authenticates an operator and creates a session.
+    ///
+    /// This is a simplified authentication that validates the operator exists
+    /// and is not disabled. In a production system, this would validate
+    /// credentials (password, token, etc.).
+    ///
+    /// # Arguments
+    ///
+    /// * `persistence` - The persistence layer
+    /// * `login_name` - The operator login name
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (session_token, authenticated_actor, operator_data)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if authentication fails.
+    pub fn login(
+        persistence: &mut SqlitePersistence,
+        login_name: &str,
+    ) -> Result<(String, AuthenticatedActor, OperatorData), AuthError> {
+        // Retrieve operator by login name
+        let operator: OperatorData = persistence
+            .get_operator_by_login(login_name)
+            .map_err(|e| AuthError::AuthenticationFailed {
+                reason: format!("Database error: {e}"),
+            })?
+            .ok_or_else(|| AuthError::AuthenticationFailed {
+                reason: format!("Unknown operator: {login_name}"),
+            })?;
+
+        // Check if operator is disabled
+        if operator.is_disabled {
+            return Err(AuthError::AuthenticationFailed {
+                reason: String::from("Operator is disabled"),
+            });
+        }
+
+        // Parse role
+        let role: Role = match operator.role.as_str() {
+            "Admin" => Role::Admin,
+            "Bidder" => Role::Bidder,
+            _ => {
+                return Err(AuthError::AuthenticationFailed {
+                    reason: format!("Invalid role: {}", operator.role),
+                });
+            }
+        };
+
+        // Generate session token
+        let session_token: String = Self::generate_session_token();
+
+        // Calculate expiration time
+        let expires_at: OffsetDateTime =
+            OffsetDateTime::now_utc() + Self::DEFAULT_SESSION_EXPIRATION;
+        let expires_at_str: String = expires_at
+            .format(&time::format_description::well_known::Iso8601::DEFAULT)
+            .map_err(|e| AuthError::AuthenticationFailed {
+                reason: format!("Failed to format expiration time: {e}"),
+            })?;
+
+        // Create session
+        persistence
+            .create_session(&session_token, operator.operator_id, &expires_at_str)
+            .map_err(|e| AuthError::AuthenticationFailed {
+                reason: format!("Failed to create session: {e}"),
+            })?;
+
+        // Update last login timestamp
+        persistence
+            .update_last_login(operator.operator_id)
+            .map_err(|e| AuthError::AuthenticationFailed {
+                reason: format!("Failed to update last login: {e}"),
+            })?;
+
+        let authenticated_actor: AuthenticatedActor =
+            AuthenticatedActor::new(operator.login_name.clone(), role);
+
+        Ok((session_token, authenticated_actor, operator))
+    }
+
+    /// Validates a session token and returns the authenticated actor.
+    ///
+    /// # Arguments
+    ///
+    /// * `persistence` - The persistence layer
+    /// * `session_token` - The session token to validate
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (authenticated_actor, operator_data)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the session is invalid or expired.
+    pub fn validate_session(
+        persistence: &mut SqlitePersistence,
+        session_token: &str,
+    ) -> Result<(AuthenticatedActor, OperatorData), AuthError> {
+        // Retrieve session
+        let session: SessionData = persistence
+            .get_session_by_token(session_token)
+            .map_err(|e| Self::map_persistence_error(e))?
+            .ok_or_else(|| AuthError::AuthenticationFailed {
+                reason: String::from("Invalid session token"),
+            })?;
+
+        // Check if session is expired
+        let expires_at: OffsetDateTime = OffsetDateTime::parse(
+            &session.expires_at,
+            &time::format_description::well_known::Iso8601::DEFAULT,
+        )
+        .map_err(|e| AuthError::AuthenticationFailed {
+            reason: format!("Failed to parse session expiration: {e}"),
+        })?;
+
+        if OffsetDateTime::now_utc() > expires_at {
+            return Err(AuthError::AuthenticationFailed {
+                reason: String::from("Session expired"),
+            });
+        }
+
+        // Retrieve operator
+        let operator: OperatorData = persistence
+            .get_operator_by_id(session.operator_id)
+            .map_err(|e| Self::map_persistence_error(e))?
+            .ok_or_else(|| AuthError::AuthenticationFailed {
+                reason: String::from("Operator not found"),
+            })?;
+
+        // Check if operator is disabled
+        if operator.is_disabled {
+            return Err(AuthError::AuthenticationFailed {
+                reason: String::from("Operator is disabled"),
+            });
+        }
+
+        // Parse role
+        let role: Role = match operator.role.as_str() {
+            "Admin" => Role::Admin,
+            "Bidder" => Role::Bidder,
+            _ => {
+                return Err(AuthError::AuthenticationFailed {
+                    reason: format!("Invalid role: {}", operator.role),
+                });
+            }
+        };
+
+        // Update session activity
+        persistence
+            .update_session_activity(session.session_id)
+            .map_err(|e| Self::map_persistence_error(e))?;
+
+        let authenticated_actor: AuthenticatedActor =
+            AuthenticatedActor::new(operator.login_name.clone(), role);
+
+        Ok((authenticated_actor, operator))
+    }
+
+    /// Logs out by deleting the session.
+    ///
+    /// # Arguments
+    ///
+    /// * `persistence` - The persistence layer
+    /// * `session_token` - The session token to delete
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the logout fails.
+    pub fn logout(
+        persistence: &mut SqlitePersistence,
+        session_token: &str,
+    ) -> Result<(), AuthError> {
+        persistence
+            .delete_session(session_token)
+            .map_err(|e| AuthError::AuthenticationFailed {
+                reason: format!("Failed to delete session: {e}"),
+            })?;
+
+        Ok(())
+    }
+
+    /// Generates a session token.
+    ///
+    /// In a production system, this would use a cryptographically secure
+    /// random number generator. For simplicity, we use a timestamp-based
+    /// approach here.
+    fn generate_session_token() -> String {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let timestamp: u128 = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_nanos();
+        format!("session_{timestamp}_{}", rand::random::<u64>())
+    }
+
+    /// Maps persistence errors to authentication errors.
+    fn map_persistence_error(err: PersistenceError) -> AuthError {
+        match err {
+            PersistenceError::SessionExpired(msg) => {
+                AuthError::AuthenticationFailed { reason: msg }
+            }
+            PersistenceError::SessionNotFound(msg) => {
+                AuthError::AuthenticationFailed { reason: msg }
+            }
+            _ => AuthError::AuthenticationFailed {
+                reason: format!("Database error: {err}"),
+            },
+        }
+    }
+}
+
+/// Stub authentication function (deprecated in Phase 14).
 ///
-/// This is a minimal placeholder for Phase 5. It does NOT implement
-/// real authentication - that is explicitly deferred to a later phase.
-///
-/// In a real system, this would validate credentials, check tokens,
-/// or integrate with an identity provider.
+/// This is kept for backward compatibility with tests but should not be
+/// used in production code.
 ///
 /// # Arguments
 ///
@@ -187,6 +474,7 @@ impl AuthorizationService {
 /// # Errors
 ///
 /// Returns an error if authentication fails.
+#[deprecated(since = "0.1.0", note = "Use AuthenticationService instead")]
 pub fn authenticate_stub(actor_id: String, role: Role) -> Result<AuthenticatedActor, AuthError> {
     if actor_id.is_empty() {
         return Err(AuthError::AuthenticationFailed {

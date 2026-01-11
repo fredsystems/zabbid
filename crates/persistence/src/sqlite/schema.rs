@@ -20,8 +20,39 @@ use crate::error::PersistenceError;
 pub fn initialize_schema(conn: &Connection) -> Result<(), PersistenceError> {
     info!("Initializing database schema");
 
+    // Enable foreign key enforcement
+    conn.execute("PRAGMA foreign_keys = ON", [])?;
+
     conn.execute_batch(
         "
+        -- Operator tables (Phase 14)
+        CREATE TABLE IF NOT EXISTS operators (
+            operator_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            login_name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            display_name TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('Admin', 'Bidder')),
+            is_disabled INTEGER NOT NULL DEFAULT 0 CHECK(is_disabled IN (0, 1)),
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            disabled_at DATETIME,
+            last_login_at DATETIME
+        );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+            session_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_token TEXT NOT NULL UNIQUE,
+            operator_id INTEGER NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_activity_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at DATETIME NOT NULL,
+            FOREIGN KEY(operator_id) REFERENCES operators(operator_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sessions_token
+            ON sessions(session_token);
+
+        CREATE INDEX IF NOT EXISTS idx_sessions_operator
+            ON sessions(operator_id);
+
         -- Canonical state tables (Phase 7)
         CREATE TABLE IF NOT EXISTS bid_years (
             year INTEGER PRIMARY KEY NOT NULL,
@@ -60,13 +91,17 @@ pub fn initialize_schema(conn: &Connection) -> Result<(), PersistenceError> {
             event_id INTEGER PRIMARY KEY AUTOINCREMENT,
             bid_year INTEGER NOT NULL,
             area TEXT NOT NULL,
+            actor_operator_id INTEGER NOT NULL,
+            actor_login_name TEXT NOT NULL,
+            actor_display_name TEXT NOT NULL,
             actor_json TEXT NOT NULL,
             cause_json TEXT NOT NULL,
             action_json TEXT NOT NULL,
             before_snapshot_json TEXT NOT NULL,
             after_snapshot_json TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(bid_year, area, event_id)
+            UNIQUE(bid_year, area, event_id),
+            FOREIGN KEY(actor_operator_id) REFERENCES operators(operator_id) ON DELETE RESTRICT
         );
 
         CREATE INDEX IF NOT EXISTS idx_audit_events_scope
