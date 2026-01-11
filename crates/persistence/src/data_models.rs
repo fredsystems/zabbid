@@ -41,8 +41,8 @@ pub struct StateData {
 }
 
 /// Type alias for audit event row data from `SQLite`.
-/// Contains: (event_id, bid_year, area, actor_operator_id, actor_login_name,
-/// actor_display_name, actor_json, cause_json, action_json, before_json, after_json)
+/// Contains: (`event_id`, `bid_year`, `area`, `actor_operator_id`, `actor_login_name`,
+/// `actor_display_name`, `actor_json`, `cause_json`, `action_json`, `before_json`, `after_json`)
 pub type AuditEventRow = (
     i64,
     u16,

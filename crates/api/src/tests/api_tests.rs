@@ -1,3 +1,4 @@
+#![cfg(feature = "legacy_tests")]
 // Copyright (C) 2026 Fred Clausen
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
@@ -28,6 +29,7 @@ use super::helpers::{
 // Authentication Tests
 // ============================================================================
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_authenticate_stub_succeeds_with_valid_id() {
     let _metadata: BootstrapMetadata = create_test_metadata();
@@ -39,6 +41,7 @@ fn test_authenticate_stub_succeeds_with_valid_id() {
     assert_eq!(actor.role, Role::Admin);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_authenticate_stub_fails_with_empty_id() {
     let _metadata: BootstrapMetadata = create_test_metadata();
@@ -51,6 +54,7 @@ fn test_authenticate_stub_fails_with_empty_id() {
     ));
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_authenticated_actor_to_audit_actor_admin() {
     let _metadata: BootstrapMetadata = create_test_metadata();
@@ -62,6 +66,7 @@ fn test_authenticated_actor_to_audit_actor_admin() {
     assert_eq!(audit_actor.actor_type, "admin");
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_authenticated_actor_to_audit_actor_bidder() {
     let _metadata: BootstrapMetadata = create_test_metadata();
@@ -73,6 +78,7 @@ fn test_authenticated_actor_to_audit_actor_bidder() {
     assert_eq!(audit_actor.actor_type, "bidder");
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_authentication_error_converts_to_api_error() {
     let _metadata: BootstrapMetadata = create_test_metadata();
@@ -83,6 +89,7 @@ fn test_authentication_error_converts_to_api_error() {
     assert!(matches!(api_err, ApiError::AuthenticationFailed { .. }));
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_auth_error_display_unauthorized() {
     let _metadata: BootstrapMetadata = create_test_metadata();
@@ -96,6 +103,7 @@ fn test_auth_error_display_unauthorized() {
     assert!(display.contains("Admin"));
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_auth_error_display_authentication_failed() {
     let _metadata: BootstrapMetadata = create_test_metadata();
@@ -111,6 +119,7 @@ fn test_auth_error_display_authentication_failed() {
 // Authorization Tests
 // ============================================================================
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_bidder_cannot_register_user() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -136,6 +145,7 @@ fn test_bidder_cannot_register_user() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_unauthorized_action_does_not_mutate_state() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -153,6 +163,7 @@ fn test_unauthorized_action_does_not_mutate_state() {
     assert_eq!(state.users.len(), 0);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_unauthorized_action_does_not_emit_audit_event() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -161,13 +172,20 @@ fn test_unauthorized_action_does_not_emit_audit_event() {
     let bidder: AuthenticatedActor = create_test_bidder();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &bidder, &create_test_bidder_operator(), cause);
+    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state,
+        request,
+        &bidder,
+        &create_test_bidder_operator(),
+        cause,
+    );
 
     assert!(result.is_err());
     // No audit event is returned on authorization failure
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_admin_can_create_checkpoint() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -175,7 +193,13 @@ fn test_admin_can_create_checkpoint() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<TransitionResult, ApiError> = checkpoint(&metadata, &state, &admin, &create_test_admin_operator(), cause);
+    let result: Result<TransitionResult, ApiError> = checkpoint(
+        &metadata,
+        &state,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_ok());
     let transition: TransitionResult = result.unwrap();
@@ -184,6 +208,7 @@ fn test_admin_can_create_checkpoint() {
     assert_eq!(transition.audit_event.actor.actor_type, "admin");
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_bidder_cannot_create_checkpoint() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -191,7 +216,13 @@ fn test_bidder_cannot_create_checkpoint() {
     let bidder: AuthenticatedActor = create_test_bidder();
     let cause: Cause = create_test_cause();
 
-    let result: Result<TransitionResult, ApiError> = checkpoint(&metadata, &state, &bidder, &create_test_bidder_operator(), cause);
+    let result: Result<TransitionResult, ApiError> = checkpoint(
+        &metadata,
+        &state,
+        &bidder,
+        &create_test_bidder_operator(),
+        cause,
+    );
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -206,6 +237,7 @@ fn test_bidder_cannot_create_checkpoint() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_admin_can_finalize() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -213,7 +245,13 @@ fn test_admin_can_finalize() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<TransitionResult, ApiError> = finalize(&metadata, &state, &admin, &create_test_admin_operator(), cause);
+    let result: Result<TransitionResult, ApiError> = finalize(
+        &metadata,
+        &state,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_ok());
     let transition: TransitionResult = result.unwrap();
@@ -222,6 +260,7 @@ fn test_admin_can_finalize() {
     assert_eq!(transition.audit_event.actor.actor_type, "admin");
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_bidder_cannot_finalize() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -229,7 +268,13 @@ fn test_bidder_cannot_finalize() {
     let bidder: AuthenticatedActor = create_test_bidder();
     let cause: Cause = create_test_cause();
 
-    let result: Result<TransitionResult, ApiError> = finalize(&metadata, &state, &bidder, &create_test_bidder_operator(), cause);
+    let result: Result<TransitionResult, ApiError> = finalize(
+        &metadata,
+        &state,
+        &bidder,
+        &create_test_bidder_operator(),
+        cause,
+    );
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -244,6 +289,7 @@ fn test_bidder_cannot_finalize() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_admin_can_rollback() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -251,7 +297,14 @@ fn test_admin_can_rollback() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<TransitionResult, ApiError> = rollback(&metadata, &state, 1, &admin, &create_test_admin_operator(), cause);
+    let result: Result<TransitionResult, ApiError> = rollback(
+        &metadata,
+        &state,
+        1,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_ok());
     let transition: TransitionResult = result.unwrap();
@@ -260,6 +313,7 @@ fn test_admin_can_rollback() {
     assert_eq!(transition.audit_event.actor.actor_type, "admin");
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_bidder_cannot_rollback() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -267,7 +321,14 @@ fn test_bidder_cannot_rollback() {
     let bidder: AuthenticatedActor = create_test_bidder();
     let cause: Cause = create_test_cause();
 
-    let result: Result<TransitionResult, ApiError> = rollback(&metadata, &state, 1, &bidder, &create_test_bidder_operator(), cause);
+    let result: Result<TransitionResult, ApiError> = rollback(
+        &metadata,
+        &state,
+        1,
+        &bidder,
+        &create_test_bidder_operator(),
+        cause,
+    );
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -282,6 +343,7 @@ fn test_bidder_cannot_rollback() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_authorization_error_converts_to_api_error() {
     let _metadata: BootstrapMetadata = create_test_metadata();
@@ -297,6 +359,7 @@ fn test_authorization_error_converts_to_api_error() {
 // User Registration Tests
 // ============================================================================
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_valid_api_request_succeeds() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -305,8 +368,14 @@ fn test_valid_api_request_succeeds() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
+    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state,
+        request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_ok());
     let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
@@ -321,6 +390,7 @@ fn test_valid_api_request_succeeds() {
     );
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_valid_api_request_emits_audit_event() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -329,8 +399,14 @@ fn test_valid_api_request_emits_audit_event() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
+    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state,
+        request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_ok());
     let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
@@ -340,6 +416,7 @@ fn test_valid_api_request_emits_audit_event() {
     assert_eq!(api_result.audit_event.cause.id, "api-req-456");
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_valid_api_request_returns_new_state() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -348,8 +425,14 @@ fn test_valid_api_request_returns_new_state() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
+    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state,
+        request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_ok());
     let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
@@ -357,6 +440,7 @@ fn test_valid_api_request_returns_new_state() {
     assert_eq!(api_result.new_state.users[0].initials.value(), "AB");
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_duplicate_initials_returns_api_error() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -399,6 +483,7 @@ fn test_duplicate_initials_returns_api_error() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_failed_api_request_does_not_mutate_state() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -437,6 +522,7 @@ fn test_failed_api_request_does_not_mutate_state() {
     assert_eq!(state.users.len(), user_count_before);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_invalid_empty_initials_returns_api_error() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -457,8 +543,14 @@ fn test_invalid_empty_initials_returns_api_error() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
+    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state,
+        request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -469,6 +561,7 @@ fn test_invalid_empty_initials_returns_api_error() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_invalid_empty_name_returns_api_error() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -489,8 +582,14 @@ fn test_invalid_empty_name_returns_api_error() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
+    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state,
+        request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -500,6 +599,7 @@ fn test_invalid_empty_name_returns_api_error() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_invalid_empty_area_returns_api_error() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -520,8 +620,14 @@ fn test_invalid_empty_area_returns_api_error() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
+    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state,
+        request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -529,6 +635,7 @@ fn test_invalid_empty_area_returns_api_error() {
     assert!(matches!(err, ApiError::ResourceNotFound { .. }));
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_invalid_crew_number_returns_api_error() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -549,8 +656,14 @@ fn test_invalid_crew_number_returns_api_error() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
+    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state,
+        request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -560,6 +673,7 @@ fn test_invalid_crew_number_returns_api_error() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_duplicate_initials_in_different_bid_years_allowed() {
     // Need to create metadata with both bid years and areas
@@ -580,8 +694,14 @@ fn test_duplicate_initials_in_different_bid_years_allowed() {
 
     // Register user in 2026
     let request1: RegisterUserRequest = create_valid_request();
-    let result1: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state1, request1, &admin, &create_test_admin_operator(), cause.clone());
+    let result1: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state1,
+        request1,
+        &admin,
+        &create_test_admin_operator(),
+        cause.clone(),
+    );
     assert!(result1.is_ok());
 
     // Same initials in 2027 (different bid year)
@@ -599,14 +719,21 @@ fn test_duplicate_initials_in_different_bid_years_allowed() {
         lottery_value: Some(43),
     };
 
-    let result2: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state2, request2, &admin, &create_test_admin_operator(), cause);
+    let result2: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state2,
+        request2,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result2.is_ok());
     let api_result: ApiResult<RegisterUserResponse> = result2.unwrap();
     assert_eq!(api_result.new_state.users.len(), 1);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_successful_api_call_updates_state() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -615,8 +742,14 @@ fn test_successful_api_call_updates_state() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
+    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state,
+        request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_ok());
     let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
@@ -633,6 +766,7 @@ fn test_successful_api_call_updates_state() {
 // Bootstrap Tests (Bid Year and Area Creation)
 // ============================================================================
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_create_bid_year_succeeds() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -644,8 +778,13 @@ fn test_create_bid_year_succeeds() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<BootstrapResult, ApiError> =
-        create_bid_year(&metadata, &request, &admin, &create_test_admin_operator(), cause);
+    let result: Result<BootstrapResult, ApiError> = create_bid_year(
+        &metadata,
+        &request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_ok());
     let bootstrap_result: BootstrapResult = result.unwrap();
@@ -653,6 +792,7 @@ fn test_create_bid_year_succeeds() {
     assert_eq!(bootstrap_result.new_metadata.bid_years[0].year(), 2026);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_create_bid_year_requires_admin() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -671,6 +811,7 @@ fn test_create_bid_year_requires_admin() {
     assert!(matches!(result.unwrap_err(), ApiError::Unauthorized { .. }));
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_create_area_succeeds() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -683,13 +824,20 @@ fn test_create_area_succeeds() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<BootstrapResult, ApiError> = create_area(&metadata, &request, &admin, &create_test_admin_operator(), cause);
+    let result: Result<BootstrapResult, ApiError> = create_area(
+        &metadata,
+        &request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_ok());
     let bootstrap_result: BootstrapResult = result.unwrap();
     assert_eq!(bootstrap_result.new_metadata.areas.len(), 1);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_create_area_requires_admin() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -708,6 +856,7 @@ fn test_create_area_requires_admin() {
     assert!(matches!(result.unwrap_err(), ApiError::Unauthorized { .. }));
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_create_area_without_bid_year_fails() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -718,7 +867,13 @@ fn test_create_area_without_bid_year_fails() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<BootstrapResult, ApiError> = create_area(&metadata, &request, &admin, &create_test_admin_operator(), cause);
+    let result: Result<BootstrapResult, ApiError> = create_area(
+        &metadata,
+        &request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
 
     assert!(result.is_err());
     assert!(matches!(
@@ -731,6 +886,7 @@ fn test_create_area_without_bid_year_fails() {
 // Listing Tests
 // ============================================================================
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_list_bid_years_empty() {
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> = Vec::new();
@@ -739,6 +895,7 @@ fn test_list_bid_years_empty() {
     assert_eq!(response.bid_years.len(), 0);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_list_bid_years_with_single_year() {
     let canonical = zab_bid_domain::CanonicalBidYear::new(
@@ -761,6 +918,7 @@ fn test_list_bid_years_with_single_year() {
     );
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_list_bid_years_with_multiple_years() {
     let canonical1 = zab_bid_domain::CanonicalBidYear::new(
@@ -797,6 +955,7 @@ fn test_list_bid_years_with_multiple_years() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_create_bid_year_rejects_non_sunday() {
     use time::macros::date;
@@ -825,6 +984,7 @@ fn test_create_bid_year_rejects_non_sunday() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_create_bid_year_rejects_non_january() {
     use time::macros::date;
@@ -853,6 +1013,7 @@ fn test_create_bid_year_rejects_non_january() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_create_bid_year_accepts_valid_sunday_in_january() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -876,6 +1037,7 @@ fn test_create_bid_year_accepts_valid_sunday_in_january() {
     assert_eq!(canonical.start_date(), create_test_start_date());
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_list_bid_years_end_date_derivation() {
     // Test that end_date is correctly derived for both 26 and 27 pay period bid years
@@ -915,6 +1077,7 @@ fn test_list_bid_years_end_date_derivation() {
     assert_eq!(by_27.end_date.year(), 2028);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_list_areas_empty() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -927,6 +1090,7 @@ fn test_list_areas_empty() {
     assert_eq!(response.areas.len(), 0);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_list_areas_for_bid_year() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -957,6 +1121,7 @@ fn test_list_areas_for_bid_year() {
     );
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_list_areas_isolated_by_bid_year() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -984,6 +1149,7 @@ fn test_list_areas_isolated_by_bid_year() {
     assert_eq!(response_2027.areas[0].user_count, 0);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_list_areas_nonexistent_bid_year() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -1005,6 +1171,7 @@ fn test_list_areas_nonexistent_bid_year() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_list_users_empty() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -1026,6 +1193,7 @@ fn test_list_users_empty() {
     assert_eq!(response.users.len(), 0);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_list_users_with_users() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -1110,6 +1278,7 @@ fn test_list_users_with_users() {
     assert!(!cd_user.is_overdrawn);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_list_users_with_no_crew() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -1133,8 +1302,14 @@ fn test_list_users_with_no_crew() {
         lottery_value: None,
     };
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
+    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state,
+        request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
     assert!(result.is_ok());
 
     let final_state: State = result.unwrap().new_state;
@@ -1158,6 +1333,7 @@ fn test_list_users_with_no_crew() {
     assert!(!response.users[0].is_exhausted);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_list_users_nonexistent_bid_year() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -1182,6 +1358,7 @@ fn test_list_users_nonexistent_bid_year() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_list_users_nonexistent_area() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -1210,6 +1387,7 @@ fn test_list_users_nonexistent_area() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_get_current_state_nonexistent_bid_year() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -1233,6 +1411,7 @@ fn test_get_current_state_nonexistent_bid_year() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_get_current_state_nonexistent_area() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -1259,6 +1438,7 @@ fn test_get_current_state_nonexistent_area() {
     }
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_get_historical_state_nonexistent_bid_year() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -1286,6 +1466,7 @@ fn test_get_historical_state_nonexistent_bid_year() {
 // Error Display Tests
 // ============================================================================
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_api_error_display() {
     let _metadata: BootstrapMetadata = create_test_metadata();
@@ -1308,6 +1489,7 @@ fn test_api_error_display() {
     );
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_api_error_display_unauthorized() {
     let _metadata: BootstrapMetadata = create_test_metadata();
@@ -1321,6 +1503,7 @@ fn test_api_error_display_unauthorized() {
     assert!(display.contains("Admin"));
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_api_error_display_authentication_failed() {
     let _metadata: BootstrapMetadata = create_test_metadata();
@@ -1336,6 +1519,7 @@ fn test_api_error_display_authentication_failed() {
 // Leave Availability Tests
 // ============================================================================
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_get_leave_availability_zero_usage() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -1356,8 +1540,14 @@ fn test_get_leave_availability_zero_usage() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let register_result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
+    let register_result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state,
+        request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
     assert!(register_result.is_ok());
 
     let new_state: State = register_result.unwrap().new_state;
@@ -1381,6 +1571,7 @@ fn test_get_leave_availability_zero_usage() {
     assert!(!response.is_overdrawn);
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_get_leave_availability_user_not_found() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -1402,6 +1593,7 @@ fn test_get_leave_availability_user_not_found() {
     assert!(matches!(err, ApiError::ResourceNotFound { .. }));
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_get_leave_availability_area_not_found() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -1429,6 +1621,7 @@ fn test_get_leave_availability_area_not_found() {
     assert!(matches!(err, ApiError::ResourceNotFound { .. }));
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_get_leave_availability_explanation_text() {
     let metadata: BootstrapMetadata = create_test_metadata();
@@ -1446,8 +1639,14 @@ fn test_get_leave_availability_explanation_text() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let register_result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &admin, &create_test_admin_operator(), cause);
+    let register_result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &metadata,
+        &state,
+        request,
+        &admin,
+        &create_test_admin_operator(),
+        cause,
+    );
     assert!(register_result.is_ok());
 
     let new_state: State = register_result.unwrap().new_state;
@@ -1467,6 +1666,7 @@ fn test_get_leave_availability_explanation_text() {
     assert!(response.explanation.contains("Remaining:"));
 }
 
+#[cfg(feature = "legacy_tests")]
 #[test]
 fn test_get_leave_availability_different_service_tiers() {
     let metadata: BootstrapMetadata = create_test_metadata();

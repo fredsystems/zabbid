@@ -168,7 +168,7 @@ impl AuthorizationService {
     /// # Errors
     ///
     /// Returns an error if the actor does not have permission.
-    pub fn authorize_reassign_crew(_actor: &AuthenticatedActor) -> Result<(), AuthError> {
+    pub const fn authorize_reassign_crew(_actor: &AuthenticatedActor) -> Result<(), AuthError> {
         // Both Admin and Bidder may reassign crews
         Ok(())
     }
@@ -257,7 +257,7 @@ impl AuthenticationService {
     ///
     /// # Returns
     ///
-    /// A tuple of (session_token, authenticated_actor, operator_data)
+    /// A tuple of (`session_token`, `authenticated_actor`, `operator_data`)
     ///
     /// # Errors
     ///
@@ -335,7 +335,7 @@ impl AuthenticationService {
     ///
     /// # Returns
     ///
-    /// A tuple of (authenticated_actor, operator_data)
+    /// A tuple of (`authenticated_actor`, `operator_data`)
     ///
     /// # Errors
     ///
@@ -347,7 +347,7 @@ impl AuthenticationService {
         // Retrieve session
         let session: SessionData = persistence
             .get_session_by_token(session_token)
-            .map_err(|e| Self::map_persistence_error(e))?
+            .map_err(Self::map_persistence_error)?
             .ok_or_else(|| AuthError::AuthenticationFailed {
                 reason: String::from("Invalid session token"),
             })?;
@@ -370,7 +370,7 @@ impl AuthenticationService {
         // Retrieve operator
         let operator: OperatorData = persistence
             .get_operator_by_id(session.operator_id)
-            .map_err(|e| Self::map_persistence_error(e))?
+            .map_err(Self::map_persistence_error)?
             .ok_or_else(|| AuthError::AuthenticationFailed {
                 reason: String::from("Operator not found"),
             })?;
@@ -396,7 +396,7 @@ impl AuthenticationService {
         // Update session activity
         persistence
             .update_session_activity(session.session_id)
-            .map_err(|e| Self::map_persistence_error(e))?;
+            .map_err(Self::map_persistence_error)?;
 
         let authenticated_actor: AuthenticatedActor =
             AuthenticatedActor::new(operator.login_name.clone(), role);
@@ -444,10 +444,7 @@ impl AuthenticationService {
     /// Maps persistence errors to authentication errors.
     fn map_persistence_error(err: PersistenceError) -> AuthError {
         match err {
-            PersistenceError::SessionExpired(msg) => {
-                AuthError::AuthenticationFailed { reason: msg }
-            }
-            PersistenceError::SessionNotFound(msg) => {
+            PersistenceError::SessionExpired(msg) | PersistenceError::SessionNotFound(msg) => {
                 AuthError::AuthenticationFailed { reason: msg }
             }
             _ => AuthError::AuthenticationFailed {
