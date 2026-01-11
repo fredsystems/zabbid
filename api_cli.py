@@ -132,14 +132,15 @@ ENDPOINTS: Sequence[Endpoint] = (
     Endpoint("4", "List Areas", "GET", "/areas"),
     Endpoint("5", "Register User", "POST", "/register_user"),
     Endpoint("6", "List Users", "GET", "/users"),
-    Endpoint("7", "Checkpoint", "POST", "/checkpoint"),
-    Endpoint("8", "Finalize", "POST", "/finalize"),
-    Endpoint("9", "Rollback", "POST", "/rollback"),
-    Endpoint("10", "Current State", "GET", "/state/current"),
-    Endpoint("11", "Historical State", "GET", "/state/historical"),
-    Endpoint("12", "Audit Timeline", "GET", "/audit/timeline"),
+    Endpoint("7", "Leave Availability", "GET", "/leave/availability"),
+    Endpoint("8", "Checkpoint", "POST", "/checkpoint"),
+    Endpoint("9", "Finalize", "POST", "/finalize"),
+    Endpoint("10", "Rollback", "POST", "/rollback"),
+    Endpoint("11", "Current State", "GET", "/state/current"),
+    Endpoint("12", "Historical State", "GET", "/state/historical"),
+    Endpoint("13", "Audit Timeline", "GET", "/audit/timeline"),
     # Router: /audit/event/{event_id} — we model this as: base path + prompted event id
-    Endpoint("13", "Audit Event by ID", "GET", "/audit/event"),
+    Endpoint("14", "Audit Event by ID", "GET", "/audit/event"),
 )
 
 
@@ -293,6 +294,19 @@ def build_get_params(path: str) -> Mapping[str, str]:
         )
         SESSION.update(bid_year=bid_year, area=area)
         return {"bid_year": str(bid_year), "area": area}
+
+    if path == "/leave/availability":
+        bid_year: int = prompt_int(
+            "Bid year",
+            default=SESSION.get("bid_year"),
+        )
+        area: str = prompt_str(
+            "Area",
+            default=SESSION.get("area"),
+        )
+        initials: str = prompt_str("User initials")
+        SESSION.update(bid_year=bid_year, area=area)
+        return {"bid_year": str(bid_year), "area": area, "initials": initials}
 
     if path == "/state/current":
         bid_year: int = prompt_int(

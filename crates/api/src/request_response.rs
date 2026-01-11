@@ -163,3 +163,39 @@ pub struct UserInfo {
     /// The user's crew (optional).
     pub crew: Option<u8>,
 }
+
+/// API request to get leave availability for a user.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GetLeaveAvailabilityRequest {
+    /// The bid year.
+    pub bid_year: u16,
+    /// The area identifier.
+    pub area: String,
+    /// The user's initials.
+    pub initials: String,
+}
+
+/// API response for leave availability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GetLeaveAvailabilityResponse {
+    /// The bid year.
+    pub bid_year: u16,
+    /// The user's initials.
+    pub initials: String,
+    /// Total hours earned (from Phase 9, post-rounding).
+    pub earned_hours: u16,
+    /// Total days earned.
+    pub earned_days: u16,
+    /// Total hours used.
+    pub used_hours: u16,
+    /// Remaining hours available (may be negative if overdrawn).
+    pub remaining_hours: i32,
+    /// Remaining days available (may be negative if overdrawn).
+    pub remaining_days: i32,
+    /// Whether all leave has been exhausted.
+    pub is_exhausted: bool,
+    /// Whether leave balance is overdrawn.
+    pub is_overdrawn: bool,
+    /// Human-readable explanation of the calculation.
+    pub explanation: String,
+}

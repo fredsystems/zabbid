@@ -10,13 +10,17 @@ use zab_bid::{
     validate_area_exists, validate_bid_year_exists,
 };
 use zab_bid_audit::{Actor, AuditEvent, Cause};
-use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Crew, Initials, SeniorityData, UserType};
+use zab_bid_domain::{
+    Area, BidYear, CanonicalBidYear, Crew, Initials, LeaveAvailabilityResult, LeaveUsage,
+    SeniorityData, UserType, calculate_leave_accrual, calculate_leave_availability,
+};
 
 use crate::auth::{AuthenticatedActor, AuthorizationService, Role};
 use crate::error::{ApiError, translate_core_error, translate_domain_error};
 use crate::request_response::{
-    BidYearInfo, CreateAreaRequest, CreateBidYearRequest, ListAreasRequest, ListAreasResponse,
-    ListBidYearsResponse, ListUsersResponse, RegisterUserRequest, RegisterUserResponse, UserInfo,
+    BidYearInfo, CreateAreaRequest, CreateBidYearRequest, GetLeaveAvailabilityResponse,
+    ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListUsersResponse,
+    RegisterUserRequest, RegisterUserResponse, UserInfo,
 };
 
 /// The result of an API operation that includes both the response and the audit event.
@@ -570,4 +574,112 @@ pub fn get_historical_state(
     validate_area_exists(metadata, bid_year, area).map_err(translate_domain_error)?;
 
     Ok(state)
+}
+
+/// Gets leave availability for a specific user.
+///
+/// This is a read-only operation that:
+/// - Validates the bid year and area exist
+/// - Finds the specified user
+/// - Calculates leave accrual using Phase 9 logic
+/// - Retrieves leave usage records (currently none exist in persistence)
+/// - Calculates remaining leave availability
+///
+/// # Arguments
+///
+/// * `metadata` - The current bootstrap metadata
+/// * `canonical_bid_year` - The canonical bid year for accrual calculation
+/// * `area` - The area
+/// * `initials` - The user's initials
+/// * `state` - The current state
+///
+/// # Returns
+///
+/// * `Ok(GetLeaveAvailabilityResponse)` - The leave availability information
+/// * `Err(ApiError)` if the bid year, area, or user does not exist
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The bid year does not exist
+/// - The area does not exist in the bid year
+/// - The user does not exist in the area
+/// - Leave accrual calculation fails
+/// - Leave availability calculation fails
+pub fn get_leave_availability(
+    metadata: &BootstrapMetadata,
+    canonical_bid_year: &CanonicalBidYear,
+    area: &Area,
+    initials: &Initials,
+    state: &State,
+) -> Result<GetLeaveAvailabilityResponse, ApiError> {
+    let bid_year: BidYear = BidYear::new(canonical_bid_year.year());
+
+    // Validate bid year and area exist
+    validate_area_exists(metadata, &bid_year, area).map_err(translate_domain_error)?;
+
+    // Find the user
+    let user = state
+        .users
+        .iter()
+        .find(|u| u.initials == *initials)
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("User"),
+            message: format!(
+                "User with initials '{}' not found in bid year {} area {}",
+                initials.value(),
+                bid_year.year(),
+                area.id()
+            ),
+        })?;
+
+    // Calculate leave accrual using Phase 9
+    let accrual =
+        calculate_leave_accrual(user, canonical_bid_year).map_err(translate_domain_error)?;
+
+    // Retrieve leave usage records
+    // Note: For Phase 10, no persistence for leave usage exists yet.
+    // We pass an empty iterator, which means all earned leave is available.
+    let usage_records: Vec<LeaveUsage> = Vec::new();
+
+    // Calculate leave availability
+    let availability: LeaveAvailabilityResult =
+        calculate_leave_availability(&accrual, usage_records).map_err(translate_domain_error)?;
+
+    // Build explanation
+    let explanation: String = format!(
+        "Leave accrual calculated for user '{}' in bid year {}. \
+         Earned: {} hours ({} days). Used: {} hours. \
+         Remaining: {} hours ({} days).{}{}",
+        initials.value(),
+        bid_year.year(),
+        availability.earned_hours,
+        availability.earned_days,
+        availability.used_hours,
+        availability.remaining_hours,
+        availability.remaining_days,
+        if availability.is_exhausted {
+            " Leave fully exhausted."
+        } else {
+            ""
+        },
+        if availability.is_overdrawn {
+            " Leave balance is overdrawn."
+        } else {
+            ""
+        }
+    );
+
+    Ok(GetLeaveAvailabilityResponse {
+        bid_year: bid_year.year(),
+        initials: initials.value().to_string(),
+        earned_hours: availability.earned_hours,
+        earned_days: availability.earned_days,
+        used_hours: availability.used_hours,
+        remaining_hours: availability.remaining_hours,
+        remaining_days: availability.remaining_days,
+        is_exhausted: availability.is_exhausted,
+        is_overdrawn: availability.is_overdrawn,
+        explanation,
+    })
 }

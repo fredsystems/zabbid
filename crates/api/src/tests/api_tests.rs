@@ -11,10 +11,10 @@ use zab_bid_domain::{Area, BidYear};
 
 use crate::{
     ApiError, ApiResult, AuthError, AuthenticatedActor, CreateAreaRequest, CreateBidYearRequest,
-    ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListUsersResponse,
-    RegisterUserRequest, RegisterUserResponse, Role, authenticate_stub, checkpoint, create_area,
-    create_bid_year, finalize, get_current_state, get_historical_state, list_areas, list_bid_years,
-    list_users, register_user, rollback,
+    GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
+    ListUsersResponse, RegisterUserRequest, RegisterUserResponse, Role, authenticate_stub,
+    checkpoint, create_area, create_bid_year, finalize, get_current_state, get_historical_state,
+    get_leave_availability, list_areas, list_bid_years, list_users, register_user, rollback,
 };
 
 use super::helpers::{
@@ -1276,4 +1276,196 @@ fn test_api_error_display_authentication_failed() {
     let display: String = format!("{err}");
     assert!(display.contains("Authentication failed"));
     assert!(display.contains("token expired"));
+}
+
+// ============================================================================
+// Leave Availability Tests
+// ============================================================================
+
+#[test]
+fn test_get_leave_availability_zero_usage() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let bid_year: BidYear = BidYear::new(2026);
+    let area: Area = Area::new("North");
+
+    // Create a canonical bid year
+    let canonical_bid_year =
+        zab_bid_domain::CanonicalBidYear::new(2026, create_test_start_date(), 26).unwrap();
+
+    // Create a user with some service time
+    let mut request: RegisterUserRequest = create_valid_request();
+    request.service_computation_date = String::from("2020-01-15");
+
+    // Create initial state
+    let state: State = State::new(bid_year, area.clone());
+
+    let admin: AuthenticatedActor = create_test_admin();
+    let cause: Cause = create_test_cause();
+
+    let register_result: Result<ApiResult<RegisterUserResponse>, ApiError> =
+        register_user(&metadata, &state, request, &admin, cause);
+    assert!(register_result.is_ok());
+
+    let new_state: State = register_result.unwrap().new_state;
+    let initials = zab_bid_domain::Initials::new("AB");
+
+    // Get leave availability
+    let result: Result<GetLeaveAvailabilityResponse, ApiError> =
+        get_leave_availability(&metadata, &canonical_bid_year, &area, &initials, &new_state);
+
+    assert!(result.is_ok());
+    let response: GetLeaveAvailabilityResponse = result.unwrap();
+
+    // User has 6+ years of service, so should get 6-hour tier
+    // 26 PPs * 6 hours + 4 bonus = 160 hours = 20 days
+    assert_eq!(response.earned_hours, 160);
+    assert_eq!(response.earned_days, 20);
+    assert_eq!(response.used_hours, 0);
+    assert_eq!(response.remaining_hours, 160);
+    assert_eq!(response.remaining_days, 20);
+    assert!(!response.is_exhausted);
+    assert!(!response.is_overdrawn);
+}
+
+#[test]
+fn test_get_leave_availability_user_not_found() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let bid_year: BidYear = BidYear::new(2026);
+    let area: Area = Area::new("North");
+
+    let canonical_bid_year =
+        zab_bid_domain::CanonicalBidYear::new(2026, create_test_start_date(), 26).unwrap();
+
+    let state: State = State::new(bid_year, area.clone());
+
+    let initials = zab_bid_domain::Initials::new("XY");
+
+    let result: Result<GetLeaveAvailabilityResponse, ApiError> =
+        get_leave_availability(&metadata, &canonical_bid_year, &area, &initials, &state);
+
+    assert!(result.is_err());
+    let err: ApiError = result.unwrap_err();
+    assert!(matches!(err, ApiError::ResourceNotFound { .. }));
+}
+
+#[test]
+fn test_get_leave_availability_area_not_found() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let bid_year: BidYear = BidYear::new(2026);
+    let area: Area = Area::new("North");
+    let wrong_area: Area = Area::new("South");
+
+    let canonical_bid_year =
+        zab_bid_domain::CanonicalBidYear::new(2026, create_test_start_date(), 26).unwrap();
+
+    let state: State = State::new(bid_year, area);
+
+    let initials = zab_bid_domain::Initials::new("AB");
+
+    let result: Result<GetLeaveAvailabilityResponse, ApiError> = get_leave_availability(
+        &metadata,
+        &canonical_bid_year,
+        &wrong_area,
+        &initials,
+        &state,
+    );
+
+    assert!(result.is_err());
+    let err: ApiError = result.unwrap_err();
+    assert!(matches!(err, ApiError::ResourceNotFound { .. }));
+}
+
+#[test]
+fn test_get_leave_availability_explanation_text() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let bid_year: BidYear = BidYear::new(2026);
+    let area: Area = Area::new("North");
+
+    let canonical_bid_year =
+        zab_bid_domain::CanonicalBidYear::new(2026, create_test_start_date(), 26).unwrap();
+
+    let mut request: RegisterUserRequest = create_valid_request();
+    request.service_computation_date = String::from("2024-01-15");
+
+    let state: State = State::new(bid_year, area.clone());
+
+    let admin: AuthenticatedActor = create_test_admin();
+    let cause: Cause = create_test_cause();
+
+    let register_result: Result<ApiResult<RegisterUserResponse>, ApiError> =
+        register_user(&metadata, &state, request, &admin, cause);
+    assert!(register_result.is_ok());
+
+    let new_state: State = register_result.unwrap().new_state;
+    let initials = zab_bid_domain::Initials::new("AB");
+
+    let result: Result<GetLeaveAvailabilityResponse, ApiError> =
+        get_leave_availability(&metadata, &canonical_bid_year, &area, &initials, &new_state);
+
+    assert!(result.is_ok());
+    let response: GetLeaveAvailabilityResponse = result.unwrap();
+
+    // Check that explanation contains key information
+    assert!(response.explanation.contains("AB"));
+    assert!(response.explanation.contains("2026"));
+    assert!(response.explanation.contains("Earned:"));
+    assert!(response.explanation.contains("Used:"));
+    assert!(response.explanation.contains("Remaining:"));
+}
+
+#[test]
+fn test_get_leave_availability_different_service_tiers() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let bid_year: BidYear = BidYear::new(2026);
+    let area: Area = Area::new("North");
+
+    let canonical_bid_year =
+        zab_bid_domain::CanonicalBidYear::new(2026, create_test_start_date(), 26).unwrap();
+
+    let state: State = State::new(bid_year, area.clone());
+
+    let admin: AuthenticatedActor = create_test_admin();
+    let cause: Cause = create_test_cause();
+
+    // Test user with < 3 years service (4-hour tier)
+    let mut request1: RegisterUserRequest = create_valid_request();
+    request1.initials = String::from("U1");
+    request1.service_computation_date = String::from("2024-01-15");
+
+    let register_result1: Result<ApiResult<RegisterUserResponse>, ApiError> =
+        register_user(&metadata, &state, request1, &admin, cause.clone());
+    assert!(register_result1.is_ok());
+
+    let state1: State = register_result1.unwrap().new_state;
+    let initials1 = zab_bid_domain::Initials::new("U1");
+
+    let result1: Result<GetLeaveAvailabilityResponse, ApiError> =
+        get_leave_availability(&metadata, &canonical_bid_year, &area, &initials1, &state1);
+    assert!(result1.is_ok());
+    let response1: GetLeaveAvailabilityResponse = result1.unwrap();
+
+    // 26 PPs * 4 hours = 104 hours = 13 days
+    assert_eq!(response1.earned_hours, 104);
+    assert_eq!(response1.earned_days, 13);
+
+    // Test user with 15+ years service (8-hour tier)
+    let mut request2: RegisterUserRequest = create_valid_request();
+    request2.initials = String::from("U2");
+    request2.service_computation_date = String::from("2010-01-15");
+
+    let register_result2: Result<ApiResult<RegisterUserResponse>, ApiError> =
+        register_user(&metadata, &state1, request2, &admin, cause);
+    assert!(register_result2.is_ok());
+
+    let state2: State = register_result2.unwrap().new_state;
+    let initials2 = zab_bid_domain::Initials::new("U2");
+
+    let result2: Result<GetLeaveAvailabilityResponse, ApiError> =
+        get_leave_availability(&metadata, &canonical_bid_year, &area, &initials2, &state2);
+    assert!(result2.is_ok());
+    let response2: GetLeaveAvailabilityResponse = result2.unwrap();
+
+    // 26 PPs * 8 hours = 208 hours = 26 days
+    assert_eq!(response2.earned_hours, 208);
+    assert_eq!(response2.earned_days, 26);
 }
