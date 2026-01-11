@@ -15,15 +15,24 @@
  * - This is a read-only view; no mutations are performed
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { listBidYears } from "../api";
-import type { BidYearInfo } from "../types";
+import { listBidYears, NetworkError } from "../api";
+import type { BidYearInfo, ConnectionState, LiveEvent } from "../types";
 
-export function BootstrapOverview() {
+interface BootstrapOverviewProps {
+  connectionState: ConnectionState;
+  lastEvent: LiveEvent | null;
+}
+
+export function BootstrapOverview({
+  connectionState,
+  lastEvent,
+}: BootstrapOverviewProps) {
   const [bidYears, setBidYears] = useState<BidYearInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const previousConnectionState = useRef<ConnectionState | null>(null);
 
   useEffect(() => {
     const loadBidYears = async () => {
@@ -33,9 +42,15 @@ export function BootstrapOverview() {
         const years = await listBidYears();
         setBidYears(years);
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load bid years",
-        );
+        if (err instanceof NetworkError) {
+          setError(
+            "Backend is unavailable. Please ensure the server is running.",
+          );
+        } else {
+          setError(
+            err instanceof Error ? err.message : "Failed to load bid years",
+          );
+        }
       } finally {
         setLoading(false);
       }
@@ -44,6 +59,69 @@ export function BootstrapOverview() {
     void loadBidYears();
   }, []);
 
+  // Auto-refresh when connection is restored
+  useEffect(() => {
+    console.log(
+      "[BootstrapOverview] Connection state changed:",
+      previousConnectionState.current,
+      "->",
+      connectionState,
+    );
+
+    const wasNotConnected = previousConnectionState.current !== "connected";
+    const nowConnected = connectionState === "connected";
+
+    if (wasNotConnected && nowConnected) {
+      console.log(
+        "[BootstrapOverview] Connection established, refreshing data",
+      );
+      const loadBidYears = async () => {
+        try {
+          setLoading(true);
+          setError(null);
+          const years = await listBidYears();
+          setBidYears(years);
+        } catch (err) {
+          if (err instanceof NetworkError) {
+            setError(
+              "Backend is unavailable. Please ensure the server is running.",
+            );
+          } else {
+            setError(
+              err instanceof Error ? err.message : "Failed to load bid years",
+            );
+          }
+        } finally {
+          setLoading(false);
+        }
+      };
+      void loadBidYears();
+    }
+
+    previousConnectionState.current = connectionState;
+  }, [connectionState]);
+
+  // Refresh when relevant live events occur
+  useEffect(() => {
+    if (!lastEvent) return;
+
+    if (lastEvent.type === "bid_year_created") {
+      console.log(
+        "[BootstrapOverview] Bid year created event, refreshing data",
+      );
+      const loadBidYears = async () => {
+        try {
+          const years = await listBidYears();
+          setBidYears(years);
+        } catch (err) {
+          // Silently fail on live event refresh - connection state will show the issue
+          console.error("Failed to refresh after live event:", err);
+        }
+      };
+      void loadBidYears();
+    }
+  }, [lastEvent]);
+
   if (loading) {
     return <div className="loading">Loading bid years...</div>;
   }
@@ -51,8 +129,14 @@ export function BootstrapOverview() {
   if (error) {
     return (
       <div className="error">
-        <h2>Error Loading Bid Years</h2>
+        <h2>Unable to Load Bid Years</h2>
         <p>{error}</p>
+        {error.includes("unavailable") && (
+          <p style={{ marginTop: "1rem", fontSize: "0.9rem", color: "#666" }}>
+            Check the connection status indicator in the header. The UI will
+            automatically refresh when the backend becomes available.
+          </p>
+        )}
       </div>
     );
   }

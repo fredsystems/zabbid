@@ -17,17 +17,26 @@
  * This view aggregates all necessary data in one API call to avoid N+1 queries.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { listUsers } from "../api";
-import type { UserInfo } from "../types";
+import { listUsers, NetworkError } from "../api";
+import type { ConnectionState, LiveEvent, UserInfo } from "../types";
 
-export function UserListView() {
+interface UserListViewProps {
+  connectionState: ConnectionState;
+  lastEvent: LiveEvent | null;
+}
+
+export function UserListView({
+  connectionState,
+  lastEvent,
+}: UserListViewProps) {
   const { year, areaId } = useParams<{ year: string; areaId: string }>();
   const navigate = useNavigate();
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const previousConnectionState = useRef<ConnectionState | null>(null);
 
   const bidYear = year ? parseInt(year, 10) : null;
 
@@ -45,7 +54,13 @@ export function UserListView() {
         const response = await listUsers(bidYear, areaId);
         setUsers(response.users);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load users");
+        if (err instanceof NetworkError) {
+          setError(
+            "Backend is unavailable. Please ensure the server is running.",
+          );
+        } else {
+          setError(err instanceof Error ? err.message : "Failed to load users");
+        }
       } finally {
         setLoading(false);
       }
@@ -53,6 +68,72 @@ export function UserListView() {
 
     void loadUsers();
   }, [bidYear, areaId]);
+
+  // Auto-refresh when connection is restored
+  useEffect(() => {
+    console.log(
+      "[UserListView] Connection state changed:",
+      previousConnectionState.current,
+      "->",
+      connectionState,
+    );
+
+    const wasNotConnected = previousConnectionState.current !== "connected";
+    const nowConnected = connectionState === "connected";
+
+    if (wasNotConnected && nowConnected && bidYear && areaId) {
+      console.log("[UserListView] Connection established, refreshing data");
+      const loadUsers = async () => {
+        try {
+          setLoading(true);
+          setError(null);
+          const response = await listUsers(bidYear, areaId);
+          setUsers(response.users);
+        } catch (err) {
+          if (err instanceof NetworkError) {
+            setError(
+              "Backend is unavailable. Please ensure the server is running.",
+            );
+          } else {
+            setError(
+              err instanceof Error ? err.message : "Failed to load users",
+            );
+          }
+        } finally {
+          setLoading(false);
+        }
+      };
+      void loadUsers();
+    }
+
+    previousConnectionState.current = connectionState;
+  }, [connectionState, bidYear, areaId]);
+
+  // Refresh when relevant live events occur
+  useEffect(() => {
+    if (!lastEvent || !bidYear || !areaId) return;
+
+    if (
+      (lastEvent.type === "user_registered" &&
+        lastEvent.bid_year === bidYear &&
+        lastEvent.area === areaId) ||
+      (lastEvent.type === "user_updated" &&
+        lastEvent.bid_year === bidYear &&
+        lastEvent.area === areaId)
+    ) {
+      console.log("[UserListView] Relevant event received, refreshing data");
+      const loadUsers = async () => {
+        try {
+          const response = await listUsers(bidYear, areaId);
+          setUsers(response.users);
+        } catch (err) {
+          // Silently fail on live event refresh - connection state will show the issue
+          console.error("Failed to refresh after live event:", err);
+        }
+      };
+      void loadUsers();
+    }
+  }, [lastEvent, bidYear, areaId]);
 
   if (!bidYear || !areaId) {
     return (
@@ -73,8 +154,14 @@ export function UserListView() {
   if (error) {
     return (
       <div className="error">
-        <h2>Error Loading Users</h2>
+        <h2>Unable to Load Users</h2>
         <p>{error}</p>
+        {error.includes("unavailable") && (
+          <p style={{ marginTop: "1rem", fontSize: "0.9rem", color: "#666" }}>
+            Check the connection status indicator in the header. The UI will
+            automatically refresh when the backend becomes available.
+          </p>
+        )}
         <button
           type="button"
           onClick={() => navigate(`/bid-year/${bidYear}/areas`)}

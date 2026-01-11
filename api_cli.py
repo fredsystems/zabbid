@@ -126,22 +126,22 @@ class Endpoint:
 
 
 ENDPOINTS: Sequence[Endpoint] = (
-    Endpoint("1", "Create Bid Year", "POST", "/bid_years"),
-    Endpoint("2", "List Bid Years", "GET", "/bid_years"),
-    Endpoint("3", "Create Area", "POST", "/areas"),
-    Endpoint("4", "List Areas", "GET", "/areas"),
-    Endpoint("5", "Register User", "POST", "/register_user"),
-    Endpoint("6", "List Users", "GET", "/users"),
-    Endpoint("7", "Leave Availability", "GET", "/leave/availability"),
-    Endpoint("8", "Bootstrap Status", "GET", "/bootstrap/status"),
-    Endpoint("9", "Checkpoint", "POST", "/checkpoint"),
-    Endpoint("10", "Finalize", "POST", "/finalize"),
-    Endpoint("11", "Rollback", "POST", "/rollback"),
-    Endpoint("12", "Current State", "GET", "/state/current"),
-    Endpoint("13", "Historical State", "GET", "/state/historical"),
-    Endpoint("14", "Audit Timeline", "GET", "/audit/timeline"),
-    # Router: /audit/event/{event_id} — we model this as: base path + prompted event id
-    Endpoint("15", "Audit Event by ID", "GET", "/audit/event"),
+    Endpoint("1", "Create Bid Year", "POST", "/api/bid_years"),
+    Endpoint("2", "List Bid Years", "GET", "/api/bid_years"),
+    Endpoint("3", "Create Area", "POST", "/api/areas"),
+    Endpoint("4", "List Areas", "GET", "/api/areas"),
+    Endpoint("5", "Register User", "POST", "/api/users"),
+    Endpoint("6", "List Users", "GET", "/api/users"),
+    Endpoint("7", "Leave Availability", "GET", "/api/leave/availability"),
+    Endpoint("8", "Bootstrap Status", "GET", "/api/bootstrap/status"),
+    Endpoint("9", "Checkpoint", "POST", "/api/checkpoint"),
+    Endpoint("10", "Finalize", "POST", "/api/finalize"),
+    Endpoint("11", "Rollback", "POST", "/api/rollback"),
+    Endpoint("12", "Current State", "GET", "/api/state/current"),
+    Endpoint("13", "Historical State", "GET", "/api/state/historical"),
+    Endpoint("14", "Audit Timeline", "GET", "/api/audit/timeline"),
+    #
+    Endpoint("15", "Audit Event by ID", "GET", "/api/audit/event"),
 )
 
 
@@ -197,7 +197,7 @@ def build_post_payload(path: str) -> JSONObject:
     Build a JSON body for POST endpoints.
     Returns a JSON object (dict[str, JSONValue]) to keep type checkers happy.
     """
-    if path == "/bid_years":
+    if path == "/api/bid_years":
         env: ActorEnvelope = prompt_actor_envelope()
         year: int = prompt_int("Bid year")
         print("Start date must be a Sunday in January (format: YYYY-MM-DD)")
@@ -213,7 +213,7 @@ def build_post_payload(path: str) -> JSONObject:
         )
         return cast(JSONObject, req_year)
 
-    if path == "/areas":
+    if path == "/api/areas":
         env: ActorEnvelope = prompt_actor_envelope()
 
         req_area: CreateAreaRequest = {
@@ -230,7 +230,7 @@ def build_post_payload(path: str) -> JSONObject:
 
         return cast(JSONObject, req_area)
 
-    if path == "/register_user":
+    if path == "/api/users":
         env = prompt_actor_envelope()
         assign_crew: bool = prompt_yes_no("Assign crew now?", default=False)
         crew_val: Optional[int] = prompt_int("Crew (1-7)") if assign_crew else None
@@ -265,6 +265,50 @@ def build_post_payload(path: str) -> JSONObject:
 
         return cast(JSONObject, req)
 
+    if path == "/api/checkpoint":
+        env: ActorEnvelope = prompt_actor_envelope()
+        req_checkpoint: JSONObject = {
+            "actor_id": env["actor_id"],
+            "actor_role": env["actor_role"],
+            "cause_id": env["cause_id"],
+            "cause_description": env["cause_description"],
+            "bid_year": prompt_int("Bid year", default=SESSION.get("bid_year")),
+            "area": prompt_str("Area", default=SESSION.get("area")),
+        }
+        SESSION["bid_year"] = req_checkpoint["bid_year"]
+        SESSION["area"] = req_checkpoint["area"]
+        return req_checkpoint
+
+    if path == "/api/finalize":
+        env: ActorEnvelope = prompt_actor_envelope()
+        req_finalize: JSONObject = {
+            "actor_id": env["actor_id"],
+            "actor_role": env["actor_role"],
+            "cause_id": env["cause_id"],
+            "cause_description": env["cause_description"],
+            "bid_year": prompt_int("Bid year", default=SESSION.get("bid_year")),
+            "area": prompt_str("Area", default=SESSION.get("area")),
+        }
+        SESSION["bid_year"] = req_finalize["bid_year"]
+        SESSION["area"] = req_finalize["area"]
+        return req_finalize
+
+    if path == "/api/rollback":
+        env: ActorEnvelope = prompt_actor_envelope()
+        target_event_id: int = prompt_int("Target event ID to roll back to")
+        req_rollback: JSONObject = {
+            "actor_id": env["actor_id"],
+            "actor_role": env["actor_role"],
+            "cause_id": env["cause_id"],
+            "cause_description": env["cause_description"],
+            "bid_year": prompt_int("Bid year", default=SESSION.get("bid_year")),
+            "area": prompt_str("Area", default=SESSION.get("area")),
+            "target_event_id": target_event_id,
+        }
+        SESSION["bid_year"] = req_rollback["bid_year"]
+        SESSION["area"] = req_rollback["area"]
+        return req_rollback
+
     # For now, we don't implement other POST bodies until you provide schemas.
     raise NotImplementedError(f"POST body schema not implemented for {path}")
 
@@ -273,10 +317,10 @@ def build_get_params(path: str) -> Mapping[str, str]:
     """
     Build query params for GET endpoints, returned as strings for urlencode.
     """
-    if path == "/bid_years":
+    if path == "/api/bid_years":
         return {}
 
-    if path == "/areas":
+    if path == "/api/areas":
         bid_year: int = prompt_int(
             "Bid year",
             default=SESSION.get("bid_year"),
@@ -284,7 +328,7 @@ def build_get_params(path: str) -> Mapping[str, str]:
         SESSION["bid_year"] = bid_year
         return {"bid_year": str(bid_year)}
 
-    if path == "/users":
+    if path == "/api/users":
         bid_year: int = prompt_int(
             "Bid year",
             default=SESSION.get("bid_year"),
@@ -296,7 +340,7 @@ def build_get_params(path: str) -> Mapping[str, str]:
         SESSION.update(bid_year=bid_year, area=area)
         return {"bid_year": str(bid_year), "area": area}
 
-    if path == "/leave/availability":
+    if path == "/api/leave/availability":
         bid_year: int = prompt_int(
             "Bid year",
             default=SESSION.get("bid_year"),
@@ -309,7 +353,7 @@ def build_get_params(path: str) -> Mapping[str, str]:
         SESSION.update(bid_year=bid_year, area=area)
         return {"bid_year": str(bid_year), "area": area, "initials": initials}
 
-    if path == "/state/current":
+    if path == "/api/state/current":
         bid_year: int = prompt_int(
             "Bid year",
             default=SESSION.get("bid_year"),
@@ -321,7 +365,7 @@ def build_get_params(path: str) -> Mapping[str, str]:
         SESSION.update(bid_year=bid_year, area=area)
         return {"bid_year": str(bid_year), "area": area}
 
-    if path == "/state/historical":
+    if path == "/api/state/historical":
         bid_year: int = prompt_int(
             "Bid year",
             default=SESSION.get("bid_year"),
@@ -338,7 +382,7 @@ def build_get_params(path: str) -> Mapping[str, str]:
             "event_id": str(event_id),
         }
 
-    if path == "/audit/timeline":
+    if path == "/api/audit/timeline":
         bid_year: int = prompt_int(
             "Bid year",
             default=SESSION.get("bid_year"),
@@ -350,11 +394,11 @@ def build_get_params(path: str) -> Mapping[str, str]:
         SESSION.update(bid_year=bid_year, area=area)
         return {"bid_year": str(bid_year), "area": area}
 
-    if path == "/audit/event":
+    if path == "/api/audit/event":
         event_id = prompt_int("Event ID")
         return {"__event_id_path__": str(event_id)}
 
-    if path == "/bootstrap/status":
+    if path == "/api/bootstrap/status":
         return {}
 
     return {}
