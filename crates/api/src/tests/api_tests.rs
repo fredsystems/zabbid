@@ -729,7 +729,7 @@ fn test_create_area_without_bid_year_fails() {
 #[test]
 fn test_list_bid_years_empty() {
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> = Vec::new();
-    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years);
+    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years).unwrap();
 
     assert_eq!(response.bid_years.len(), 0);
 }
@@ -742,12 +742,18 @@ fn test_list_bid_years_with_single_year() {
         create_test_pay_periods(),
     )
     .unwrap();
-    let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> = vec![canonical];
+    let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> = vec![canonical.clone()];
 
-    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years);
+    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years).unwrap();
 
     assert_eq!(response.bid_years.len(), 1);
     assert_eq!(response.bid_years[0].year, 2026);
+    assert_eq!(response.bid_years[0].start_date, canonical.start_date());
+    assert_eq!(response.bid_years[0].num_pay_periods, 26);
+    assert_eq!(
+        response.bid_years[0].end_date,
+        canonical.end_date().unwrap()
+    );
 }
 
 #[test]
@@ -773,12 +779,135 @@ fn test_list_bid_years_with_multiple_years() {
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
         vec![canonical1, canonical2, canonical3];
 
-    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years);
+    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years).unwrap();
 
     assert_eq!(response.bid_years.len(), 3);
     assert!(response.bid_years.iter().any(|by| by.year == 2026));
     assert!(response.bid_years.iter().any(|by| by.year == 2027));
     assert!(response.bid_years.iter().any(|by| by.year == 2028));
+
+    // Verify all bid years have end_date populated
+    for bid_year_info in &response.bid_years {
+        assert!(bid_year_info.end_date > bid_year_info.start_date);
+    }
+}
+
+#[test]
+fn test_create_bid_year_rejects_non_sunday() {
+    use time::macros::date;
+
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let actor: AuthenticatedActor = create_test_admin();
+    let cause: Cause = create_test_cause();
+
+    // January 3, 2026 is a Saturday
+    let request: CreateBidYearRequest = CreateBidYearRequest {
+        year: 2026,
+        start_date: date!(2026 - 01 - 03),
+        num_pay_periods: 26,
+    };
+
+    let result = create_bid_year(&metadata, &request, &actor, cause);
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    match err {
+        ApiError::InvalidInput { field, message } => {
+            assert_eq!(field, "start_date");
+            assert!(message.contains("Sunday"));
+        }
+        _ => panic!("Expected InvalidInput error, got {err:?}"),
+    }
+}
+
+#[test]
+fn test_create_bid_year_rejects_non_january() {
+    use time::macros::date;
+
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let actor: AuthenticatedActor = create_test_admin();
+    let cause: Cause = create_test_cause();
+
+    // February 1, 2026 is a Sunday, but not in January
+    let request: CreateBidYearRequest = CreateBidYearRequest {
+        year: 2026,
+        start_date: date!(2026 - 02 - 01),
+        num_pay_periods: 26,
+    };
+
+    let result = create_bid_year(&metadata, &request, &actor, cause);
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    match err {
+        ApiError::InvalidInput { field, message } => {
+            assert_eq!(field, "start_date");
+            assert!(message.contains("January"));
+        }
+        _ => panic!("Expected InvalidInput error, got {err:?}"),
+    }
+}
+
+#[test]
+fn test_create_bid_year_accepts_valid_sunday_in_january() {
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let actor: AuthenticatedActor = create_test_admin();
+    let cause: Cause = create_test_cause();
+
+    // January 4, 2026 is a Sunday in January
+    let request: CreateBidYearRequest = CreateBidYearRequest {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: 26,
+    };
+
+    let result = create_bid_year(&metadata, &request, &actor, cause);
+
+    assert!(result.is_ok());
+    let bootstrap_result = result.unwrap();
+    assert!(bootstrap_result.canonical_bid_year.is_some());
+    let canonical = bootstrap_result.canonical_bid_year.unwrap();
+    assert_eq!(canonical.year(), 2026);
+    assert_eq!(canonical.start_date(), create_test_start_date());
+}
+
+#[test]
+fn test_list_bid_years_end_date_derivation() {
+    // Test that end_date is correctly derived for both 26 and 27 pay period bid years
+    let canonical_26 =
+        zab_bid_domain::CanonicalBidYear::new(2026, create_test_start_date(), 26).unwrap();
+    let canonical_27 =
+        zab_bid_domain::CanonicalBidYear::new(2027, create_test_start_date_for_year(2027), 27)
+            .unwrap();
+
+    let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
+        vec![canonical_26.clone(), canonical_27.clone()];
+
+    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years).unwrap();
+
+    assert_eq!(response.bid_years.len(), 2);
+
+    // Find the 26-period bid year and verify end_date
+    let by_26 = response
+        .bid_years
+        .iter()
+        .find(|by| by.year == 2026)
+        .unwrap();
+    assert_eq!(by_26.num_pay_periods, 26);
+    assert_eq!(by_26.end_date, canonical_26.end_date().unwrap());
+
+    // Find the 27-period bid year and verify end_date
+    let by_27 = response
+        .bid_years
+        .iter()
+        .find(|by| by.year == 2027)
+        .unwrap();
+    assert_eq!(by_27.num_pay_periods, 27);
+    assert_eq!(by_27.end_date, canonical_27.end_date().unwrap());
+
+    // Verify end dates are in the following calendar year
+    assert_eq!(by_26.end_date.year(), 2027);
+    assert_eq!(by_27.end_date.year(), 2028);
 }
 
 #[test]

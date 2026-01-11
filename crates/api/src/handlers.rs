@@ -391,18 +391,29 @@ pub fn create_area(
 /// # Returns
 ///
 /// A response containing all bid years with canonical metadata.
-#[must_use]
-pub fn list_bid_years(canonical_bid_years: &[CanonicalBidYear]) -> ListBidYearsResponse {
-    let bid_years: Vec<BidYearInfo> = canonical_bid_years
+///
+/// # Errors
+///
+/// Returns an error if end date derivation fails due to date arithmetic overflow.
+pub fn list_bid_years(
+    canonical_bid_years: &[CanonicalBidYear],
+) -> Result<ListBidYearsResponse, ApiError> {
+    let bid_years: Result<Vec<BidYearInfo>, ApiError> = canonical_bid_years
         .iter()
-        .map(|c| BidYearInfo {
-            year: c.year(),
-            start_date: c.start_date(),
-            num_pay_periods: c.num_pay_periods(),
+        .map(|c| {
+            let end_date: time::Date = c.end_date().map_err(translate_domain_error)?;
+            Ok(BidYearInfo {
+                year: c.year(),
+                start_date: c.start_date(),
+                num_pay_periods: c.num_pay_periods(),
+                end_date,
+            })
         })
         .collect();
 
-    ListBidYearsResponse { bid_years }
+    Ok(ListBidYearsResponse {
+        bid_years: bid_years?,
+    })
 }
 
 /// Lists all areas for a given bid year.

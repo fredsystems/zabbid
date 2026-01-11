@@ -62,6 +62,20 @@ pub enum DomainError {
         /// Description of the operation that failed.
         operation: String,
     },
+    /// Bid year start date must be a Sunday.
+    InvalidStartDateWeekday {
+        /// The invalid start date.
+        start_date: time::Date,
+        /// The actual weekday.
+        weekday: time::Weekday,
+    },
+    /// Bid year start date must be in January.
+    InvalidStartDateMonth {
+        /// The invalid start date.
+        start_date: time::Date,
+        /// The actual month.
+        month: time::Month,
+    },
 }
 
 impl std::fmt::Display for DomainError {
@@ -103,6 +117,21 @@ impl std::fmt::Display for DomainError {
             }
             Self::DateArithmeticOverflow { operation } => {
                 write!(f, "Date arithmetic overflow while {operation}")
+            }
+            Self::InvalidStartDateWeekday {
+                start_date,
+                weekday,
+            } => {
+                write!(
+                    f,
+                    "Bid year start date must be a Sunday, but {start_date} is a {weekday}"
+                )
+            }
+            Self::InvalidStartDateMonth { start_date, month } => {
+                write!(
+                    f,
+                    "Bid year start date must be in January, but {start_date} is in {month}"
+                )
             }
         }
     }

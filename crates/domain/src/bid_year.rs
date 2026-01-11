@@ -36,7 +36,7 @@ impl CanonicalBidYear {
     /// # Arguments
     ///
     /// * `year` - The year identifier
-    /// * `start_date` - The start date of the bid year (inclusive)
+    /// * `start_date` - The start date of the bid year (inclusive, must be a Sunday in January)
     /// * `num_pay_periods` - The number of pay periods (must be 26 or 27)
     ///
     /// # Returns
@@ -47,12 +47,25 @@ impl CanonicalBidYear {
     /// # Errors
     ///
     /// Returns an error if:
+    /// - The start date is not a Sunday
+    /// - The start date is not in January
     /// - The number of pay periods is not 26 or 27
-    pub const fn new(
-        year: u16,
-        start_date: Date,
-        num_pay_periods: u8,
-    ) -> Result<Self, DomainError> {
+    pub fn new(year: u16, start_date: Date, num_pay_periods: u8) -> Result<Self, DomainError> {
+        // Validate start date is a Sunday
+        let weekday: time::Weekday = start_date.weekday();
+        if weekday != time::Weekday::Sunday {
+            return Err(DomainError::InvalidStartDateWeekday {
+                start_date,
+                weekday,
+            });
+        }
+
+        // Validate start date is in January
+        let month: time::Month = start_date.month();
+        if month != time::Month::January {
+            return Err(DomainError::InvalidStartDateMonth { start_date, month });
+        }
+
         // Validate number of pay periods
         if num_pay_periods != 26 && num_pay_periods != 27 {
             return Err(DomainError::InvalidPayPeriodCount {
@@ -226,29 +239,29 @@ mod tests {
     #[test]
     fn test_bid_year_new_valid_26_periods() {
         let result: Result<CanonicalBidYear, DomainError> =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26);
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26);
         assert!(result.is_ok());
         let bid_year: CanonicalBidYear = result.unwrap();
         assert_eq!(bid_year.year(), 2026);
-        assert_eq!(bid_year.start_date(), date!(2026 - 01 - 03));
+        assert_eq!(bid_year.start_date(), date!(2026 - 01 - 04));
         assert_eq!(bid_year.num_pay_periods(), 26);
     }
 
     #[test]
     fn test_bid_year_new_valid_27_periods() {
         let result: Result<CanonicalBidYear, DomainError> =
-            CanonicalBidYear::new(2027, date!(2027 - 01 - 02), 27);
+            CanonicalBidYear::new(2027, date!(2027 - 01 - 03), 27);
         assert!(result.is_ok());
         let bid_year: CanonicalBidYear = result.unwrap();
         assert_eq!(bid_year.year(), 2027);
-        assert_eq!(bid_year.start_date(), date!(2027 - 01 - 02));
+        assert_eq!(bid_year.start_date(), date!(2027 - 01 - 03));
         assert_eq!(bid_year.num_pay_periods(), 27);
     }
 
     #[test]
     fn test_bid_year_new_invalid_pay_period_count_too_low() {
         let result: Result<CanonicalBidYear, DomainError> =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 25);
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 25);
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -259,7 +272,7 @@ mod tests {
     #[test]
     fn test_bid_year_new_invalid_pay_period_count_too_high() {
         let result: Result<CanonicalBidYear, DomainError> =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 28);
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 28);
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -270,7 +283,7 @@ mod tests {
     #[test]
     fn test_bid_year_new_invalid_pay_period_count_zero() {
         let result: Result<CanonicalBidYear, DomainError> =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 0);
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 0);
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -279,29 +292,93 @@ mod tests {
     }
 
     #[test]
+    fn test_bid_year_new_rejects_non_sunday() {
+        // January 3, 2026 is a Saturday
+        let result: Result<CanonicalBidYear, DomainError> =
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DomainError::InvalidStartDateWeekday { .. }
+        ));
+    }
+
+    #[test]
+    fn test_bid_year_new_rejects_monday() {
+        // January 5, 2026 is a Monday
+        let result: Result<CanonicalBidYear, DomainError> =
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 05), 26);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, DomainError::InvalidStartDateWeekday { .. }));
+        if let DomainError::InvalidStartDateWeekday {
+            start_date,
+            weekday,
+        } = err
+        {
+            assert_eq!(start_date, date!(2026 - 01 - 05));
+            assert_eq!(weekday, time::Weekday::Monday);
+        }
+    }
+
+    #[test]
+    fn test_bid_year_new_rejects_non_january() {
+        // February 1, 2026 is a Sunday, but not in January
+        let result: Result<CanonicalBidYear, DomainError> =
+            CanonicalBidYear::new(2026, date!(2026 - 02 - 01), 26);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            DomainError::InvalidStartDateMonth { .. }
+        ));
+    }
+
+    #[test]
+    fn test_bid_year_new_rejects_december_sunday() {
+        // December 28, 2025 is a Sunday, but not in January
+        let result: Result<CanonicalBidYear, DomainError> =
+            CanonicalBidYear::new(2026, date!(2025 - 12 - 28), 26);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, DomainError::InvalidStartDateMonth { .. }));
+        if let DomainError::InvalidStartDateMonth { start_date, month } = err {
+            assert_eq!(start_date, date!(2025 - 12 - 28));
+            assert_eq!(month, time::Month::December);
+        }
+    }
+
+    #[test]
+    fn test_bid_year_new_accepts_january_sunday() {
+        // January 4, 2026 is a Sunday in January
+        let result: Result<CanonicalBidYear, DomainError> =
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26);
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn test_bid_year_end_date_26_periods() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26).unwrap();
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26).unwrap();
         let end_date: Date = bid_year.end_date().unwrap();
         // 26 periods * 14 days = 364 days
         // end_date = start_date + 364 - 1 = start_date + 363
-        assert_eq!(end_date, date!(2027 - 01 - 01));
+        assert_eq!(end_date, date!(2027 - 01 - 02));
     }
 
     #[test]
     fn test_bid_year_end_date_27_periods() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2027, date!(2027 - 01 - 02), 27).unwrap();
+            CanonicalBidYear::new(2027, date!(2027 - 01 - 03), 27).unwrap();
         let end_date: Date = bid_year.end_date().unwrap();
         // 27 periods * 14 days = 378 days
         // end_date = start_date + 378 - 1 = start_date + 377
-        assert_eq!(end_date, date!(2028 - 01 - 14));
+        assert_eq!(end_date, date!(2028 - 01 - 15));
     }
 
     #[test]
     fn test_pay_periods_count_26() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26).unwrap();
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26).unwrap();
         let periods: Vec<PayPeriod> = bid_year.pay_periods().unwrap();
         assert_eq!(periods.len(), 26);
     }
@@ -309,67 +386,67 @@ mod tests {
     #[test]
     fn test_pay_periods_count_27() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2027, date!(2027 - 01 - 02), 27).unwrap();
+            CanonicalBidYear::new(2027, date!(2027 - 01 - 03), 27).unwrap();
         let periods: Vec<PayPeriod> = bid_year.pay_periods().unwrap();
         assert_eq!(periods.len(), 27);
     }
 
     #[test]
+    fn test_pay_periods_last_period_27() {
+        let bid_year: CanonicalBidYear =
+            CanonicalBidYear::new(2027, date!(2027 - 01 - 03), 27).unwrap();
+        let periods: Vec<PayPeriod> = bid_year.pay_periods().unwrap();
+        let last: &PayPeriod = periods.last().unwrap();
+
+        assert_eq!(last.index(), 27);
+        assert_eq!(last.start_date(), date!(2028 - 01 - 02));
+        assert_eq!(last.end_date(), date!(2028 - 01 - 15));
+        assert_eq!(last.duration_days(), 14);
+    }
+
+    #[test]
     fn test_pay_periods_first_period_26() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26).unwrap();
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26).unwrap();
         let periods: Vec<PayPeriod> = bid_year.pay_periods().unwrap();
         let first: &PayPeriod = &periods[0];
 
         assert_eq!(first.index(), 1);
-        assert_eq!(first.start_date(), date!(2026 - 01 - 03));
-        assert_eq!(first.end_date(), date!(2026 - 01 - 16));
+        assert_eq!(first.start_date(), date!(2026 - 01 - 04));
+        assert_eq!(first.end_date(), date!(2026 - 01 - 17));
         assert_eq!(first.duration_days(), 14);
     }
 
     #[test]
     fn test_pay_periods_last_period_26() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26).unwrap();
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26).unwrap();
         let periods: Vec<PayPeriod> = bid_year.pay_periods().unwrap();
         let last: &PayPeriod = &periods[25];
 
         assert_eq!(last.index(), 26);
-        assert_eq!(last.start_date(), date!(2026 - 12 - 19));
-        assert_eq!(last.end_date(), date!(2027 - 01 - 01));
+        assert_eq!(last.start_date(), date!(2026 - 12 - 20));
+        assert_eq!(last.end_date(), date!(2027 - 01 - 02));
         assert_eq!(last.duration_days(), 14);
     }
 
     #[test]
     fn test_pay_periods_first_period_27() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2027, date!(2027 - 01 - 02), 27).unwrap();
+            CanonicalBidYear::new(2027, date!(2027 - 01 - 03), 27).unwrap();
         let periods: Vec<PayPeriod> = bid_year.pay_periods().unwrap();
         let first: &PayPeriod = &periods[0];
 
         assert_eq!(first.index(), 1);
-        assert_eq!(first.start_date(), date!(2027 - 01 - 02));
-        assert_eq!(first.end_date(), date!(2027 - 01 - 15));
+        assert_eq!(first.start_date(), date!(2027 - 01 - 03));
+        assert_eq!(first.end_date(), date!(2027 - 01 - 16));
         assert_eq!(first.duration_days(), 14);
-    }
-
-    #[test]
-    fn test_pay_periods_last_period_27() {
-        let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2027, date!(2027 - 01 - 02), 27).unwrap();
-        let periods: Vec<PayPeriod> = bid_year.pay_periods().unwrap();
-        let last: &PayPeriod = &periods[26];
-
-        assert_eq!(last.index(), 27);
-        assert_eq!(last.start_date(), date!(2028 - 01 - 01));
-        assert_eq!(last.end_date(), date!(2028 - 01 - 14));
-        assert_eq!(last.duration_days(), 14);
     }
 
     #[test]
     fn test_pay_periods_contiguous() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26).unwrap();
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26).unwrap();
         let periods: Vec<PayPeriod> = bid_year.pay_periods().unwrap();
 
         for i in 0..periods.len() - 1 {
@@ -388,7 +465,7 @@ mod tests {
     #[test]
     fn test_pay_periods_no_gaps_or_overlaps() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26).unwrap();
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26).unwrap();
         let periods: Vec<PayPeriod> = bid_year.pay_periods().unwrap();
 
         for i in 0..periods.len() - 1 {
@@ -412,7 +489,7 @@ mod tests {
     #[test]
     fn test_pay_periods_cover_entire_bid_year() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26).unwrap();
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26).unwrap();
         let periods: Vec<PayPeriod> = bid_year.pay_periods().unwrap();
 
         let first: &PayPeriod = &periods[0];
@@ -425,7 +502,7 @@ mod tests {
     #[test]
     fn test_pay_period_all_14_days() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26).unwrap();
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26).unwrap();
         let periods: Vec<PayPeriod> = bid_year.pay_periods().unwrap();
 
         for period in &periods {
@@ -441,7 +518,7 @@ mod tests {
     #[test]
     fn test_derive_pay_period_index_out_of_range_low() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26).unwrap();
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26).unwrap();
         let result: Result<PayPeriod, DomainError> = bid_year.derive_pay_period(0);
         assert!(result.is_err());
         assert!(matches!(
@@ -453,7 +530,7 @@ mod tests {
     #[test]
     fn test_derive_pay_period_index_out_of_range_high() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26).unwrap();
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26).unwrap();
         let result: Result<PayPeriod, DomainError> = bid_year.derive_pay_period(27);
         assert!(result.is_err());
         assert!(matches!(
@@ -464,13 +541,15 @@ mod tests {
 
     #[test]
     fn test_bid_year_deterministic() {
-        // Creating the same bid year twice should produce identical results
+        // Creating the same bid year multiple times should produce identical results
         let bid_year1: CanonicalBidYear =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26).unwrap();
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26).unwrap();
         let bid_year2: CanonicalBidYear =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26).unwrap();
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26).unwrap();
 
-        assert_eq!(bid_year1, bid_year2);
+        assert_eq!(bid_year1.year(), bid_year2.year());
+        assert_eq!(bid_year1.start_date(), bid_year2.start_date());
+        assert_eq!(bid_year1.num_pay_periods(), bid_year2.num_pay_periods());
         assert_eq!(bid_year1.end_date().unwrap(), bid_year2.end_date().unwrap());
         assert_eq!(
             bid_year1.pay_periods().unwrap(),
@@ -481,7 +560,7 @@ mod tests {
     #[test]
     fn test_pay_period_indices_sequential() {
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2026, date!(2026 - 01 - 03), 26).unwrap();
+            CanonicalBidYear::new(2026, date!(2026 - 01 - 04), 26).unwrap();
         let periods: Vec<PayPeriod> = bid_year.pay_periods().unwrap();
 
         for (i, period) in periods.iter().enumerate() {
@@ -493,11 +572,11 @@ mod tests {
     fn test_bid_year_leap_year_handling() {
         // 2024 is a leap year, test that date arithmetic handles it correctly
         let bid_year: CanonicalBidYear =
-            CanonicalBidYear::new(2024, date!(2024 - 01 - 06), 26).unwrap();
+            CanonicalBidYear::new(2024, date!(2024 - 01 - 07), 26).unwrap();
         let end_date: Date = bid_year.end_date().unwrap();
         // 26 periods * 14 days = 364 days
         // 2024 is a leap year (366 days)
-        assert_eq!(end_date, date!(2025 - 01 - 03));
+        assert_eq!(end_date, date!(2025 - 01 - 04));
 
         let periods: Vec<PayPeriod> = bid_year.pay_periods().unwrap();
         assert_eq!(periods.len(), 26);
