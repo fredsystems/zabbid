@@ -100,6 +100,26 @@ If any of these cannot be satisfied, the change is incomplete.
 
 In such cases, stop and ask for clarification before proceeding.
 
+## Operator UI
+
+Phase 12 introduced a minimal, durable operator interface built with TypeScript and React.
+
+The UI is located in the `ui/` directory and provides:
+
+- Bootstrap overview (all bid years, areas, users)
+- Area listing and navigation
+- User lists with leave availability
+- Detailed user leave breakdowns
+
+See `ui/README.md` and `ui/IMPLEMENTATION.md` for details.
+
+**Key principles:**
+
+- No domain logic in the frontend
+- Backend remains the sole source of truth
+- All validation happens server-side
+- UI displays data; backend decides correctness
+
 ## Testing & Infrastructure Philosophy
 
 Tests in this project encode domain intent and system contracts.
