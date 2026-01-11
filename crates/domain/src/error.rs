@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use crate::types::{Area, BidYear, Initials};
+use crate::types::{BidYear, Initials};
 
 /// Errors that can occur during domain validation.
 #[derive(Debug, Clone, PartialEq, Eq)]

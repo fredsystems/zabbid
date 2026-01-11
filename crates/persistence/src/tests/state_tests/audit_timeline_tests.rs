@@ -9,40 +9,6 @@ use zab_bid::{Command, State, TransitionResult, apply};
 use zab_bid_audit::AuditEvent;
 use zab_bid_domain::{Area, BidYear};
 
-/// Creates a fully bootstrapped test persistence instance with bid year 2026 and area "North".
-fn create_bootstrapped_persistence() -> SqlitePersistence {
-    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
-    let mut metadata = zab_bid::BootstrapMetadata::new();
-
-    // Bootstrap bid year
-    let create_bid_year_cmd: Command = Command::CreateBidYear { year: 2026 };
-    let bid_year_result = zab_bid::apply_bootstrap(
-        &metadata,
-        create_bid_year_cmd,
-        create_test_actor(),
-        create_test_cause(),
-    )
-    .unwrap();
-    persistence.persist_bootstrap(&bid_year_result).unwrap();
-    metadata.bid_years.push(BidYear::new(2026));
-
-    // Bootstrap area
-    let create_area_cmd: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
-        area_id: String::from("North"),
-    };
-    let area_result = zab_bid::apply_bootstrap(
-        &metadata,
-        create_area_cmd,
-        create_test_actor(),
-        create_test_cause(),
-    )
-    .unwrap();
-    persistence.persist_bootstrap(&area_result).unwrap();
-
-    persistence
-}
-
 #[test]
 fn test_get_audit_timeline_returns_events_in_order() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
