@@ -3,7 +3,10 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use crate::tests::helpers::{create_test_actor, create_test_cause};
+use crate::tests::helpers::{
+    create_test_actor, create_test_cause, create_test_pay_periods, create_test_start_date,
+    create_test_start_date_for_year,
+};
 use crate::{BootstrapMetadata, BootstrapResult, Command, CoreError, apply_bootstrap};
 use zab_bid_audit::{Actor, Cause};
 use zab_bid_domain::{Area, BidYear, DomainError};
@@ -11,7 +14,11 @@ use zab_bid_domain::{Area, BidYear, DomainError};
 #[test]
 fn test_create_bid_year_succeeds() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
-    let command: Command = Command::CreateBidYear { year: 2026 };
+    let command: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
@@ -27,7 +34,11 @@ fn test_create_bid_year_succeeds() {
 #[test]
 fn test_create_bid_year_emits_audit_event() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
-    let command: Command = Command::CreateBidYear { year: 2026 };
+    let command: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
@@ -53,7 +64,11 @@ fn test_create_duplicate_bid_year_fails() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
     metadata.add_bid_year(BidYear::new(2026));
 
-    let command: Command = Command::CreateBidYear { year: 2026 };
+    let command: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
@@ -70,7 +85,11 @@ fn test_create_duplicate_bid_year_fails() {
 #[test]
 fn test_create_invalid_bid_year_fails() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
-    let command: Command = Command::CreateBidYear { year: 1800 };
+    let command: Command = Command::CreateBidYear {
+        year: 1800,
+        start_date: create_test_start_date_for_year(1800),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
@@ -185,7 +204,11 @@ fn test_bootstrap_does_not_mutate_on_failure() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
     metadata.add_bid_year(BidYear::new(2026));
 
-    let command: Command = Command::CreateBidYear { year: 2026 }; // Duplicate
+    let command: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    }; // Duplicate
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
@@ -203,7 +226,11 @@ fn test_multiple_bid_years_and_areas() {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create first bid year
-    let command1: Command = Command::CreateBidYear { year: 2026 };
+    let command1: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result1: Result<BootstrapResult, CoreError> = apply_bootstrap(
         &metadata,
         command1,
@@ -214,7 +241,11 @@ fn test_multiple_bid_years_and_areas() {
     metadata = result1.unwrap().new_metadata;
 
     // Create second bid year
-    let command2: Command = Command::CreateBidYear { year: 2027 };
+    let command2: Command = Command::CreateBidYear {
+        year: 2027,
+        start_date: create_test_start_date_for_year(2027),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let result2: Result<BootstrapResult, CoreError> = apply_bootstrap(
         &metadata,
         command2,
@@ -263,7 +294,11 @@ fn test_canonical_validation_runs_for_valid_year() {
     // This test verifies that canonical validation is executed
     // Valid years should pass canonical validation
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
-    let command: Command = Command::CreateBidYear { year: 2026 };
+    let command: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
@@ -281,7 +316,11 @@ fn test_canonical_validation_does_not_persist_canonical_model() {
     // This test verifies that only the simple BidYear identifier is persisted,
     // not the canonical bid year model
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
-    let command: Command = Command::CreateBidYear { year: 2026 };
+    let command: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
@@ -309,7 +348,11 @@ fn test_canonical_validation_failure_prevents_creation() {
 
     // With current placeholder logic, all valid years (2000-2099) pass
     for year in 2020..=2030 {
-        let command: Command = Command::CreateBidYear { year };
+        let command: Command = Command::CreateBidYear {
+            year,
+            start_date: create_test_start_date_for_year(i32::from(year)),
+            num_pay_periods: create_test_pay_periods(),
+        };
         let result: Result<BootstrapResult, CoreError> =
             apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause());
         assert!(
@@ -323,7 +366,11 @@ fn test_canonical_validation_failure_prevents_creation() {
 fn test_canonical_validation_no_audit_event_on_failure() {
     // This test verifies that validation failures do not emit audit events
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
-    let command: Command = Command::CreateBidYear { year: 1800 }; // Invalid year
+    let command: Command = Command::CreateBidYear {
+        year: 1800,
+        start_date: create_test_start_date_for_year(1800),
+        num_pay_periods: create_test_pay_periods(),
+    }; // Invalid year
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
@@ -343,7 +390,11 @@ fn test_canonical_validation_is_deterministic() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     for _ in 0..5 {
-        let command: Command = Command::CreateBidYear { year: 2026 };
+        let command: Command = Command::CreateBidYear {
+            year: 2026,
+            start_date: create_test_start_date(),
+            num_pay_periods: create_test_pay_periods(),
+        };
         let result: Result<BootstrapResult, CoreError> = apply_bootstrap(
             &metadata,
             command.clone(),
@@ -356,7 +407,11 @@ fn test_canonical_validation_is_deterministic() {
 
         // Subsequent attempts fail due to duplicate, not canonical validation
         let metadata_with_2026: BootstrapMetadata = result.unwrap().new_metadata;
-        let duplicate_command: Command = Command::CreateBidYear { year: 2026 };
+        let duplicate_command: Command = Command::CreateBidYear {
+            year: 2026,
+            start_date: create_test_start_date(),
+            num_pay_periods: create_test_pay_periods(),
+        };
         let duplicate_result: Result<BootstrapResult, CoreError> = apply_bootstrap(
             &metadata_with_2026,
             duplicate_command,
@@ -369,4 +424,159 @@ fn test_canonical_validation_is_deterministic() {
             CoreError::DomainViolation(DomainError::DuplicateBidYear(_))
         ));
     }
+}
+
+#[test]
+fn test_create_bid_year_with_26_pay_periods_succeeds() {
+    // Test that bid years with 26 pay periods are accepted
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let command: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: 26,
+    };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<BootstrapResult, CoreError> =
+        apply_bootstrap(&metadata, command, actor, cause);
+
+    assert!(result.is_ok());
+    let bootstrap_result: BootstrapResult = result.unwrap();
+    assert_eq!(bootstrap_result.new_metadata.bid_years.len(), 1);
+    assert!(bootstrap_result.canonical_bid_year.is_some());
+    assert_eq!(
+        bootstrap_result
+            .canonical_bid_year
+            .unwrap()
+            .num_pay_periods(),
+        26
+    );
+}
+
+#[test]
+fn test_create_bid_year_with_27_pay_periods_succeeds() {
+    // Test that bid years with 27 pay periods are accepted
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let command: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: 27,
+    };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<BootstrapResult, CoreError> =
+        apply_bootstrap(&metadata, command, actor, cause);
+
+    assert!(result.is_ok());
+    let bootstrap_result: BootstrapResult = result.unwrap();
+    assert_eq!(bootstrap_result.new_metadata.bid_years.len(), 1);
+    assert!(bootstrap_result.canonical_bid_year.is_some());
+    assert_eq!(
+        bootstrap_result
+            .canonical_bid_year
+            .unwrap()
+            .num_pay_periods(),
+        27
+    );
+}
+
+#[test]
+fn test_create_bid_year_with_invalid_pay_periods_fails() {
+    // Test that invalid pay period counts are rejected
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+    // Test various invalid counts
+    for invalid_count in [0, 1, 25, 28, 52, 255] {
+        let command: Command = Command::CreateBidYear {
+            year: 2026,
+            start_date: create_test_start_date(),
+            num_pay_periods: invalid_count,
+        };
+        let actor: Actor = create_test_actor();
+        let cause: Cause = create_test_cause();
+
+        let result: Result<BootstrapResult, CoreError> =
+            apply_bootstrap(&metadata, command, actor, cause);
+
+        assert!(
+            result.is_err(),
+            "Pay period count {invalid_count} should be rejected"
+        );
+        assert!(
+            matches!(result.unwrap_err(), CoreError::DomainViolation(_)),
+            "Should fail with domain violation for invalid pay periods"
+        );
+    }
+}
+
+#[test]
+fn test_canonical_metadata_persisted_on_success() {
+    // Test that canonical metadata is included in BootstrapResult
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let start_date = create_test_start_date();
+    let command: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date,
+        num_pay_periods: 26,
+    };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<BootstrapResult, CoreError> =
+        apply_bootstrap(&metadata, command, actor, cause);
+
+    assert!(result.is_ok());
+    let bootstrap_result: BootstrapResult = result.unwrap();
+
+    // Canonical metadata should be present
+    assert!(bootstrap_result.canonical_bid_year.is_some());
+    let canonical = bootstrap_result.canonical_bid_year.unwrap();
+    assert_eq!(canonical.year(), 2026);
+    assert_eq!(canonical.start_date(), start_date);
+    assert_eq!(canonical.num_pay_periods(), 26);
+}
+
+#[test]
+fn test_canonical_metadata_not_included_for_non_bid_year_operations() {
+    // Test that canonical_bid_year is None for operations other than CreateBidYear
+    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
+    metadata.add_bid_year(BidYear::new(2026));
+
+    let command: Command = Command::CreateArea {
+        bid_year: BidYear::new(2026),
+        area_id: String::from("North"),
+    };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<BootstrapResult, CoreError> =
+        apply_bootstrap(&metadata, command, actor, cause);
+
+    assert!(result.is_ok());
+    let bootstrap_result: BootstrapResult = result.unwrap();
+
+    // canonical_bid_year should be None for non-CreateBidYear operations
+    assert!(bootstrap_result.canonical_bid_year.is_none());
+}
+
+#[test]
+fn test_no_audit_event_on_canonical_validation_failure() {
+    // Verify that canonical validation failures prevent audit event creation
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+    let command: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: 25, // Invalid - must be 26 or 27
+    };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<BootstrapResult, CoreError> =
+        apply_bootstrap(&metadata, command, actor, cause);
+
+    // Should fail validation
+    assert!(result.is_err());
+    // No BootstrapResult means no audit event was created
 }

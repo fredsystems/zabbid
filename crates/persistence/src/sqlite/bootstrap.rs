@@ -4,8 +4,11 @@
 // https://opensource.org/licenses/MIT.
 
 use rusqlite::{Connection, params};
+use time::Date;
 use zab_bid::BootstrapMetadata;
-use zab_bid_domain::{Area, BidYear, Crew, Initials, SeniorityData, User, UserType};
+use zab_bid_domain::{
+    Area, BidYear, CanonicalBidYear, Crew, Initials, SeniorityData, User, UserType,
+};
 
 use crate::error::PersistenceError;
 
@@ -59,9 +62,10 @@ pub fn get_bootstrap_metadata(conn: &Connection) -> Result<BootstrapMetadata, Pe
     Ok(metadata)
 }
 
-/// Lists all bid years that have been created.
+/// Lists all bid years that have been created with their canonical metadata.
 ///
-/// This queries the canonical `bid_years` table directly.
+/// This queries the canonical `bid_years` table directly and returns full
+/// canonical bid year definitions including start date and pay period count.
 ///
 /// # Arguments
 ///
@@ -69,24 +73,54 @@ pub fn get_bootstrap_metadata(conn: &Connection) -> Result<BootstrapMetadata, Pe
 ///
 /// # Errors
 ///
-/// Returns an error if the database cannot be queried.
+/// Returns an error if the database cannot be queried or if the data cannot
+/// be reconstructed into valid `CanonicalBidYear` instances.
 ///
 /// # Panics
 ///
 /// Panics if a bid year value from the database cannot be converted to `u16`.
 /// This should never happen in practice as the schema enforces valid ranges.
-pub fn list_bid_years(conn: &Connection) -> Result<Vec<BidYear>, PersistenceError> {
-    let mut stmt = conn.prepare("SELECT year FROM bid_years ORDER BY year ASC")?;
+pub fn list_bid_years(conn: &Connection) -> Result<Vec<CanonicalBidYear>, PersistenceError> {
+    let mut stmt =
+        conn.prepare("SELECT year, start_date, num_pay_periods FROM bid_years ORDER BY year ASC")?;
 
     let rows = stmt.query_map([], |row| {
-        let year_value: i32 = row.get(0)?;
-        Ok(u16::try_from(year_value).expect("bid_year value out of u16 range"))
+        Ok((
+            row.get::<_, i32>(0)?,    // year
+            row.get::<_, String>(1)?, // start_date
+            row.get::<_, i32>(2)?,    // num_pay_periods
+        ))
     })?;
 
-    let mut bid_years: Vec<BidYear> = Vec::new();
+    let mut bid_years: Vec<CanonicalBidYear> = Vec::new();
     for row_result in rows {
-        let year: u16 = row_result?;
-        bid_years.push(BidYear::new(year));
+        let (year_value, start_date_str, num_pay_periods_value) = row_result?;
+
+        let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
+        let num_pay_periods: u8 = u8::try_from(num_pay_periods_value).map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "Invalid num_pay_periods value: {num_pay_periods_value}"
+            ))
+        })?;
+
+        let start_date: Date = Date::parse(
+            &start_date_str,
+            &time::format_description::well_known::Iso8601::DEFAULT,
+        )
+        .map_err(|e| {
+            PersistenceError::ReconstructionError(format!(
+                "Failed to parse start_date '{start_date_str}': {e}"
+            ))
+        })?;
+
+        let canonical: CanonicalBidYear = CanonicalBidYear::new(year, start_date, num_pay_periods)
+            .map_err(|e| {
+                PersistenceError::ReconstructionError(format!(
+                    "Failed to construct CanonicalBidYear: {e}"
+                ))
+            })?;
+
+        bid_years.push(canonical);
     }
 
     Ok(bid_years)

@@ -4,7 +4,7 @@
 // https://opensource.org/licenses/MIT.
 
 use zab_bid_audit::{AuditEvent, StateSnapshot};
-use zab_bid_domain::{Area, BidYear, User};
+use zab_bid_domain::{Area, BidYear, CanonicalBidYear, User};
 
 /// Bootstrap metadata tracking which bid years and areas exist.
 ///
@@ -118,4 +118,6 @@ pub struct BootstrapResult {
     pub new_metadata: BootstrapMetadata,
     /// The audit event recording this operation.
     pub audit_event: AuditEvent,
+    /// Optional canonical bid year metadata for `CreateBidYear` operations.
+    pub canonical_bid_year: Option<CanonicalBidYear>,
 }

@@ -3,14 +3,13 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use crate::canonical_validation::validate_canonical_bid_year;
 use crate::command::Command;
 use crate::error::CoreError;
 use crate::state::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
 use zab_bid_domain::{
-    Area, BidYear, DomainError, User, validate_bid_year, validate_initials_unique,
-    validate_user_fields,
+    Area, BidYear, CanonicalBidYear, DomainError, User, validate_bid_year,
+    validate_initials_unique, validate_user_fields,
 };
 
 /// Applies a bootstrap command to the metadata, producing new metadata and audit event.
@@ -41,14 +40,18 @@ pub fn apply_bootstrap(
     cause: Cause,
 ) -> Result<BootstrapResult, CoreError> {
     match command {
-        Command::CreateBidYear { year } => {
+        Command::CreateBidYear {
+            year,
+            start_date,
+            num_pay_periods,
+        } => {
             // Validate the year is reasonable
             validate_bid_year(year)?;
 
-            // Validate that this year could form a valid canonical bid year
-            // This constructs a temporary CanonicalBidYear with placeholder values
-            // for validation only. The canonical instance is immediately discarded.
-            validate_canonical_bid_year(year)?;
+            // Construct and validate canonical bid year from provided metadata
+            let canonical_bid_year: CanonicalBidYear =
+                CanonicalBidYear::new(year, start_date, num_pay_periods)
+                    .map_err(CoreError::DomainViolation)?;
 
             let bid_year: BidYear = BidYear::new(year);
 
@@ -71,7 +74,9 @@ pub fn apply_bootstrap(
 
             let action: Action = Action::new(
                 String::from("CreateBidYear"),
-                Some(format!("Created bid year {year}")),
+                Some(format!(
+                    "Created bid year {year} (start: {start_date}, periods: {num_pay_periods})"
+                )),
             );
 
             // Use a placeholder area for global operations
@@ -89,6 +94,7 @@ pub fn apply_bootstrap(
             Ok(BootstrapResult {
                 new_metadata,
                 audit_event,
+                canonical_bid_year: Some(canonical_bid_year),
             })
         }
         Command::CreateArea { bid_year, area_id } => {
@@ -134,6 +140,7 @@ pub fn apply_bootstrap(
             Ok(BootstrapResult {
                 new_metadata,
                 audit_event,
+                canonical_bid_year: None,
             })
         }
         _ => {

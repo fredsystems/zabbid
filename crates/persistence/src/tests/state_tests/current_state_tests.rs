@@ -5,7 +5,8 @@
 
 use crate::SqlitePersistence;
 use crate::tests::{
-    create_test_actor, create_test_cause, create_test_metadata, create_test_seniority_data,
+    create_test_actor, create_test_cause, create_test_metadata, create_test_pay_periods,
+    create_test_seniority_data, create_test_start_date,
 };
 use zab_bid::{Command, State, TransitionResult, apply};
 use zab_bid_audit::AuditEvent;
@@ -17,7 +18,11 @@ fn create_bootstrapped_persistence() -> SqlitePersistence {
     let mut metadata = zab_bid::BootstrapMetadata::new();
 
     // Bootstrap bid year
-    let create_bid_year_cmd: Command = Command::CreateBidYear { year: 2026 };
+    let create_bid_year_cmd: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let bid_year_result = zab_bid::apply_bootstrap(
         &metadata,
         create_bid_year_cmd,
@@ -335,13 +340,91 @@ fn test_get_current_state_with_multiple_users() {
     assert!(initials.contains(&String::from("BB")));
 }
 
+/// Helper to bootstrap an area and add user to it.
+fn bootstrap_area_with_user(
+    persistence: &mut SqlitePersistence,
+    metadata: &zab_bid::BootstrapMetadata,
+    area_name: &str,
+    user_initials: &str,
+) {
+    let area: Area = Area::new(area_name);
+    let state: State = State::new(BidYear::new(2026), area.clone());
+
+    // Initial checkpoint
+    let cmd1: Command = Command::Checkpoint;
+    let res1: TransitionResult = apply(
+        metadata,
+        &state,
+        cmd1,
+        create_test_actor(),
+        create_test_cause(),
+    )
+    .unwrap();
+    persistence.persist_transition(&res1, true).unwrap();
+
+    // Register user
+    let cmd2: Command = Command::RegisterUser {
+        bid_year: BidYear::new(2026),
+        initials: Initials::new(user_initials),
+        name: format!("{area_name} User"),
+        area,
+        user_type: UserType::CPC,
+        crew: Some(Crew::new(1).unwrap()),
+        seniority_data: create_test_seniority_data(),
+    };
+    let res2: TransitionResult = apply(
+        metadata,
+        &res1.new_state,
+        cmd2,
+        create_test_actor(),
+        create_test_cause(),
+    )
+    .unwrap();
+    persistence.persist_transition(&res2, false).unwrap();
+
+    // Final checkpoint
+    let cmd3: Command = Command::Checkpoint;
+    let res3: TransitionResult = apply(
+        metadata,
+        &res2.new_state,
+        cmd3,
+        create_test_actor(),
+        create_test_cause(),
+    )
+    .unwrap();
+    persistence.persist_transition(&res3, true).unwrap();
+}
+
+/// Helper to create empty area state.
+fn create_empty_area_state(
+    persistence: &mut SqlitePersistence,
+    metadata: &zab_bid::BootstrapMetadata,
+    area_name: &str,
+) {
+    let state: State = State::new(BidYear::new(2026), Area::new(area_name));
+    let cmd: Command = Command::Checkpoint;
+    let res: TransitionResult = apply(
+        metadata,
+        &state,
+        cmd,
+        create_test_actor(),
+        create_test_cause(),
+    )
+    .unwrap();
+    persistence.persist_transition(&res, true).unwrap();
+}
+
 #[test]
 fn test_get_current_state_different_areas_isolated() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     let mut metadata = zab_bid::BootstrapMetadata::new();
 
     // Bootstrap bid year
-    let create_bid_year_cmd: Command = Command::CreateBidYear { year: 2026 };
+    let create_bid_year_cmd: Command = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let bid_year_result = zab_bid::apply_bootstrap(
         &metadata,
         create_bid_year_cmd,
@@ -384,60 +467,10 @@ fn test_get_current_state_different_areas_isolated() {
     persistence.persist_bootstrap(&south_result).unwrap();
 
     // Create state for North with a user
-    let north_state: State = State::new(BidYear::new(2026), Area::new("North"));
-    let north_cmd1: Command = Command::Checkpoint;
-    let north_res1: TransitionResult = apply(
-        &metadata,
-        &north_state,
-        north_cmd1,
-        create_test_actor(),
-        create_test_cause(),
-    )
-    .unwrap();
-    persistence.persist_transition(&north_res1, true).unwrap();
-
-    let north_cmd2: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
-        initials: Initials::new("NN"),
-        name: String::from("North User"),
-        area: Area::new("North"),
-        user_type: UserType::CPC,
-        crew: Some(Crew::new(1).unwrap()),
-        seniority_data: create_test_seniority_data(),
-    };
-    let north_res2: TransitionResult = apply(
-        &metadata,
-        &north_res1.new_state,
-        north_cmd2,
-        create_test_actor(),
-        create_test_cause(),
-    )
-    .unwrap();
-    persistence.persist_transition(&north_res2, false).unwrap();
-
-    let north_cmd3: Command = Command::Checkpoint;
-    let north_res3: TransitionResult = apply(
-        &metadata,
-        &north_res2.new_state,
-        north_cmd3,
-        create_test_actor(),
-        create_test_cause(),
-    )
-    .unwrap();
-    persistence.persist_transition(&north_res3, true).unwrap();
+    bootstrap_area_with_user(&mut persistence, &metadata, "North", "NN");
 
     // Create state for South (empty)
-    let south_state: State = State::new(BidYear::new(2026), Area::new("South"));
-    let south_cmd: Command = Command::Checkpoint;
-    let south_res: TransitionResult = apply(
-        &metadata,
-        &south_state,
-        south_cmd,
-        create_test_actor(),
-        create_test_cause(),
-    )
-    .unwrap();
-    persistence.persist_transition(&south_res, true).unwrap();
+    create_empty_area_state(&mut persistence, &metadata, "South");
 
     // Verify North has the user
     let north_current: State = persistence

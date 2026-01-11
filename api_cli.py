@@ -161,6 +161,8 @@ def choose_endpoint() -> Endpoint:
 # -----------------------------
 class CreateBidYearRequest(ActorEnvelope):
     year: int
+    start_date: str
+    num_pay_periods: int
 
 
 class CreateAreaRequest(ActorEnvelope):
@@ -195,8 +197,19 @@ def build_post_payload(path: str) -> JSONObject:
     """
     if path == "/bid_years":
         env: ActorEnvelope = prompt_actor_envelope()
+        year: int = prompt_int("Bid year")
+        print(
+            "Start date should be the first Saturday of the bid year (format: YYYY-MM-DD)"
+        )
+        start_date: str = prompt_str("Start date (YYYY-MM-DD)")
+        print("Number of pay periods must be 26 or 27")
+        num_pay_periods: int = prompt_int("Number of pay periods (26 or 27)")
+
         req_year: CreateBidYearRequest = CreateBidYearRequest(
-            **env, year=prompt_int("Bid year")
+            **env,
+            year=year,
+            start_date=start_date,
+            num_pay_periods=num_pay_periods,
         )
         return cast(JSONObject, req_year)
 

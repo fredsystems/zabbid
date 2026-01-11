@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+use time::Date;
 use zab_bid_domain::{Area, BidYear, Crew, Initials, SeniorityData, UserType};
 
 /// A command represents user or system intent as data only.
@@ -10,10 +11,14 @@ use zab_bid_domain::{Area, BidYear, Crew, Initials, SeniorityData, UserType};
 /// Commands are the only way to request state changes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    /// Create a new bid year.
+    /// Create a new bid year with canonical metadata.
     CreateBidYear {
         /// The year value.
         year: u16,
+        /// The start date of the bid year.
+        start_date: Date,
+        /// The number of pay periods (must be 26 or 27).
+        num_pay_periods: u8,
     },
     /// Create a new area within a bid year.
     CreateArea {

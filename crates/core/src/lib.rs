@@ -13,7 +13,6 @@
 )]
 
 mod apply;
-mod canonical_validation;
 mod command;
 mod error;
 mod state;

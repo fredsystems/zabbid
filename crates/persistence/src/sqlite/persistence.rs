@@ -7,7 +7,7 @@ use rusqlite::{Transaction, params};
 use tracing::{debug, info};
 use zab_bid::{BootstrapResult, State, TransitionResult};
 use zab_bid_audit::AuditEvent;
-use zab_bid_domain::Crew;
+use zab_bid_domain::{CanonicalBidYear, Crew};
 
 use crate::data_models::{ActionData, ActorData, CauseData, StateData, StateSnapshotData};
 use crate::error::PersistenceError;
@@ -81,13 +81,28 @@ pub fn persist_bootstrap(
     // Update canonical tables based on the action
     match result.audit_event.action.name.as_str() {
         "CreateBidYear" => {
+            // Extract canonical bid year metadata
+            let canonical: &CanonicalBidYear = result
+                .canonical_bid_year
+                .as_ref()
+                .expect("CreateBidYear must include canonical_bid_year");
+
+            // Format date as ISO 8601 string for storage
+            let start_date_str: String = canonical.start_date().to_string();
+
             tx.execute(
-                "INSERT INTO bid_years (year) VALUES (?1)",
-                params![result.audit_event.bid_year.year()],
+                "INSERT INTO bid_years (year, start_date, num_pay_periods) VALUES (?1, ?2, ?3)",
+                params![
+                    canonical.year(),
+                    start_date_str,
+                    canonical.num_pay_periods()
+                ],
             )?;
             debug!(
-                bid_year = result.audit_event.bid_year.year(),
-                "Inserted bid year into canonical table"
+                bid_year = canonical.year(),
+                start_date = %start_date_str,
+                num_pay_periods = canonical.num_pay_periods(),
+                "Inserted bid year with canonical metadata into canonical table"
             );
         }
         "CreateArea" => {

@@ -10,6 +10,7 @@ readme.workspace = true
 description = "API boundary layer for the ZAB Bidding System"
 
 [dependencies]
+time.workspace = true
 zab-bid = { path = "../core" }
 zab-bid-audit = { path = "../audit" }
 zab-bid-domain = { path = "../domain" }

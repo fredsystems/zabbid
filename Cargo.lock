@@ -1332,6 +1332,7 @@ dependencies = [
 name = "zab-bid-api"
 version = "0.1.0"
 dependencies = [
+ "time",
  "zab-bid",
  "zab-bid-audit",
  "zab-bid-domain",
@@ -1359,6 +1360,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "time",
  "tracing",
  "zab-bid",
  "zab-bid-audit",
@@ -1373,6 +1375,7 @@ dependencies = [
  "clap",
  "serde",
  "serde_json",
+ "time",
  "tokio",
  "tower",
  "tracing",

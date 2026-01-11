@@ -19,6 +19,7 @@ use crate::{
 
 use super::helpers::{
     create_test_admin, create_test_bidder, create_test_cause, create_test_metadata,
+    create_test_pay_periods, create_test_start_date, create_test_start_date_for_year,
     create_valid_request,
 };
 
@@ -630,7 +631,11 @@ fn test_successful_api_call_updates_state() {
 #[test]
 fn test_create_bid_year_succeeds() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
-    let request: CreateBidYearRequest = CreateBidYearRequest { year: 2026 };
+    let request: CreateBidYearRequest = CreateBidYearRequest {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
@@ -646,7 +651,11 @@ fn test_create_bid_year_succeeds() {
 #[test]
 fn test_create_bid_year_requires_admin() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
-    let request: CreateBidYearRequest = CreateBidYearRequest { year: 2026 };
+    let request: CreateBidYearRequest = CreateBidYearRequest {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
     let bidder: AuthenticatedActor = create_test_bidder();
     let cause: Cause = create_test_cause();
 
@@ -719,36 +728,57 @@ fn test_create_area_without_bid_year_fails() {
 
 #[test]
 fn test_list_bid_years_empty() {
-    let metadata: BootstrapMetadata = BootstrapMetadata::new();
-    let response: ListBidYearsResponse = list_bid_years(&metadata);
+    let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> = Vec::new();
+    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years);
 
     assert_eq!(response.bid_years.len(), 0);
 }
 
 #[test]
 fn test_list_bid_years_with_single_year() {
-    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
-    metadata.bid_years.push(BidYear::new(2026));
+    let canonical = zab_bid_domain::CanonicalBidYear::new(
+        2026,
+        create_test_start_date(),
+        create_test_pay_periods(),
+    )
+    .unwrap();
+    let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> = vec![canonical];
 
-    let response: ListBidYearsResponse = list_bid_years(&metadata);
+    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years);
 
     assert_eq!(response.bid_years.len(), 1);
-    assert_eq!(response.bid_years[0], 2026);
+    assert_eq!(response.bid_years[0].year, 2026);
 }
 
 #[test]
 fn test_list_bid_years_with_multiple_years() {
-    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
-    metadata.bid_years.push(BidYear::new(2026));
-    metadata.bid_years.push(BidYear::new(2027));
-    metadata.bid_years.push(BidYear::new(2028));
+    let canonical1 = zab_bid_domain::CanonicalBidYear::new(
+        2026,
+        create_test_start_date(),
+        create_test_pay_periods(),
+    )
+    .unwrap();
+    let canonical2 = zab_bid_domain::CanonicalBidYear::new(
+        2027,
+        create_test_start_date_for_year(2027),
+        create_test_pay_periods(),
+    )
+    .unwrap();
+    let canonical3 = zab_bid_domain::CanonicalBidYear::new(
+        2028,
+        create_test_start_date_for_year(2028),
+        create_test_pay_periods(),
+    )
+    .unwrap();
+    let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
+        vec![canonical1, canonical2, canonical3];
 
-    let response: ListBidYearsResponse = list_bid_years(&metadata);
+    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years);
 
     assert_eq!(response.bid_years.len(), 3);
-    assert!(response.bid_years.contains(&2026));
-    assert!(response.bid_years.contains(&2027));
-    assert!(response.bid_years.contains(&2028));
+    assert!(response.bid_years.iter().any(|by| by.year == 2026));
+    assert!(response.bid_years.iter().any(|by| by.year == 2027));
+    assert!(response.bid_years.iter().any(|by| by.year == 2028));
 }
 
 #[test]
