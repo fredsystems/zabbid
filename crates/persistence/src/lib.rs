@@ -25,6 +25,7 @@ use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_audit::AuditEvent;
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear, User};
 
+pub use data_models::{OperatorData, SessionData};
 pub use error::PersistenceError;
 
 /// Persistence adapter for audit events and state snapshots.
@@ -62,7 +63,21 @@ impl SqlitePersistence {
         // Enable foreign key constraints
         conn.pragma_update(None, "foreign_keys", "ON")?;
         sqlite::initialize_schema(&conn)?;
+        // Verify foreign key enforcement is active
+        sqlite::verify_foreign_key_enforcement(&conn)?;
         Ok(Self { conn })
+    }
+
+    /// Verifies that foreign key enforcement is enabled.
+    ///
+    /// This is a startup-time check required by Phase 14 to ensure
+    /// referential integrity constraints are enforced.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if foreign key enforcement is not enabled.
+    pub fn verify_foreign_key_enforcement(&self) -> Result<(), PersistenceError> {
+        sqlite::verify_foreign_key_enforcement(&self.conn)
     }
 
     /// Persists a transition result (audit event and optionally a full snapshot).
@@ -364,5 +379,194 @@ impl SqlitePersistence {
     #[must_use]
     pub fn should_snapshot(action_name: &str) -> bool {
         sqlite::should_snapshot(action_name)
+    }
+
+    // ========================================================================
+    // Operator and Session Management (Phase 14)
+    // ========================================================================
+
+    /// Creates a new operator.
+    ///
+    /// The `login_name` is normalized to uppercase for case-insensitive uniqueness.
+    ///
+    /// # Arguments
+    ///
+    /// * `login_name` - The login name (will be normalized)
+    /// * `display_name` - The display name
+    /// * `role` - The role (Admin or Bidder)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operator cannot be created or if the login name
+    /// already exists.
+    pub fn create_operator(
+        &mut self,
+        login_name: &str,
+        display_name: &str,
+        role: &str,
+    ) -> Result<i64, PersistenceError> {
+        sqlite::create_operator(&self.conn, login_name, display_name, role)
+    }
+
+    /// Retrieves an operator by login name.
+    ///
+    /// The `login_name` is normalized to uppercase for case-insensitive lookup.
+    ///
+    /// # Arguments
+    ///
+    /// * `login_name` - The login name to search for
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    /// Returns `Ok(None)` if the operator is not found.
+    pub fn get_operator_by_login(
+        &self,
+        login_name: &str,
+    ) -> Result<Option<OperatorData>, PersistenceError> {
+        sqlite::get_operator_by_login(&self.conn, login_name)
+    }
+
+    /// Retrieves an operator by ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `operator_id` - The operator ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    /// Returns `Ok(None)` if the operator is not found.
+    pub fn get_operator_by_id(
+        &self,
+        operator_id: i64,
+    ) -> Result<Option<OperatorData>, PersistenceError> {
+        sqlite::get_operator_by_id(&self.conn, operator_id)
+    }
+
+    /// Updates the last login timestamp for an operator.
+    ///
+    /// # Arguments
+    ///
+    /// * `operator_id` - The operator ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
+    pub fn update_last_login(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
+        sqlite::update_last_login(&self.conn, operator_id)
+    }
+
+    /// Disables an operator.
+    ///
+    /// This sets `is_disabled` to true and records the `disabled_at` timestamp.
+    ///
+    /// # Arguments
+    ///
+    /// * `operator_id` - The operator ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
+    pub fn disable_operator(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
+        sqlite::disable_operator(&self.conn, operator_id)
+    }
+
+    /// Lists all operators.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub fn list_operators(&self) -> Result<Vec<OperatorData>, PersistenceError> {
+        sqlite::list_operators(&self.conn)
+    }
+
+    /// Checks if an operator is referenced by any audit events.
+    ///
+    /// # Arguments
+    ///
+    /// * `operator_id` - The operator ID to check
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub fn is_operator_referenced(&self, operator_id: i64) -> Result<bool, PersistenceError> {
+        sqlite::is_operator_referenced(&self.conn, operator_id)
+    }
+
+    /// Creates a new session for an operator.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_token` - The unique session token
+    /// * `operator_id` - The operator ID
+    /// * `expires_at` - The expiration timestamp (ISO 8601 format)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the session cannot be created.
+    pub fn create_session(
+        &mut self,
+        session_token: &str,
+        operator_id: i64,
+        expires_at: &str,
+    ) -> Result<i64, PersistenceError> {
+        sqlite::create_session(&self.conn, session_token, operator_id, expires_at)
+    }
+
+    /// Retrieves a session by token.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_token` - The session token
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    /// Returns `Ok(None)` if the session is not found.
+    pub fn get_session_by_token(
+        &self,
+        session_token: &str,
+    ) -> Result<Option<SessionData>, PersistenceError> {
+        sqlite::get_session_by_token(&self.conn, session_token)
+    }
+
+    /// Updates the last activity timestamp for a session.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_id` - The session ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
+    pub fn update_session_activity(&mut self, session_id: i64) -> Result<(), PersistenceError> {
+        sqlite::update_session_activity(&self.conn, session_id)
+    }
+
+    /// Deletes a session by token.
+    ///
+    /// This is used for logout operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_token` - The session token to delete
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database delete fails.
+    pub fn delete_session(&mut self, session_token: &str) -> Result<(), PersistenceError> {
+        sqlite::delete_session(&self.conn, session_token)
+    }
+
+    /// Deletes all expired sessions.
+    ///
+    /// This is a cleanup operation that should be run periodically.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database delete fails.
+    pub fn delete_expired_sessions(&mut self) -> Result<usize, PersistenceError> {
+        sqlite::delete_expired_sessions(&self.conn)
     }
 }

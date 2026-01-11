@@ -178,14 +178,33 @@ fn persist_audit_event_tx(
         data: event.after.data.clone(),
     };
 
+    // Extract operator information (Phase 14)
+    let actor_operator_id: i64 = event.actor.operator_id.unwrap_or(0);
+    let actor_login_name: String = event
+        .actor
+        .operator_login_name
+        .as_deref()
+        .unwrap_or("system")
+        .to_string();
+    let actor_display_name: String = event
+        .actor
+        .operator_display_name
+        .as_deref()
+        .unwrap_or("System")
+        .to_string();
+
     tx.execute(
         "INSERT INTO audit_events (
-            bid_year, area, actor_json, cause_json, action_json,
+            bid_year, area, actor_operator_id, actor_login_name, actor_display_name,
+            actor_json, cause_json, action_json,
             before_snapshot_json, after_snapshot_json
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             event.bid_year.year(),
             event.area.id(),
+            actor_operator_id,
+            actor_login_name,
+            actor_display_name,
             serde_json::to_string(&actor_data)?,
             serde_json::to_string(&cause_data)?,
             serde_json::to_string(&action_data)?,

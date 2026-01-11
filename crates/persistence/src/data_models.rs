@@ -41,4 +41,42 @@ pub struct StateData {
 }
 
 /// Type alias for audit event row data from `SQLite`.
-pub type AuditEventRow = (i64, u16, String, String, String, String, String, String);
+/// Contains: (event_id, bid_year, area, actor_operator_id, actor_login_name,
+/// actor_display_name, actor_json, cause_json, action_json, before_json, after_json)
+pub type AuditEventRow = (
+    i64,
+    u16,
+    String,
+    i64,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+);
+
+/// Serializable representation of an Operator.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OperatorData {
+    pub operator_id: i64,
+    pub login_name: String,
+    pub display_name: String,
+    pub role: String,
+    pub is_disabled: bool,
+    pub created_at: String,
+    pub disabled_at: Option<String>,
+    pub last_login_at: Option<String>,
+}
+
+/// Serializable representation of a Session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionData {
+    pub session_id: i64,
+    pub session_token: String,
+    pub operator_id: i64,
+    pub created_at: String,
+    pub last_activity_at: String,
+    pub expires_at: String,
+}

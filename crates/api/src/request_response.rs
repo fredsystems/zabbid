@@ -259,3 +259,92 @@ pub struct GetLeaveAvailabilityResponse {
     /// Human-readable explanation of the calculation.
     pub explanation: String,
 }
+
+// ========================================================================
+// Authentication Request/Response Types (Phase 14)
+// ========================================================================
+
+/// API request to log in and create a session.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LoginRequest {
+    /// The operator login name.
+    pub login_name: String,
+}
+
+/// API response for successful login.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LoginResponse {
+    /// The session token (opaque).
+    pub session_token: String,
+    /// The operator's login name.
+    pub login_name: String,
+    /// The operator's display name.
+    pub display_name: String,
+    /// The operator's role.
+    pub role: String,
+    /// Session expiration timestamp (ISO 8601).
+    pub expires_at: String,
+}
+
+/// API response for the "who am I" endpoint.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WhoAmIResponse {
+    /// The operator's login name.
+    pub login_name: String,
+    /// The operator's display name.
+    pub display_name: String,
+    /// The operator's role.
+    pub role: String,
+    /// Whether the operator is disabled.
+    pub is_disabled: bool,
+}
+
+/// API request to create a new operator.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CreateOperatorRequest {
+    /// The operator login name.
+    pub login_name: String,
+    /// The operator display name.
+    pub display_name: String,
+    /// The operator role (Admin or Bidder).
+    pub role: String,
+}
+
+/// API response for successful operator creation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CreateOperatorResponse {
+    /// The operator ID.
+    pub operator_id: i64,
+    /// The operator login name.
+    pub login_name: String,
+    /// The operator display name.
+    pub display_name: String,
+    /// The operator role.
+    pub role: String,
+}
+
+/// Operator information for listing.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OperatorInfo {
+    /// The operator ID.
+    pub operator_id: i64,
+    /// The operator login name.
+    pub login_name: String,
+    /// The operator display name.
+    pub display_name: String,
+    /// The operator role.
+    pub role: String,
+    /// Whether the operator is disabled.
+    pub is_disabled: bool,
+    /// Created timestamp (ISO 8601).
+    pub created_at: String,
+    /// Last login timestamp (ISO 8601, optional).
+    pub last_login_at: Option<String>,
+}
+
+/// API response for listing operators.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ListOperatorsResponse {
+    /// The list of operators.
+    pub operators: Vec<OperatorInfo>,
+}

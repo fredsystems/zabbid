@@ -26,7 +26,8 @@ use crate::error::PersistenceError;
 /// Returns an error if the event is not found or cannot be deserialized.
 pub fn get_audit_event(conn: &Connection, event_id: i64) -> Result<AuditEvent, PersistenceError> {
     let row_result: SqliteResult<AuditEventRow> = conn.query_row(
-        "SELECT event_id, bid_year, area, actor_json, cause_json, action_json,
+        "SELECT event_id, bid_year, area, actor_operator_id, actor_login_name,
+                    actor_display_name, actor_json, cause_json, action_json,
                     before_snapshot_json, after_snapshot_json
              FROM audit_events
              WHERE event_id = ?1",
@@ -41,6 +42,9 @@ pub fn get_audit_event(conn: &Connection, event_id: i64) -> Result<AuditEvent, P
                 row.get(5)?,
                 row.get(6)?,
                 row.get(7)?,
+                row.get(8)?,
+                row.get(9)?,
+                row.get(10)?,
             ))
         },
     );
@@ -50,6 +54,9 @@ pub fn get_audit_event(conn: &Connection, event_id: i64) -> Result<AuditEvent, P
             retrieved_event_id,
             bid_year,
             area,
+            actor_operator_id,
+            actor_login_name,
+            actor_display_name,
             actor_json,
             cause_json,
             action_json,
@@ -62,9 +69,22 @@ pub fn get_audit_event(conn: &Connection, event_id: i64) -> Result<AuditEvent, P
             let before_data: StateSnapshotData = serde_json::from_str(&before_json)?;
             let after_data: StateSnapshotData = serde_json::from_str(&after_json)?;
 
+            // Reconstruct Actor with operator information if available (Phase 14)
+            let actor: Actor = if actor_operator_id != 0 {
+                Actor::with_operator(
+                    actor_data.id,
+                    actor_data.actor_type,
+                    actor_operator_id,
+                    actor_login_name,
+                    actor_display_name,
+                )
+            } else {
+                Actor::new(actor_data.id, actor_data.actor_type)
+            };
+
             Ok(AuditEvent::with_id(
                 retrieved_event_id,
-                Actor::new(actor_data.id, actor_data.actor_type),
+                actor,
                 Cause::new(cause_data.id, cause_data.description),
                 Action::new(action_data.name, action_data.details),
                 StateSnapshot::new(before_data.data),
@@ -145,7 +165,8 @@ pub fn get_events_after(
     after_event_id: i64,
 ) -> Result<Vec<AuditEvent>, PersistenceError> {
     let mut stmt = conn.prepare(
-        "SELECT event_id, bid_year, area, actor_json, cause_json, action_json,
+        "SELECT event_id, bid_year, area, actor_operator_id, actor_login_name,
+                actor_display_name, actor_json, cause_json, action_json,
                 before_snapshot_json, after_snapshot_json
          FROM audit_events
          WHERE bid_year = ?1 AND area = ?2 AND event_id > ?3
@@ -158,11 +179,14 @@ pub fn get_events_after(
                 row.get::<_, i64>(0)?,
                 row.get::<_, u16>(1)?,
                 row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
+                row.get::<_, i64>(3)?,
                 row.get::<_, String>(4)?,
                 row.get::<_, String>(5)?,
                 row.get::<_, String>(6)?,
                 row.get::<_, String>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+                row.get::<_, String>(10)?,
             ))
         })?
         .map(|row_result| {
@@ -170,6 +194,9 @@ pub fn get_events_after(
                 event_id,
                 bid_year,
                 area,
+                actor_operator_id,
+                actor_login_name,
+                actor_display_name,
                 actor_json,
                 cause_json,
                 action_json,
@@ -183,9 +210,22 @@ pub fn get_events_after(
             let before_data: StateSnapshotData = serde_json::from_str(&before_json)?;
             let after_data: StateSnapshotData = serde_json::from_str(&after_json)?;
 
+            // Reconstruct Actor with operator information if available (Phase 14)
+            let actor: Actor = if actor_operator_id != 0 {
+                Actor::with_operator(
+                    actor_data.id,
+                    actor_data.actor_type,
+                    actor_operator_id,
+                    actor_login_name,
+                    actor_display_name,
+                )
+            } else {
+                Actor::new(actor_data.id, actor_data.actor_type)
+            };
+
             Ok(AuditEvent::with_id(
                 event_id,
-                Actor::new(actor_data.id, actor_data.actor_type),
+                actor,
                 Cause::new(cause_data.id, cause_data.description),
                 Action::new(action_data.name, action_data.details),
                 StateSnapshot::new(before_data.data),
@@ -388,7 +428,8 @@ pub fn get_audit_timeline(
     );
 
     let mut stmt = conn.prepare(
-        "SELECT event_id, bid_year, area, actor_json, cause_json, action_json,
+        "SELECT event_id, bid_year, area, actor_operator_id, actor_login_name,
+                actor_display_name, actor_json, cause_json, action_json,
                 before_snapshot_json, after_snapshot_json
          FROM audit_events
          WHERE bid_year = ?1 AND area = ?2
@@ -401,11 +442,14 @@ pub fn get_audit_timeline(
                 row.get::<_, i64>(0)?,
                 row.get::<_, u16>(1)?,
                 row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
+                row.get::<_, i64>(3)?,
                 row.get::<_, String>(4)?,
                 row.get::<_, String>(5)?,
                 row.get::<_, String>(6)?,
                 row.get::<_, String>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+                row.get::<_, String>(10)?,
             ))
         })?
         .map(|row_result| {
@@ -413,6 +457,9 @@ pub fn get_audit_timeline(
                 event_id,
                 bid_year,
                 area,
+                actor_operator_id,
+                actor_login_name,
+                actor_display_name,
                 actor_json,
                 cause_json,
                 action_json,
@@ -426,9 +473,22 @@ pub fn get_audit_timeline(
             let before_data: StateSnapshotData = serde_json::from_str(&before_json)?;
             let after_data: StateSnapshotData = serde_json::from_str(&after_json)?;
 
+            // Reconstruct Actor with operator information if available (Phase 14)
+            let actor: Actor = if actor_operator_id != 0 {
+                Actor::with_operator(
+                    actor_data.id,
+                    actor_data.actor_type,
+                    actor_operator_id,
+                    actor_login_name,
+                    actor_display_name,
+                )
+            } else {
+                Actor::new(actor_data.id, actor_data.actor_type)
+            };
+
             Ok(AuditEvent::with_id(
                 event_id,
-                Actor::new(actor_data.id, actor_data.actor_type),
+                actor,
                 Cause::new(cause_data.id, cause_data.description),
                 Action::new(action_data.name, action_data.details),
                 StateSnapshot::new(before_data.data),

@@ -14,13 +14,15 @@ use zab_bid_domain::{
     Area, BidYear, CanonicalBidYear, Crew, Initials, LeaveAccrualResult, LeaveAvailabilityResult,
     LeaveUsage, SeniorityData, UserType, calculate_leave_accrual, calculate_leave_availability,
 };
+use zab_bid_persistence::{OperatorData, SqlitePersistence};
 
-use crate::auth::{AuthenticatedActor, AuthorizationService, Role};
+use crate::auth::{AuthenticatedActor, AuthenticationService, AuthorizationService, Role};
 use crate::error::{ApiError, translate_core_error, translate_domain_error};
 use crate::request_response::{
-    BidYearInfo, CreateAreaRequest, CreateBidYearRequest, GetLeaveAvailabilityResponse,
-    ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListUsersResponse,
-    RegisterUserRequest, RegisterUserResponse, UserInfo,
+    BidYearInfo, CreateAreaRequest, CreateBidYearRequest, CreateOperatorRequest,
+    CreateOperatorResponse, GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse,
+    ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse,
+    OperatorInfo, RegisterUserRequest, RegisterUserResponse, UserInfo, WhoAmIResponse,
 };
 
 /// The result of an API operation that includes both the response and the audit event.
@@ -69,13 +71,14 @@ pub fn register_user(
     state: &State,
     request: RegisterUserRequest,
     authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
     cause: Cause,
 ) -> Result<ApiResult<RegisterUserResponse>, ApiError> {
     // Enforce authorization before executing command
     AuthorizationService::authorize_register_user(authenticated_actor)?;
 
-    // Convert authenticated actor to audit actor for attribution
-    let actor: Actor = authenticated_actor.to_audit_actor();
+    // Convert authenticated actor to audit actor with operator information
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
     // Translate API request into domain types
     let bid_year: BidYear = BidYear::new(request.bid_year);
     let initials: Initials = Initials::new(&request.initials);
@@ -162,13 +165,14 @@ pub fn checkpoint(
     metadata: &BootstrapMetadata,
     state: &State,
     authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
     cause: Cause,
 ) -> Result<TransitionResult, ApiError> {
     // Enforce authorization before executing command
     AuthorizationService::authorize_checkpoint(authenticated_actor)?;
 
-    // Convert authenticated actor to audit actor for attribution
-    let actor: Actor = authenticated_actor.to_audit_actor();
+    // Convert authenticated actor to audit actor with operator information
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
 
     // Create and apply checkpoint command
     let command: Command = Command::Checkpoint;
@@ -207,13 +211,14 @@ pub fn finalize(
     metadata: &BootstrapMetadata,
     state: &State,
     authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
     cause: Cause,
 ) -> Result<TransitionResult, ApiError> {
     // Enforce authorization before executing command
     AuthorizationService::authorize_finalize(authenticated_actor)?;
 
-    // Convert authenticated actor to audit actor for attribution
-    let actor: Actor = authenticated_actor.to_audit_actor();
+    // Convert authenticated actor to audit actor with operator information
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
 
     // Create and apply finalize command
     let command: Command = Command::Finalize;
@@ -254,13 +259,14 @@ pub fn rollback(
     state: &State,
     target_event_id: i64,
     authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
     cause: Cause,
 ) -> Result<TransitionResult, ApiError> {
     // Enforce authorization before executing command
     AuthorizationService::authorize_rollback(authenticated_actor)?;
 
-    // Convert authenticated actor to audit actor for attribution
-    let actor: Actor = authenticated_actor.to_audit_actor();
+    // Convert authenticated actor to audit actor with operator information
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
 
     // Create and apply rollback command
     let command: Command = Command::RollbackToEventId { target_event_id };
@@ -300,6 +306,7 @@ pub fn create_bid_year(
     metadata: &BootstrapMetadata,
     request: &CreateBidYearRequest,
     authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
     cause: Cause,
 ) -> Result<BootstrapResult, ApiError> {
     // Enforce authorization - only admins can create bid years
@@ -310,8 +317,8 @@ pub fn create_bid_year(
         });
     }
 
-    // Convert authenticated actor to audit actor for attribution
-    let actor: Actor = authenticated_actor.to_audit_actor();
+    // Convert authenticated actor to audit actor with operator information
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
 
     // Create command with canonical metadata
     let command: Command = Command::CreateBidYear {
@@ -355,8 +362,9 @@ pub fn create_bid_year(
 /// - The area already exists in the bid year
 pub fn create_area(
     metadata: &BootstrapMetadata,
-    request: CreateAreaRequest,
+    request: &CreateAreaRequest,
     authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
     cause: Cause,
 ) -> Result<BootstrapResult, ApiError> {
     // Enforce authorization - only admins can create areas
@@ -367,13 +375,13 @@ pub fn create_area(
         });
     }
 
-    // Convert authenticated actor to audit actor for attribution
-    let actor: Actor = authenticated_actor.to_audit_actor();
+    // Convert authenticated actor to audit actor with operator information
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
 
     // Create command
     let command: Command = Command::CreateArea {
         bid_year: BidYear::new(request.bid_year),
-        area_id: request.area_id,
+        area_id: request.area_id.clone(),
     };
 
     // Apply command via core bootstrap
@@ -813,4 +821,208 @@ pub fn get_bootstrap_status(
         .collect();
 
     Ok(BootstrapStatusResponse { bid_years, areas })
+}
+
+// ========================================================================
+// Authentication Handlers (Phase 14)
+// ========================================================================
+
+/// Authenticates an operator and creates a session.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The login request
+///
+/// # Returns
+///
+/// * `Ok(LoginResponse)` on success with session token
+/// * `Err(ApiError)` if authentication fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The operator does not exist
+/// - The operator is disabled
+/// - Database operations fail
+pub fn login(
+    persistence: &mut SqlitePersistence,
+    request: LoginRequest,
+) -> Result<LoginResponse, ApiError> {
+    let (session_token, _authenticated_actor, operator): (
+        String,
+        AuthenticatedActor,
+        OperatorData,
+    ) = AuthenticationService::login(persistence, &request.login_name)?;
+
+    // Get session expiration from the session we just created
+    let session: Option<zab_bid_persistence::SessionData> = persistence
+        .get_session_by_token(&session_token)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to retrieve session: {e}"),
+        })?;
+
+    let expires_at: String = session
+        .ok_or_else(|| ApiError::Internal {
+            message: String::from("Session not found after creation"),
+        })?
+        .expires_at;
+
+    Ok(LoginResponse {
+        session_token,
+        login_name: operator.login_name,
+        display_name: operator.display_name,
+        role: operator.role,
+        expires_at,
+    })
+}
+
+/// Logs out by deleting the session.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `session_token` - The session token to delete
+///
+/// # Errors
+///
+/// Returns an error if the logout fails.
+pub fn logout(persistence: &mut SqlitePersistence, session_token: &str) -> Result<(), ApiError> {
+    AuthenticationService::logout(persistence, session_token)?;
+    Ok(())
+}
+
+/// Returns the current operator's information.
+///
+/// # Arguments
+///
+/// * `operator` - The operator data from the validated session
+///
+/// # Returns
+///
+/// * `Ok(WhoAmIResponse)` with operator information
+pub fn whoami(operator: &OperatorData) -> WhoAmIResponse {
+    WhoAmIResponse {
+        login_name: operator.login_name.clone(),
+        display_name: operator.display_name.clone(),
+        role: operator.role.clone(),
+        is_disabled: operator.is_disabled,
+    }
+}
+
+/// Creates a new operator.
+///
+/// Only Admin actors may create operators.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The create operator request
+/// * `authenticated_actor` - The authenticated actor performing this action
+///
+/// # Returns
+///
+/// * `Ok(CreateOperatorResponse)` on success
+/// * `Err(ApiError)` if unauthorized or creation fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The login name already exists
+/// - The role is invalid
+/// - Database operations fail
+pub fn create_operator(
+    persistence: &mut SqlitePersistence,
+    request: CreateOperatorRequest,
+    authenticated_actor: &AuthenticatedActor,
+) -> Result<CreateOperatorResponse, ApiError> {
+    // Enforce authorization before executing command
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("create_operator"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Validate role
+    if request.role != "Admin" && request.role != "Bidder" {
+        return Err(ApiError::InvalidInput {
+            field: String::from("role"),
+            message: format!(
+                "Invalid role: {}. Must be 'Admin' or 'Bidder'",
+                request.role
+            ),
+        });
+    }
+
+    // Create operator
+    let operator_id: i64 = persistence
+        .create_operator(&request.login_name, &request.display_name, &request.role)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to create operator: {e}"),
+        })?;
+
+    Ok(CreateOperatorResponse {
+        operator_id,
+        login_name: request.login_name,
+        display_name: request.display_name,
+        role: request.role,
+    })
+}
+
+/// Lists all operators.
+///
+/// Only Admin actors may list operators.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `authenticated_actor` - The authenticated actor performing this action
+///
+/// # Returns
+///
+/// * `Ok(ListOperatorsResponse)` with the list of operators
+/// * `Err(ApiError)` if unauthorized or query fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - Database operations fail
+pub fn list_operators(
+    persistence: &SqlitePersistence,
+    authenticated_actor: &AuthenticatedActor,
+) -> Result<ListOperatorsResponse, ApiError> {
+    // Enforce authorization before executing command
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("list_operators"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    let operators: Vec<OperatorData> =
+        persistence
+            .list_operators()
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to list operators: {e}"),
+            })?;
+
+    let operator_infos: Vec<OperatorInfo> = operators
+        .into_iter()
+        .map(|op| OperatorInfo {
+            operator_id: op.operator_id,
+            login_name: op.login_name,
+            display_name: op.display_name,
+            role: op.role,
+            is_disabled: op.is_disabled,
+            created_at: op.created_at,
+            last_login_at: op.last_login_at,
+        })
+        .collect();
+
+    Ok(ListOperatorsResponse {
+        operators: operator_infos,
+    })
 }

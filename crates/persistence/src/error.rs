@@ -16,6 +16,16 @@ pub enum PersistenceError {
     ReconstructionError(String),
     /// Serialization/deserialization error.
     SerializationError(String),
+    /// Initialization error (e.g., foreign key enforcement not enabled).
+    InitializationError(String),
+    /// The requested operator was not found.
+    OperatorNotFound(String),
+    /// The requested session was not found.
+    SessionNotFound(String),
+    /// Session has expired.
+    SessionExpired(String),
+    /// Operator cannot be deleted because it is referenced by audit events.
+    OperatorReferenced { operator_id: i64 },
 }
 
 impl std::fmt::Display for PersistenceError {
@@ -28,6 +38,16 @@ impl std::fmt::Display for PersistenceError {
             }
             Self::ReconstructionError(msg) => write!(f, "State reconstruction error: {msg}"),
             Self::SerializationError(msg) => write!(f, "Serialization error: {msg}"),
+            Self::InitializationError(msg) => write!(f, "Initialization error: {msg}"),
+            Self::OperatorNotFound(msg) => write!(f, "Operator not found: {msg}"),
+            Self::SessionNotFound(msg) => write!(f, "Session not found: {msg}"),
+            Self::SessionExpired(msg) => write!(f, "Session expired: {msg}"),
+            Self::OperatorReferenced { operator_id } => {
+                write!(
+                    f,
+                    "Operator {operator_id} cannot be deleted: referenced by audit events"
+                )
+            }
         }
     }
 }
