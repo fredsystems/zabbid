@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+use crate::canonical_validation::validate_canonical_bid_year;
 use crate::command::Command;
 use crate::error::CoreError;
 use crate::state::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
@@ -43,6 +44,11 @@ pub fn apply_bootstrap(
         Command::CreateBidYear { year } => {
             // Validate the year is reasonable
             validate_bid_year(year)?;
+
+            // Validate that this year could form a valid canonical bid year
+            // This constructs a temporary CanonicalBidYear with placeholder values
+            // for validation only. The canonical instance is immediately discarded.
+            validate_canonical_bid_year(year)?;
 
             let bid_year: BidYear = BidYear::new(year);
 

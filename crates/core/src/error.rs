@@ -10,12 +10,15 @@ use zab_bid_domain::DomainError;
 pub enum CoreError {
     /// A domain rule was violated.
     DomainViolation(DomainError),
+    /// An internal error occurred.
+    Internal(String),
 }
 
 impl std::fmt::Display for CoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DomainViolation(err) => write!(f, "Domain violation: {err}"),
+            Self::Internal(msg) => write!(f, "Internal error: {msg}"),
         }
     }
 }

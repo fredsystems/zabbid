@@ -6,14 +6,14 @@
 //! API handler functions for state-changing and read-only operations.
 
 use zab_bid::{
-    BootstrapMetadata, BootstrapResult, Command, CoreError, State, TransitionResult, apply,
-    apply_bootstrap, validate_area_exists, validate_bid_year_exists,
+    BootstrapMetadata, BootstrapResult, Command, State, TransitionResult, apply, apply_bootstrap,
+    validate_area_exists, validate_bid_year_exists,
 };
 use zab_bid_audit::{Actor, AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, Crew, Initials, SeniorityData, UserType};
 
 use crate::auth::{AuthenticatedActor, AuthorizationService, Role};
-use crate::error::{ApiError, translate_domain_error};
+use crate::error::{ApiError, translate_core_error, translate_domain_error};
 use crate::request_response::{
     CreateAreaRequest, CreateBidYearRequest, ListAreasRequest, ListAreasResponse,
     ListBidYearsResponse, ListUsersResponse, RegisterUserRequest, RegisterUserResponse, UserInfo,
@@ -107,10 +107,8 @@ pub fn register_user(
     };
 
     // Apply command via core transition
-    let transition_result: TransitionResult = apply(metadata, state, command, actor, cause)
-        .map_err(|core_err| match core_err {
-            CoreError::DomainViolation(domain_err) => translate_domain_error(domain_err),
-        })?;
+    let transition_result: TransitionResult =
+        apply(metadata, state, command, actor, cause).map_err(translate_core_error)?;
 
     // Translate to API response
     let response: RegisterUserResponse = RegisterUserResponse {
@@ -170,10 +168,8 @@ pub fn checkpoint(
 
     // Create and apply checkpoint command
     let command: Command = Command::Checkpoint;
-    let transition_result: TransitionResult = apply(metadata, state, command, actor, cause)
-        .map_err(|core_err| match core_err {
-            CoreError::DomainViolation(domain_err) => translate_domain_error(domain_err),
-        })?;
+    let transition_result: TransitionResult =
+        apply(metadata, state, command, actor, cause).map_err(translate_core_error)?;
 
     Ok(transition_result)
 }
@@ -217,10 +213,8 @@ pub fn finalize(
 
     // Create and apply finalize command
     let command: Command = Command::Finalize;
-    let transition_result: TransitionResult = apply(metadata, state, command, actor, cause)
-        .map_err(|core_err| match core_err {
-            CoreError::DomainViolation(domain_err) => translate_domain_error(domain_err),
-        })?;
+    let transition_result: TransitionResult =
+        apply(metadata, state, command, actor, cause).map_err(translate_core_error)?;
 
     Ok(transition_result)
 }
@@ -266,10 +260,8 @@ pub fn rollback(
 
     // Create and apply rollback command
     let command: Command = Command::RollbackToEventId { target_event_id };
-    let transition_result: TransitionResult = apply(metadata, state, command, actor, cause)
-        .map_err(|core_err| match core_err {
-            CoreError::DomainViolation(domain_err) => translate_domain_error(domain_err),
-        })?;
+    let transition_result: TransitionResult =
+        apply(metadata, state, command, actor, cause).map_err(translate_core_error)?;
 
     Ok(transition_result)
 }
@@ -321,10 +313,8 @@ pub fn create_bid_year(
     let command: Command = Command::CreateBidYear { year: request.year };
 
     // Apply command via core bootstrap
-    let bootstrap_result: BootstrapResult = apply_bootstrap(metadata, command, actor, cause)
-        .map_err(|core_err| match core_err {
-            CoreError::DomainViolation(domain_err) => translate_domain_error(domain_err),
-        })?;
+    let bootstrap_result: BootstrapResult =
+        apply_bootstrap(metadata, command, actor, cause).map_err(translate_core_error)?;
 
     Ok(bootstrap_result)
 }
@@ -379,10 +369,8 @@ pub fn create_area(
     };
 
     // Apply command via core bootstrap
-    let bootstrap_result: BootstrapResult = apply_bootstrap(metadata, command, actor, cause)
-        .map_err(|core_err| match core_err {
-            CoreError::DomainViolation(domain_err) => translate_domain_error(domain_err),
-        })?;
+    let bootstrap_result: BootstrapResult =
+        apply_bootstrap(metadata, command, actor, cause).map_err(translate_core_error)?;
 
     Ok(bootstrap_result)
 }

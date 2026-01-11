@@ -5,6 +5,7 @@
 
 //! Error types for the API layer.
 
+use zab_bid::CoreError;
 #[allow(unused_imports)] // False positive: BidYear is used in pattern matching
 use zab_bid_domain::{BidYear, DomainError};
 
@@ -81,6 +82,11 @@ pub enum ApiError {
         /// A human-readable description of what was not found.
         message: String,
     },
+    /// An internal error occurred.
+    Internal {
+        /// A description of the internal error.
+        message: String,
+    },
 }
 
 impl std::fmt::Display for ApiError {
@@ -106,6 +112,9 @@ impl std::fmt::Display for ApiError {
                 message,
             } => {
                 write!(f, "{resource_type} not found: {message}")
+            }
+            Self::Internal { message } => {
+                write!(f, "Internal error: {message}")
             }
         }
     }
@@ -181,6 +190,31 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
         DomainError::InvalidBidYear(msg) => ApiError::InvalidInput {
             field: String::from("bid_year"),
             message: msg,
+        },
+        DomainError::InvalidPayPeriodCount { count } => ApiError::InvalidInput {
+            field: String::from("pay_period_count"),
+            message: format!("Invalid pay period count: {count}. Must be exactly 26 or 27"),
+        },
+        DomainError::InvalidPayPeriodIndex { index, max } => ApiError::InvalidInput {
+            field: String::from("pay_period_index"),
+            message: format!("Invalid pay period index: {index}. Must be between 1 and {max}"),
+        },
+        DomainError::DateArithmeticOverflow { operation } => ApiError::InvalidInput {
+            field: String::from("date"),
+            message: format!("Date arithmetic overflow while {operation}"),
+        },
+    }
+}
+
+/// Translates a core error into an API error.
+///
+/// This translation is explicit and ensures core errors are not leaked directly.
+#[must_use]
+pub fn translate_core_error(err: CoreError) -> ApiError {
+    match err {
+        CoreError::DomainViolation(domain_err) => translate_domain_error(domain_err),
+        CoreError::Internal(msg) => ApiError::Internal {
+            message: format!("Internal error: {msg}"),
         },
     }
 }

@@ -1,4 +1,5 @@
 [dependencies]
+time.workspace = true
 zab-bid-domain = { path = "../domain" }
 zab-bid-audit = { path = "../audit" }
 

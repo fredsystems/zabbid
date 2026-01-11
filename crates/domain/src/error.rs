@@ -45,6 +45,23 @@ pub enum DomainError {
     },
     /// Invalid bid year value.
     InvalidBidYear(String),
+    /// Invalid pay period count.
+    InvalidPayPeriodCount {
+        /// The invalid count value.
+        count: u8,
+    },
+    /// Invalid pay period index.
+    InvalidPayPeriodIndex {
+        /// The invalid index.
+        index: u8,
+        /// The maximum valid index.
+        max: u8,
+    },
+    /// Date arithmetic overflow.
+    DateArithmeticOverflow {
+        /// Description of the operation that failed.
+        operation: String,
+    },
 }
 
 impl std::fmt::Display for DomainError {
@@ -72,6 +89,21 @@ impl std::fmt::Display for DomainError {
                 write!(f, "Area '{area}' already exists in bid year {bid_year}")
             }
             Self::InvalidBidYear(msg) => write!(f, "Invalid bid year: {msg}"),
+            Self::InvalidPayPeriodCount { count } => {
+                write!(
+                    f,
+                    "Invalid pay period count: {count}. Must be exactly 26 or 27"
+                )
+            }
+            Self::InvalidPayPeriodIndex { index, max } => {
+                write!(
+                    f,
+                    "Invalid pay period index: {index}. Must be between 1 and {max}"
+                )
+            }
+            Self::DateArithmeticOverflow { operation } => {
+                write!(f, "Date arithmetic overflow while {operation}")
+            }
         }
     }
 }
