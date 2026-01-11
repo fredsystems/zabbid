@@ -28,13 +28,13 @@ use tracing::{error, info};
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_api::{
     ApiError, ApiResult, AuthenticatedActor, CreateAreaRequest, CreateBidYearRequest,
-    ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListUsersResponse,
-    RegisterUserRequest, RegisterUserResponse, Role, authenticate_stub, checkpoint, create_area,
-    create_bid_year, finalize, get_current_state, get_historical_state, list_areas, list_bid_years,
-    list_users, register_user, rollback,
+    GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
+    ListUsersResponse, RegisterUserRequest, RegisterUserResponse, Role, authenticate_stub,
+    checkpoint, create_area, create_bid_year, finalize, get_current_state, get_historical_state,
+    get_leave_availability, list_areas, list_bid_years, list_users, register_user, rollback,
 };
 use zab_bid_audit::{AuditEvent, Cause};
-use zab_bid_domain::{Area, BidYear};
+use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials};
 use zab_bid_persistence::{PersistenceError, SqlitePersistence};
 
 /// ZAB Bid Server - HTTP server for the ZAB Bidding System
@@ -218,6 +218,42 @@ struct UserInfoResponse {
     name: String,
     /// The user's crew (optional).
     crew: Option<u8>,
+}
+
+/// Query parameters for leave availability.
+#[derive(Debug, Clone, Deserialize)]
+struct LeaveAvailabilityQuery {
+    /// The bid year.
+    bid_year: u16,
+    /// The area.
+    area: String,
+    /// The user's initials.
+    initials: String,
+}
+
+/// API response for leave availability.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LeaveAvailabilityApiResponse {
+    /// The bid year.
+    bid_year: u16,
+    /// The user's initials.
+    initials: String,
+    /// Total hours earned.
+    earned_hours: u16,
+    /// Total days earned.
+    earned_days: u16,
+    /// Total hours used.
+    used_hours: u16,
+    /// Remaining hours available.
+    remaining_hours: i32,
+    /// Remaining days available.
+    remaining_days: i32,
+    /// Whether all leave has been exhausted.
+    is_exhausted: bool,
+    /// Whether leave balance is overdrawn.
+    is_overdrawn: bool,
+    /// Human-readable explanation.
+    explanation: String,
 }
 
 /// API response for write operations.
@@ -692,6 +728,58 @@ async fn handle_list_users(
     }))
 }
 
+/// Handler for GET `/leave/availability` endpoint.
+///
+/// Returns leave availability for a specific user.
+async fn handle_get_leave_availability(
+    AxumState(app_state): AxumState<AppState>,
+    Query(query): Query<LeaveAvailabilityQuery>,
+) -> Result<Json<LeaveAvailabilityApiResponse>, HttpError> {
+    info!(
+        bid_year = query.bid_year,
+        area = %query.area,
+        initials = %query.initials,
+        "Handling get_leave_availability request"
+    );
+
+    let persistence = app_state.persistence.lock().await;
+    let bid_year: BidYear = BidYear::new(query.bid_year);
+    let area: Area = Area::new(&query.area);
+    let initials: Initials = Initials::new(&query.initials);
+
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Get canonical bid year for accrual calculation
+    let canonical_bid_years: Vec<CanonicalBidYear> = persistence.list_bid_years()?;
+    let canonical_bid_year: &CanonicalBidYear = canonical_bid_years
+        .iter()
+        .find(|by| by.year() == query.bid_year)
+        .ok_or_else(|| {
+            PersistenceError::DatabaseError(format!("Bid year {} not found", query.bid_year))
+        })?;
+
+    let state: State = persistence
+        .get_current_state(&bid_year, &area)
+        .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
+    drop(persistence);
+
+    let response: GetLeaveAvailabilityResponse =
+        get_leave_availability(&metadata, canonical_bid_year, &area, &initials, &state)?;
+
+    Ok(Json(LeaveAvailabilityApiResponse {
+        bid_year: response.bid_year,
+        initials: response.initials,
+        earned_hours: response.earned_hours,
+        earned_days: response.earned_days,
+        used_hours: response.used_hours,
+        remaining_hours: response.remaining_hours,
+        remaining_days: response.remaining_days,
+        is_exhausted: response.is_exhausted,
+        is_overdrawn: response.is_overdrawn,
+        explanation: response.explanation,
+    }))
+}
+
 /// Handler for POST `/register_user` endpoint.
 ///
 /// Authenticates the actor, authorizes the action, and registers a new user.
@@ -1056,6 +1144,7 @@ fn build_router(app_state: AppState) -> Router {
         .route("/areas", get(handle_list_areas))
         .route("/users", get(handle_list_users))
         .route("/register_user", post(handle_register_user))
+        .route("/leave/availability", get(handle_get_leave_availability))
         .route("/checkpoint", post(handle_checkpoint))
         .route("/finalize", post(handle_finalize))
         .route("/rollback", post(handle_rollback))
