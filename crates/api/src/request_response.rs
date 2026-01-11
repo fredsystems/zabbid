@@ -108,6 +108,10 @@ pub struct BidYearInfo {
     pub num_pay_periods: u8,
     /// The derived end date of the bid year (inclusive).
     pub end_date: Date,
+    /// The number of areas in this bid year.
+    pub area_count: usize,
+    /// The total number of users across all areas in this bid year.
+    pub total_user_count: usize,
 }
 
 /// API response for listing bid years.
@@ -124,13 +128,22 @@ pub struct ListAreasRequest {
     pub bid_year: u16,
 }
 
+/// Information about a single area.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AreaInfo {
+    /// The area identifier.
+    pub area_id: String,
+    /// The number of users in this area.
+    pub user_count: usize,
+}
+
 /// API response for listing areas.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListAreasResponse {
     /// The bid year.
     pub bid_year: u16,
-    /// The list of area identifiers.
-    pub areas: Vec<String>,
+    /// The list of areas with metadata.
+    pub areas: Vec<AreaInfo>,
 }
 
 /// API request to list users for a bid year and area.
@@ -162,6 +175,53 @@ pub struct UserInfo {
     pub name: String,
     /// The user's crew (optional).
     pub crew: Option<u8>,
+    /// The user's type classification (CPC, CPC-IT, Dev-R, Dev-D).
+    pub user_type: String,
+    /// Total hours earned (from Phase 9, post-rounding).
+    pub earned_hours: u16,
+    /// Total days earned.
+    pub earned_days: u16,
+    /// Remaining hours available (may be negative if overdrawn).
+    pub remaining_hours: i32,
+    /// Remaining days available (may be negative if overdrawn).
+    pub remaining_days: i32,
+    /// Whether all leave has been exhausted.
+    pub is_exhausted: bool,
+    /// Whether leave balance is overdrawn.
+    pub is_overdrawn: bool,
+}
+
+/// Bootstrap status summary for a single bid year.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BidYearStatusInfo {
+    /// The year value.
+    pub year: u16,
+    /// The number of areas in this bid year.
+    pub area_count: usize,
+    /// The total number of users across all areas.
+    pub total_user_count: usize,
+}
+
+/// Area summary for bootstrap status.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AreaStatusInfo {
+    /// The bid year this area belongs to.
+    pub bid_year: u16,
+    /// The area identifier.
+    pub area_id: String,
+    /// The number of users in this area.
+    pub user_count: usize,
+}
+
+/// API response for bootstrap status.
+///
+/// Provides a comprehensive summary of the system state for operators.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BootstrapStatusResponse {
+    /// Summary of all bid years with counts.
+    pub bid_years: Vec<BidYearStatusInfo>,
+    /// Summary of all areas with counts.
+    pub areas: Vec<AreaStatusInfo>,
 }
 
 /// API request to get leave availability for a user.

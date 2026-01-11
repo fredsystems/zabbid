@@ -68,6 +68,7 @@ All changes must advance these goals. If unsure, stop and ask.
 - All markdown must comply with existing rules enforced by `cargo xtask ci`
 - All markdown must comply with existing rules enforced by `pre-commit run --all-files`
 - Before completing a phase, or any work, ensure git add has been run on all of the modified files, and `cargo xtask ci` and `pre-commit run --all-files` pass without errors.
+- For casting primitive types that don't fit within each other, use `num-traits`.
 
 ## Workspace structure
 

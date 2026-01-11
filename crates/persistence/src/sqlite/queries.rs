@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+use num_traits::ToPrimitive;
 use rusqlite::{Connection, Result as SqliteResult, params};
 use zab_bid::State;
 use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
@@ -499,4 +500,161 @@ fn get_snapshot_before_timestamp(
         }),
         Err(e) => Err(PersistenceError::DatabaseError(e.to_string())),
     }
+}
+
+/// Counts users per area for a given bid year.
+///
+/// Returns a vector of tuples containing (`area_id`, `user_count`).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year` - The bid year to count users for
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried or if count conversion fails.
+pub fn count_users_by_area(
+    conn: &Connection,
+    bid_year: &BidYear,
+) -> Result<Vec<(String, usize)>, PersistenceError> {
+    let mut stmt = conn.prepare(
+        "SELECT area_id, COUNT(*) as user_count
+         FROM users
+         WHERE bid_year = ?1
+         GROUP BY area_id
+         ORDER BY area_id ASC",
+    )?;
+
+    let rows = stmt.query_map(params![bid_year.year()], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+
+    let mut result: Vec<(String, usize)> = Vec::new();
+    for row in rows {
+        let (area_id, count) = row.map_err(|e| PersistenceError::DatabaseError(e.to_string()))?;
+        let count_usize: usize = count.to_usize().ok_or_else(|| {
+            PersistenceError::DatabaseError("Count conversion failed".to_string())
+        })?;
+        result.push((area_id, count_usize));
+    }
+
+    Ok(result)
+}
+
+/// Counts areas per bid year.
+///
+/// Returns a vector of tuples containing (`bid_year`, `area_count`).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried or if conversions fail.
+pub fn count_areas_by_bid_year(conn: &Connection) -> Result<Vec<(u16, usize)>, PersistenceError> {
+    let mut stmt = conn.prepare(
+        "SELECT bid_year, COUNT(*) as area_count
+         FROM areas
+         GROUP BY bid_year
+         ORDER BY bid_year ASC",
+    )?;
+
+    let rows = stmt.query_map([], |row| Ok((row.get::<_, i32>(0)?, row.get::<_, i64>(1)?)))?;
+
+    let mut result: Vec<(u16, usize)> = Vec::new();
+    for row in rows {
+        let (bid_year, count) = row.map_err(|e| PersistenceError::DatabaseError(e.to_string()))?;
+        let bid_year_u16: u16 = bid_year.to_u16().ok_or_else(|| {
+            PersistenceError::DatabaseError("Bid year conversion failed".to_string())
+        })?;
+        let count_usize: usize = count.to_usize().ok_or_else(|| {
+            PersistenceError::DatabaseError("Count conversion failed".to_string())
+        })?;
+        result.push((bid_year_u16, count_usize));
+    }
+
+    Ok(result)
+}
+
+/// Counts total users per bid year across all areas.
+///
+/// Returns a vector of tuples containing (`bid_year`, `total_user_count`).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried or if conversions fail.
+pub fn count_users_by_bid_year(conn: &Connection) -> Result<Vec<(u16, usize)>, PersistenceError> {
+    let mut stmt = conn.prepare(
+        "SELECT bid_year, COUNT(*) as user_count
+         FROM users
+         GROUP BY bid_year
+         ORDER BY bid_year ASC",
+    )?;
+
+    let rows = stmt.query_map([], |row| Ok((row.get::<_, i32>(0)?, row.get::<_, i64>(1)?)))?;
+
+    let mut result: Vec<(u16, usize)> = Vec::new();
+    for row in rows {
+        let (bid_year, count) = row.map_err(|e| PersistenceError::DatabaseError(e.to_string()))?;
+        let bid_year_u16: u16 = bid_year.to_u16().ok_or_else(|| {
+            PersistenceError::DatabaseError("Bid year conversion failed".to_string())
+        })?;
+        let count_usize: usize = count.to_usize().ok_or_else(|| {
+            PersistenceError::DatabaseError("Count conversion failed".to_string())
+        })?;
+        result.push((bid_year_u16, count_usize));
+    }
+
+    Ok(result)
+}
+
+/// Counts users per (`bid_year`, `area_id`) combination.
+///
+/// Returns a vector of tuples containing (`bid_year`, `area_id`, `user_count`).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried or if conversions fail.
+pub fn count_users_by_bid_year_and_area(
+    conn: &Connection,
+) -> Result<Vec<(u16, String, usize)>, PersistenceError> {
+    let mut stmt = conn.prepare(
+        "SELECT bid_year, area_id, COUNT(*) as user_count
+         FROM users
+         GROUP BY bid_year, area_id
+         ORDER BY bid_year ASC, area_id ASC",
+    )?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, i32>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, i64>(2)?,
+        ))
+    })?;
+
+    let mut result: Vec<(u16, String, usize)> = Vec::new();
+    for row in rows {
+        let (bid_year, area_id, count) =
+            row.map_err(|e| PersistenceError::DatabaseError(e.to_string()))?;
+        let bid_year_u16: u16 = bid_year.to_u16().ok_or_else(|| {
+            PersistenceError::DatabaseError("Bid year conversion failed".to_string())
+        })?;
+        let count_usize: usize = count.to_usize().ok_or_else(|| {
+            PersistenceError::DatabaseError("Count conversion failed".to_string())
+        })?;
+        result.push((bid_year_u16, area_id, count_usize));
+    }
+
+    Ok(result)
 }
