@@ -32,14 +32,15 @@ use tracing::{error, info};
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_api::{
     ApiError, ApiResult, BootstrapStatusResponse, CreateAreaRequest, CreateBidYearRequest,
-    GetActiveBidYearResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse,
-    ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListUsersResponse,
-    PreviewCsvUsersRequest, PreviewCsvUsersResponse, RegisterUserRequest, RegisterUserResponse,
-    SetActiveBidYearRequest, SetActiveBidYearResponse, SetExpectedAreaCountRequest,
-    SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
-    UpdateUserRequest, UpdateUserResponse, checkpoint, create_area, create_bid_year, finalize,
-    get_active_bid_year, get_bootstrap_completeness, get_bootstrap_status, get_current_state,
-    get_historical_state, get_leave_availability, list_areas, list_bid_years, list_users,
+    CsvImportRowStatus, GetActiveBidYearResponse, GetBootstrapCompletenessResponse,
+    GetLeaveAvailabilityResponse, ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest,
+    ListAreasResponse, ListBidYearsResponse, ListUsersResponse, PreviewCsvUsersRequest,
+    PreviewCsvUsersResponse, RegisterUserRequest, RegisterUserResponse, SetActiveBidYearRequest,
+    SetActiveBidYearResponse, SetExpectedAreaCountRequest, SetExpectedAreaCountResponse,
+    SetExpectedUserCountRequest, SetExpectedUserCountResponse, UpdateUserRequest,
+    UpdateUserResponse, checkpoint, create_area, create_bid_year, finalize, get_active_bid_year,
+    get_bootstrap_completeness, get_bootstrap_status, get_current_state, get_historical_state,
+    get_leave_availability, import_csv_users, list_areas, list_bid_years, list_users,
     preview_csv_users, register_user, rollback, set_active_bid_year, set_expected_area_count,
     set_expected_user_count, update_user,
 };
@@ -1581,6 +1582,17 @@ struct PreviewCsvUsersApiRequest {
     csv_content: String,
 }
 
+/// API request to import selected CSV rows.
+#[derive(Debug, serde::Deserialize)]
+struct ImportCsvUsersApiRequest {
+    /// The bid year to import into.
+    bid_year: u16,
+    /// The raw CSV content.
+    csv_content: String,
+    /// The row indices (0-based, excluding header) to import.
+    selected_row_indices: Vec<usize>,
+}
+
 /// Request body for logout endpoint.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct LogoutRequest {
@@ -1929,6 +1941,102 @@ async fn handle_preview_csv_users(
     Ok(Json(response))
 }
 
+/// Handler for POST `/bootstrap/users/csv/import` endpoint.
+///
+/// Imports selected CSV rows as users.
+async fn handle_import_csv_users(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<ImportCsvUsersApiRequest>,
+) -> Result<Json<ImportCsvUsersResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year = req.bid_year,
+        selected_count = req.selected_row_indices.len(),
+        "Handling import_csv_users request"
+    );
+
+    let cause: Cause = Cause::new(
+        String::from("csv_import"),
+        String::from("Bulk user import from CSV"),
+    );
+
+    // Get bootstrap metadata and current state
+    // Note: CSV import may span multiple areas, so we use a dummy state
+    // The actual state will be loaded per-user during import
+    let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    let bid_year: BidYear = BidYear::new(req.bid_year);
+
+    // We need a state instance for the import handler signature
+    // Use the first area if available, or create a dummy one
+    let state: State = if let Some((_, first_area)) = metadata.areas.first() {
+        persistence
+            .get_current_state(&bid_year, first_area)
+            .unwrap_or_else(|_| State::new(bid_year.clone(), first_area.clone()))
+    } else {
+        State::new(bid_year.clone(), Area::new("DUMMY"))
+    };
+    drop(persistence);
+
+    // Build API request
+    let import_request = ImportCsvUsersRequest {
+        bid_year: req.bid_year,
+        csv_content: req.csv_content,
+        selected_row_indices: req.selected_row_indices,
+    };
+
+    // Execute import via API
+    let persistence = app_state.persistence.lock().await;
+    let (response, audit_events, final_state) = import_csv_users(
+        &metadata,
+        &state,
+        &persistence,
+        &import_request,
+        &actor,
+        &operator,
+        &cause,
+    )?;
+    drop(persistence);
+
+    // Persist all transitions
+    let mut persistence = app_state.persistence.lock().await;
+    let mut event_ids: Vec<i64> = Vec::new();
+    for audit_event in &audit_events {
+        let transition_result = TransitionResult {
+            audit_event: audit_event.clone(),
+            new_state: final_state.clone(),
+        };
+        let event_id: i64 = persistence.persist_transition(&transition_result, false)?;
+        event_ids.push(event_id);
+    }
+    drop(persistence);
+
+    info!(
+        total_selected = response.total_selected,
+        successful_count = response.successful_count,
+        failed_count = response.failed_count,
+        event_count = event_ids.len(),
+        "Successfully completed CSV import"
+    );
+
+    // Broadcast live events for successful imports
+    for result in &response.results {
+        if result.status == CsvImportRowStatus::Success
+            && let Some(ref initials) = result.initials
+        {
+            app_state.live_events.broadcast(&LiveEvent::UserRegistered {
+                bid_year: response.bid_year,
+                area: String::from("MULTI"), // CSV can span areas
+                initials: initials.clone(),
+            });
+        }
+    }
+
+    Ok(Json(response))
+}
+
 fn build_router(state: AppState) -> Router {
     let live_broadcaster = Arc::clone(&state.live_events);
 
@@ -1994,6 +2102,7 @@ fn build_router(state: AppState) -> Router {
             "/bootstrap/users/csv/preview",
             post(handle_preview_csv_users),
         )
+        .route("/bootstrap/users/csv/import", post(handle_import_csv_users))
         .with_state(state);
 
     let live_router = Router::new()

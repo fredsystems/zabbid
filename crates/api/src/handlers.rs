@@ -24,16 +24,17 @@ use crate::password_policy::PasswordPolicy;
 use crate::request_response::{
     AreaCompletenessInfo, BidYearCompletenessInfo, BidYearInfo, BlockingReason,
     ChangePasswordRequest, ChangePasswordResponse, CreateAreaRequest, CreateBidYearRequest,
-    CreateOperatorRequest, CreateOperatorResponse, CsvRowPreview, CsvRowStatus,
-    DeleteOperatorRequest, DeleteOperatorResponse, DisableOperatorRequest, DisableOperatorResponse,
-    EnableOperatorRequest, EnableOperatorResponse, GetActiveBidYearResponse,
-    GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse, ListAreasRequest,
-    ListAreasResponse, ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse,
-    LoginRequest, LoginResponse, OperatorInfo, PreviewCsvUsersRequest, PreviewCsvUsersResponse,
-    RegisterUserRequest, RegisterUserResponse, ResetPasswordRequest, ResetPasswordResponse,
-    SetActiveBidYearRequest, SetActiveBidYearResponse, SetExpectedAreaCountRequest,
-    SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
-    UpdateUserRequest, UpdateUserResponse, UserInfo, WhoAmIResponse,
+    CreateOperatorRequest, CreateOperatorResponse, CsvImportRowResult, CsvImportRowStatus,
+    CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
+    DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
+    GetActiveBidYearResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse,
+    ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse,
+    ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse,
+    OperatorInfo, PreviewCsvUsersRequest, PreviewCsvUsersResponse, RegisterUserRequest,
+    RegisterUserResponse, ResetPasswordRequest, ResetPasswordResponse, SetActiveBidYearRequest,
+    SetActiveBidYearResponse, SetExpectedAreaCountRequest, SetExpectedAreaCountResponse,
+    SetExpectedUserCountRequest, SetExpectedUserCountResponse, UpdateUserRequest,
+    UpdateUserResponse, UserInfo, WhoAmIResponse,
 };
 use zab_bid_persistence::PersistenceError;
 
@@ -2440,4 +2441,328 @@ pub fn preview_csv_users(
         valid_count: preview_result.valid_count,
         invalid_count: preview_result.invalid_count,
     })
+}
+
+/// Imports selected CSV rows as users.
+///
+/// This function:
+/// - Verifies the actor is authorized (Admin role required)
+/// - Re-parses each selected CSV row
+/// - Attempts to create each user individually
+/// - Returns per-row success/failure results
+/// - Does NOT roll back on failure
+///
+/// # Arguments
+///
+/// * `metadata` - The current bootstrap metadata
+/// * `state` - The current system state
+/// * `persistence` - The persistence layer
+/// * `request` - The API request containing CSV content and selected row indices
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data for audit trail
+/// * `cause` - The cause or reason for this action
+///
+/// # Returns
+///
+/// * `Ok((ImportCsvUsersResponse, Vec<AuditEvent>, State))` on completion
+/// * `Err(ApiError)` if unauthorized or CSV parsing fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The CSV cannot be parsed
+/// - The bid year does not exist
+///
+/// Individual row failures are captured in the response, not as errors.
+#[allow(clippy::too_many_lines)]
+pub fn import_csv_users(
+    metadata: &BootstrapMetadata,
+    state: &State,
+    _persistence: &SqlitePersistence,
+    request: &ImportCsvUsersRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: &Cause,
+) -> Result<(ImportCsvUsersResponse, Vec<AuditEvent>, State), ApiError> {
+    // Enforce authorization - only admins can import users
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("import_csv_users"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Validate bid year exists
+    let bid_year: BidYear = BidYear::new(request.bid_year);
+    validate_bid_year_exists(metadata, &bid_year).map_err(translate_domain_error)?;
+
+    // Convert authenticated actor to audit actor
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
+
+    // Parse CSV and collect all rows first
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .flexible(false)
+        .from_reader(request.csv_content.as_bytes());
+
+    let headers = reader
+        .headers()
+        .map_err(|e| ApiError::InvalidCsvFormat {
+            reason: format!("Failed to read CSV headers: {e}"),
+        })?
+        .clone();
+
+    // Build header map for field extraction
+    let mut header_map: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for (idx, header) in headers.iter().enumerate() {
+        let normalized = header.trim().to_lowercase().replace(' ', "_");
+        header_map.insert(normalized, idx);
+    }
+
+    // Collect all records into a vec so we can index into them
+    let all_records: Vec<csv::StringRecord> = reader
+        .records()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| ApiError::InvalidCsvFormat {
+            reason: format!("Failed to read CSV records: {e}"),
+        })?;
+
+    let total_selected: usize = request.selected_row_indices.len();
+    let mut successful_count: usize = 0;
+    let mut failed_count: usize = 0;
+    let mut results: Vec<CsvImportRowResult> = Vec::new();
+    let mut audit_events: Vec<AuditEvent> = Vec::new();
+    let mut current_state: State = state.clone();
+
+    // Process each selected row
+    for &row_index in &request.selected_row_indices {
+        let row_number: usize = row_index + 1;
+
+        // Check if row index is valid
+        if row_index >= all_records.len() {
+            results.push(CsvImportRowResult {
+                row_index,
+                row_number,
+                initials: None,
+                status: CsvImportRowStatus::Failed,
+                error: Some(String::from("Row index out of bounds")),
+            });
+            failed_count += 1;
+            continue;
+        }
+
+        let record = &all_records[row_index];
+
+        // Extract fields using header map
+        let get_field = |name: &str| -> Option<String> {
+            header_map
+                .get(name)
+                .and_then(|&idx| record.get(idx))
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        };
+
+        // Extract required fields
+        let Some(initials_str) = get_field("initials") else {
+            results.push(CsvImportRowResult {
+                row_index,
+                row_number,
+                initials: None,
+                status: CsvImportRowStatus::Failed,
+                error: Some(String::from("Missing initials")),
+            });
+            failed_count += 1;
+            continue;
+        };
+
+        let Some(name) = get_field("name") else {
+            results.push(CsvImportRowResult {
+                row_index,
+                row_number,
+                initials: Some(initials_str.clone()),
+                status: CsvImportRowStatus::Failed,
+                error: Some(String::from("Missing name")),
+            });
+            failed_count += 1;
+            continue;
+        };
+
+        let Some(area_str) = get_field("area_id") else {
+            results.push(CsvImportRowResult {
+                row_index,
+                row_number,
+                initials: Some(initials_str.clone()),
+                status: CsvImportRowStatus::Failed,
+                error: Some(String::from("Missing area_id")),
+            });
+            failed_count += 1;
+            continue;
+        };
+
+        let Some(user_type_str) = get_field("user_type") else {
+            results.push(CsvImportRowResult {
+                row_index,
+                row_number,
+                initials: Some(initials_str.clone()),
+                status: CsvImportRowStatus::Failed,
+                error: Some(String::from("Missing user_type")),
+            });
+            failed_count += 1;
+            continue;
+        };
+
+        let Some(crew_str) = get_field("crew") else {
+            results.push(CsvImportRowResult {
+                row_index,
+                row_number,
+                initials: Some(initials_str.clone()),
+                status: CsvImportRowStatus::Failed,
+                error: Some(String::from("Missing crew")),
+            });
+            failed_count += 1;
+            continue;
+        };
+
+        let Some(service_computation_date) = get_field("service_computation_date") else {
+            results.push(CsvImportRowResult {
+                row_index,
+                row_number,
+                initials: Some(initials_str.clone()),
+                status: CsvImportRowStatus::Failed,
+                error: Some(String::from("Missing service_computation_date")),
+            });
+            failed_count += 1;
+            continue;
+        };
+
+        let Some(eod_faa_date) = get_field("eod_faa_date").or_else(|| get_field("eod_date")) else {
+            results.push(CsvImportRowResult {
+                row_index,
+                row_number,
+                initials: Some(initials_str.clone()),
+                status: CsvImportRowStatus::Failed,
+                error: Some(String::from("Missing eod_faa_date or eod_date")),
+            });
+            failed_count += 1;
+            continue;
+        };
+
+        // Parse crew
+        let Ok(crew_num) = crew_str.parse::<u8>() else {
+            results.push(CsvImportRowResult {
+                row_index,
+                row_number,
+                initials: Some(initials_str.clone()),
+                status: CsvImportRowStatus::Failed,
+                error: Some(format!("Invalid crew number: {crew_str}")),
+            });
+            failed_count += 1;
+            continue;
+        };
+
+        // Optional fields
+        let cumulative_natca_bu_date = get_field("cumulative_natca_bu_date").unwrap_or_default();
+        let natca_bu_date = get_field("natca_bu_date").unwrap_or_default();
+        let lottery_value = get_field("lottery_value").and_then(|v| v.parse().ok());
+
+        // Parse domain types
+        let initials = Initials::new(&initials_str);
+        let area = Area::new(&area_str);
+
+        let user_type = match UserType::parse(&user_type_str).map_err(translate_domain_error) {
+            Ok(ut) => ut,
+            Err(e) => {
+                results.push(CsvImportRowResult {
+                    row_index,
+                    row_number,
+                    initials: Some(initials_str.clone()),
+                    status: CsvImportRowStatus::Failed,
+                    error: Some(format!("Invalid user type: {e}")),
+                });
+                failed_count += 1;
+                continue;
+            }
+        };
+
+        let crew = match Crew::new(crew_num).map_err(translate_domain_error) {
+            Ok(c) => Some(c),
+            Err(e) => {
+                results.push(CsvImportRowResult {
+                    row_index,
+                    row_number,
+                    initials: Some(initials_str.clone()),
+                    status: CsvImportRowStatus::Failed,
+                    error: Some(format!("Invalid crew: {e}")),
+                });
+                failed_count += 1;
+                continue;
+            }
+        };
+
+        let seniority_data = SeniorityData::new(
+            cumulative_natca_bu_date,
+            natca_bu_date,
+            eod_faa_date,
+            service_computation_date,
+            lottery_value,
+        );
+
+        // Create the command
+        let command = Command::RegisterUser {
+            bid_year: bid_year.clone(),
+            initials: initials.clone(),
+            name: name.clone(),
+            area,
+            user_type,
+            crew,
+            seniority_data,
+        };
+
+        // Attempt to apply the command
+        match apply(
+            metadata,
+            &current_state,
+            command,
+            actor.clone(),
+            cause.clone(),
+        )
+        .map_err(translate_core_error)
+        {
+            Ok(transition_result) => {
+                // Success
+                results.push(CsvImportRowResult {
+                    row_index,
+                    row_number,
+                    initials: Some(initials.value().to_string()),
+                    status: CsvImportRowStatus::Success,
+                    error: None,
+                });
+                successful_count += 1;
+                audit_events.push(transition_result.audit_event);
+                current_state = transition_result.new_state;
+            }
+            Err(e) => {
+                // Failure
+                results.push(CsvImportRowResult {
+                    row_index,
+                    row_number,
+                    initials: Some(initials.value().to_string()),
+                    status: CsvImportRowStatus::Failed,
+                    error: Some(format!("{e}")),
+                });
+                failed_count += 1;
+            }
+        }
+    }
+
+    let response = ImportCsvUsersResponse {
+        bid_year: request.bid_year,
+        total_selected,
+        successful_count,
+        failed_count,
+        results,
+    };
+
+    Ok((response, audit_events, current_state))
 }

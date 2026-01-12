@@ -843,3 +843,54 @@ pub struct PreviewCsvUsersResponse {
     /// Number of invalid rows.
     pub invalid_count: usize,
 }
+
+/// API request to import selected CSV rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportCsvUsersRequest {
+    /// The bid year to import into.
+    pub bid_year: u16,
+    /// The raw CSV content (same as preview).
+    pub csv_content: String,
+    /// The row indices (0-based, excluding header) to import.
+    pub selected_row_indices: Vec<usize>,
+}
+
+/// Result of a single row import attempt.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CsvImportRowResult {
+    /// The row index (0-based, excluding header).
+    pub row_index: usize,
+    /// The row number (1-based, for human display).
+    pub row_number: usize,
+    /// The initials from this row (if parsed).
+    pub initials: Option<String>,
+    /// The status of this import attempt.
+    pub status: CsvImportRowStatus,
+    /// Error message if the import failed.
+    pub error: Option<String>,
+}
+
+/// Status of a single CSV row import.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CsvImportRowStatus {
+    /// Row was successfully imported.
+    Success,
+    /// Row import failed.
+    Failed,
+}
+
+/// API response for CSV import.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ImportCsvUsersResponse {
+    /// The bid year imported into.
+    pub bid_year: u16,
+    /// Total number of rows selected for import.
+    pub total_selected: usize,
+    /// Number of rows successfully imported.
+    pub successful_count: usize,
+    /// Number of rows that failed to import.
+    pub failed_count: usize,
+    /// Per-row import results.
+    pub results: Vec<CsvImportRowResult>,
+}
