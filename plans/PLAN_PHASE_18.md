@@ -147,6 +147,55 @@ CSV import exists to reduce operator fatigue, not to replace validation.
 
 ---
 
+## Phase 18 — CSV User Import (Revised Specification)
+
+Phase 18 includes a CSV-based user import workflow designed for large-scale bootstrap of users into areas. This workflow must be **robust, human-friendly, and deterministic**, with all validation owned by the backend.
+
+---
+
+### CSV Format Requirements
+
+#### Header-Driven Parsing (Order-Independent)
+
+- CSV files **must include a header row**
+- Column **order is irrelevant**
+- Columns are identified **by name**, not position
+- Headers are matched using:
+  - Case-insensitive comparison
+  - Whitespace trimmed
+  - Spaces converted to underscores
+
+Example equivalence:
+
+| CSV Header                 | Normalized                 |
+| -------------------------- | -------------------------- |
+| `Full Name`                | `full_name`                |
+| `AREA_ID`                  | `area_id`                  |
+| `Service Computation Date` | `service_computation_date` |
+
+---
+
+### Required Columns
+
+The following columns **must be present** in the header:
+
+```text
+initials
+full_name
+area_id
+service_computation_date
+eod_date
+```
+
+Optional columns may be included but are not required.
+
+```text
+lottery
+cumulative_natca_time
+natca_time
+crew
+```
+
 ## Phase 18 UI Requirements
 
 The UI must provide:

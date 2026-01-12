@@ -543,7 +543,7 @@ function AuthenticatedAdminApp({
     <div className="app">
       <header className="app-header">
         <div>
-          <h1>Zabbid Operator UI</h1>
+          <h1>ZAB Bidding Operators Interface</h1>
           <ConnectionStatus state={connectionState} />
         </div>
         <div className="operator-info">
