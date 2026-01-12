@@ -32,7 +32,6 @@ import type {
 
 interface CsvUserImportProps {
   sessionToken: string;
-  bidYear: number;
   onImportComplete: () => void;
 }
 
@@ -40,7 +39,6 @@ type WorkflowStep = "upload" | "preview" | "confirm" | "importing" | "results";
 
 export function CsvUserImport({
   sessionToken,
-  bidYear,
   onImportComplete,
 }: CsvUserImportProps) {
   const [step, setStep] = useState<WorkflowStep>("upload");
@@ -63,7 +61,7 @@ export function CsvUserImport({
     try {
       setLoading(true);
       setError(null);
-      const response = await previewCsvUsers(sessionToken, bidYear, csvContent);
+      const response = await previewCsvUsers(sessionToken, csvContent);
       setPreviewData(response);
 
       // Pre-select all valid rows
@@ -120,7 +118,6 @@ export function CsvUserImport({
       const selectedIndices = Array.from(selectedRows).sort((a, b) => a - b);
       const response = await importCsvUsers(
         sessionToken,
-        bidYear,
         csvContent,
         selectedIndices,
       );
@@ -139,6 +136,11 @@ export function CsvUserImport({
         setError("Import failed. Please try again.");
       }
       setStep("confirm");
+
+      // CRITICAL: Even if the backend returned an error, some users might have been
+      // successfully imported before the error occurred. Refresh to show any partial successes.
+      // This handles backend bugs where inserts succeed but an error is still returned.
+      onImportComplete();
     } finally {
       setLoading(false);
     }
@@ -253,7 +255,7 @@ export function CsvUserImport({
         <h4>⚠️ Warning</h4>
         <p>
           You are about to import <strong>{selectedRows.size}</strong> users
-          into bid year <strong>{bidYear}</strong>.
+          into the active bid year.
         </p>
         <ul>
           <li>

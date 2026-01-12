@@ -551,6 +551,14 @@ function AuthenticatedAdminApp({
             <>
               <button
                 type="button"
+                onClick={() => navigate("/admin")}
+                className="button-secondary"
+                style={{ marginRight: "1rem" }}
+              >
+                Dashboard
+              </button>
+              <button
+                type="button"
                 onClick={() => navigate("/admin/bootstrap")}
                 className="button-secondary"
                 style={{ marginRight: "1rem" }}
@@ -563,7 +571,7 @@ function AuthenticatedAdminApp({
                 className="button-secondary"
                 style={{ marginRight: "1rem" }}
               >
-                Manage Operators
+                Operators
               </button>
             </>
           )}
