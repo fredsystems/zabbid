@@ -14,10 +14,12 @@ import type {
   ErrorResponse,
   GetActiveBidYearResponse,
   GetBootstrapCompletenessResponse,
+  ImportCsvUsersResponse,
   LeaveAvailabilityResponse,
   ListAreasResponse,
   ListBidYearsResponse,
   ListUsersResponse,
+  PreviewCsvUsersResponse,
   SetActiveBidYearResponse,
   SetExpectedAreaCountResponse,
   SetExpectedUserCountResponse,
@@ -616,4 +618,54 @@ export async function registerUser(
       lottery_value: lotteryValue,
     }),
   });
+}
+
+/**
+ * Preview CSV user data for import validation (admin only).
+ */
+export async function previewCsvUsers(
+  sessionToken: string,
+  bidYear: number,
+  csvContent: string,
+): Promise<PreviewCsvUsersResponse> {
+  return fetchJson<PreviewCsvUsersResponse>(
+    `${API_BASE}/bootstrap/users/csv/preview`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        bid_year: bidYear,
+        csv_content: csvContent,
+      }),
+    },
+  );
+}
+
+/**
+ * Import selected CSV rows as users (admin only).
+ */
+export async function importCsvUsers(
+  sessionToken: string,
+  bidYear: number,
+  csvContent: string,
+  selectedRowIndices: number[],
+): Promise<ImportCsvUsersResponse> {
+  return fetchJson<ImportCsvUsersResponse>(
+    `${API_BASE}/bootstrap/users/csv/import`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        bid_year: bidYear,
+        csv_content: csvContent,
+        selected_row_indices: selectedRowIndices,
+      }),
+    },
+  );
 }

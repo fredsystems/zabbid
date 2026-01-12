@@ -44,6 +44,7 @@ import type {
   LiveEvent,
   UserInfo,
 } from "../types";
+import { CsvUserImport } from "./CsvUserImport";
 
 interface BootstrapCompletenessProps {
   sessionToken: string | null;
@@ -257,6 +258,27 @@ export function BootstrapCompleteness({
                   onError={setError}
                 />
               ))}
+          </section>
+        )}
+
+      {/* CSV User Import Section */}
+      {isAdmin &&
+        sessionToken !== null &&
+        completeness.active_bid_year !== null &&
+        completeness.areas.filter(
+          (a) => a.bid_year === completeness.active_bid_year,
+        ).length > 0 && (
+          <section className="bootstrap-section">
+            <h3 className="section-title">CSV User Import</h3>
+            <p className="section-description">
+              Import multiple users at once from CSV data. Select which rows to
+              import after validation.
+            </p>
+            <CsvUserImport
+              sessionToken={sessionToken}
+              bidYear={completeness.active_bid_year}
+              onImportComplete={() => void loadCompleteness()}
+            />
           </section>
         )}
 
