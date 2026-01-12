@@ -5,8 +5,9 @@
 
 use crate::SqlitePersistence;
 use crate::tests::{
-    create_test_actor, create_test_cause, create_test_metadata, create_test_pay_periods,
-    create_test_seniority_data, create_test_start_date, create_test_start_date_for_year,
+    create_test_actor, create_test_cause, create_test_metadata, create_test_operator,
+    create_test_pay_periods, create_test_seniority_data, create_test_start_date,
+    create_test_start_date_for_year,
 };
 use zab_bid::{
     BootstrapMetadata, BootstrapResult, Command, State, TransitionResult, apply, apply_bootstrap,
@@ -17,6 +18,10 @@ use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Crew, Initials, User, User
 /// Creates a fully bootstrapped test persistence instance with bid year 2026 and area "North".
 fn create_bootstrapped_persistence() -> SqlitePersistence {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+
+    // Create test operator first to satisfy foreign key constraints
+    create_test_operator(&mut persistence);
+
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Bootstrap bid year
@@ -55,6 +60,7 @@ fn create_bootstrapped_persistence() -> SqlitePersistence {
 #[test]
 fn test_persist_bootstrap_bid_year() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     let command: Command = Command::CreateBidYear {
@@ -77,6 +83,7 @@ fn test_persist_bootstrap_bid_year() {
 #[test]
 fn test_persist_bootstrap_area() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // First create the bid year
@@ -124,6 +131,7 @@ fn test_get_bootstrap_metadata_empty() {
 #[test]
 fn test_get_bootstrap_metadata_with_bid_year() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     let command: Command = Command::CreateBidYear {
@@ -146,6 +154,7 @@ fn test_get_bootstrap_metadata_with_bid_year() {
 #[test]
 fn test_get_bootstrap_metadata_with_multiple_bid_years() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create first bid year
@@ -189,6 +198,7 @@ fn test_get_bootstrap_metadata_with_multiple_bid_years() {
 #[test]
 fn test_get_bootstrap_metadata_with_areas() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create bid year
@@ -247,6 +257,7 @@ fn test_get_bootstrap_metadata_with_areas() {
 #[test]
 fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create bid year and area
@@ -317,6 +328,7 @@ fn test_list_bid_years_empty() {
 #[test]
 fn test_list_bid_years() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create first bid year
@@ -368,6 +380,7 @@ fn test_list_areas_empty() {
 #[test]
 fn test_list_areas_for_bid_year() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create bid year
@@ -424,6 +437,7 @@ fn test_list_areas_for_bid_year() {
 #[test]
 fn test_list_areas_isolated_by_bid_year() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create two bid years
@@ -499,6 +513,7 @@ fn test_list_areas_isolated_by_bid_year() {
 #[test]
 fn test_bootstrap_persistence_is_deterministic() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create bid year and area
@@ -544,6 +559,7 @@ fn test_bootstrap_persistence_is_deterministic() {
 #[test]
 fn test_bootstrap_read_operations_do_not_mutate() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     let command: Command = Command::CreateBidYear {
@@ -581,6 +597,7 @@ fn test_bootstrap_read_operations_do_not_mutate() {
 #[test]
 fn test_create_area_creates_initial_snapshot() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Create bid year

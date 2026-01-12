@@ -1,4 +1,3 @@
-#![cfg(feature = "legacy_tests")]
 // Copyright (C) 2026 Fred Clausen
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
@@ -10,23 +9,26 @@ use time::Date;
 use zab_bid::BootstrapMetadata;
 use zab_bid_audit::Cause;
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear};
-
-use zab_bid_persistence::OperatorData;
+use zab_bid_persistence::{OperatorData, SqlitePersistence};
 
 use crate::{AuthenticatedActor, RegisterUserRequest, Role};
 
+/// Creates a test admin authenticated actor (for unit tests).
 pub fn create_test_admin() -> AuthenticatedActor {
     AuthenticatedActor::new(String::from("admin-123"), Role::Admin)
 }
 
+/// Creates a test bidder authenticated actor (for unit tests).
 pub fn create_test_bidder() -> AuthenticatedActor {
     AuthenticatedActor::new(String::from("bidder-456"), Role::Bidder)
 }
 
+/// Creates a test cause.
 pub fn create_test_cause() -> Cause {
     Cause::new(String::from("api-req-456"), String::from("API request"))
 }
 
+/// Creates a test admin operator data structure.
 pub fn create_test_admin_operator() -> OperatorData {
     OperatorData {
         operator_id: 1,
@@ -40,6 +42,7 @@ pub fn create_test_admin_operator() -> OperatorData {
     }
 }
 
+/// Creates a test bidder operator data structure.
 pub fn create_test_bidder_operator() -> OperatorData {
     OperatorData {
         operator_id: 2,
@@ -53,6 +56,7 @@ pub fn create_test_bidder_operator() -> OperatorData {
     }
 }
 
+/// Creates a test metadata with a bid year and area.
 pub fn create_test_metadata() -> BootstrapMetadata {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
     let bid_year: BidYear = BidYear::new(2026);
@@ -62,6 +66,7 @@ pub fn create_test_metadata() -> BootstrapMetadata {
     metadata
 }
 
+/// Creates a valid user registration request.
 pub fn create_valid_request() -> RegisterUserRequest {
     RegisterUserRequest {
         bid_year: 2026,
@@ -120,4 +125,118 @@ pub fn create_test_pay_periods() -> u8 {
 pub fn create_test_canonical_bid_year() -> CanonicalBidYear {
     CanonicalBidYear::new(2026, create_test_start_date(), create_test_pay_periods())
         .expect("Valid test canonical bid year")
+}
+
+/// Session-based authentication test helper.
+///
+/// Represents an authenticated test session with operator credentials.
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct TestSession {
+    /// The session token (for Authorization: Bearer header).
+    pub session_token: String,
+    /// The operator's login name.
+    pub login_name: String,
+    /// The operator's role.
+    pub role: String,
+}
+
+/// Creates and persists a test admin operator, returning the operator ID.
+///
+/// # Errors
+///
+/// Returns an error if the operator cannot be created.
+#[allow(dead_code)]
+pub fn create_persisted_admin_operator(
+    persistence: &mut SqlitePersistence,
+) -> Result<i64, zab_bid_persistence::PersistenceError> {
+    persistence.create_operator("test-admin", "Test Admin", "Admin")
+}
+
+/// Creates and persists a test bidder operator, returning the operator ID.
+///
+/// # Errors
+///
+/// Returns an error if the operator cannot be created.
+#[allow(dead_code)]
+pub fn create_persisted_bidder_operator(
+    persistence: &mut SqlitePersistence,
+) -> Result<i64, zab_bid_persistence::PersistenceError> {
+    persistence.create_operator("test-bidder", "Test Bidder", "Bidder")
+}
+
+/// Creates a test session for an admin operator.
+///
+/// This creates both the operator and a valid session in the database.
+///
+/// # Errors
+///
+/// Returns an error if the operator or session cannot be created.
+#[allow(dead_code)]
+pub fn create_admin_session(
+    persistence: &mut SqlitePersistence,
+) -> Result<TestSession, zab_bid_persistence::PersistenceError> {
+    let operator_id: i64 = create_persisted_admin_operator(persistence)?;
+
+    let session_token: String = format!("admin-session-{operator_id}");
+    let expires_at: String = String::from("2026-12-31T23:59:59Z");
+
+    persistence.create_session(&session_token, operator_id, &expires_at)?;
+
+    Ok(TestSession {
+        session_token,
+        login_name: String::from("test-admin"),
+        role: String::from("Admin"),
+    })
+}
+
+/// Creates a test session for a bidder operator.
+///
+/// This creates both the operator and a valid session in the database.
+///
+/// # Errors
+///
+/// Returns an error if the operator or session cannot be created.
+#[allow(dead_code)]
+pub fn create_bidder_session(
+    persistence: &mut SqlitePersistence,
+) -> Result<TestSession, zab_bid_persistence::PersistenceError> {
+    let operator_id: i64 = create_persisted_bidder_operator(persistence)?;
+
+    let session_token: String = format!("bidder-session-{operator_id}");
+    let expires_at: String = String::from("2026-12-31T23:59:59Z");
+
+    persistence.create_session(&session_token, operator_id, &expires_at)?;
+
+    Ok(TestSession {
+        session_token,
+        login_name: String::from("test-bidder"),
+        role: String::from("Bidder"),
+    })
+}
+
+/// Creates a test session with a custom login name and role.
+///
+/// # Errors
+///
+/// Returns an error if the operator or session cannot be created.
+#[allow(dead_code)]
+pub fn create_custom_session(
+    persistence: &mut SqlitePersistence,
+    login_name: &str,
+    display_name: &str,
+    role: &str,
+) -> Result<TestSession, zab_bid_persistence::PersistenceError> {
+    let operator_id: i64 = persistence.create_operator(login_name, display_name, role)?;
+
+    let session_token: String = format!("session-{operator_id}");
+    let expires_at: String = String::from("2026-12-31T23:59:59Z");
+
+    persistence.create_session(&session_token, operator_id, &expires_at)?;
+
+    Ok(TestSession {
+        session_token,
+        login_name: login_name.to_string(),
+        role: role.to_string(),
+    })
 }

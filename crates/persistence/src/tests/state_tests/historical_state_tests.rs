@@ -6,8 +6,8 @@
 use crate::SqlitePersistence;
 use crate::error::PersistenceError;
 use crate::tests::{
-    create_test_actor, create_test_cause, create_test_metadata, create_test_pay_periods,
-    create_test_seniority_data, create_test_start_date,
+    create_test_actor, create_test_cause, create_test_metadata, create_test_operator,
+    create_test_pay_periods, create_test_seniority_data, create_test_start_date,
 };
 use zab_bid::{Command, State, TransitionResult, apply};
 use zab_bid_audit::AuditEvent;
@@ -16,6 +16,7 @@ use zab_bid_domain::{Area, BidYear, Crew, Initials, UserType};
 /// Creates a fully bootstrapped test persistence instance with bid year 2026 and area "North".
 fn create_bootstrapped_persistence() -> SqlitePersistence {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let mut metadata = zab_bid::BootstrapMetadata::new();
 
     // Bootstrap bid year

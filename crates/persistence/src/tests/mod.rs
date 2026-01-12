@@ -13,7 +13,13 @@ use zab_bid_audit::{Actor, Cause};
 use zab_bid_domain::{Area, BidYear, SeniorityData};
 
 pub fn create_test_actor() -> Actor {
-    Actor::new(String::from("test-actor"), String::from("system"))
+    Actor::with_operator(
+        String::from("test-actor"),
+        String::from("admin"),
+        1,
+        String::from("test-operator"),
+        String::from("Test Operator"),
+    )
 }
 
 pub fn create_test_cause() -> Cause {
@@ -73,4 +79,13 @@ pub fn create_test_start_date_for_year(year: i32) -> Date {
 /// Returns a valid test pay period count (26).
 pub fn create_test_pay_periods() -> u8 {
     26
+}
+
+/// Creates a test operator in the persistence layer and returns the operator ID.
+///
+/// This must be called before persisting any audit events to satisfy foreign key constraints.
+pub fn create_test_operator(persistence: &mut crate::SqlitePersistence) -> i64 {
+    persistence
+        .create_operator("test-operator", "Test Operator", "Admin")
+        .expect("Failed to create test operator")
 }
