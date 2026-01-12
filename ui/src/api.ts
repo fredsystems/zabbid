@@ -131,7 +131,9 @@ export async function listUsers(
   bidYear: number,
   area: string,
 ): Promise<ListUsersResponse> {
-  const url = `${API_BASE}/users?bid_year=${encodeURIComponent(bidYear)}&area=${encodeURIComponent(area)}`;
+  const url = `${API_BASE}/users?bid_year=${encodeURIComponent(
+    bidYear,
+  )}&area=${encodeURIComponent(area)}`;
   return fetchJson<ListUsersResponse>(url);
 }
 
@@ -143,7 +145,9 @@ export async function getLeaveAvailability(
   area: string,
   initials: string,
 ): Promise<LeaveAvailabilityResponse> {
-  const url = `${API_BASE}/leave/availability?bid_year=${encodeURIComponent(bidYear)}&area=${encodeURIComponent(area)}&initials=${encodeURIComponent(initials)}`;
+  const url = `${API_BASE}/leave/availability?bid_year=${encodeURIComponent(
+    bidYear,
+  )}&area=${encodeURIComponent(area)}&initials=${encodeURIComponent(initials)}`;
   return fetchJson<LeaveAvailabilityResponse>(url);
 }
 
