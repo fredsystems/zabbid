@@ -1230,8 +1230,9 @@ fn test_list_users_empty() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn test_list_users_with_users() {
-    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
+    let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
@@ -1263,7 +1264,18 @@ fn test_list_users_with_users() {
     );
     assert!(result1.is_ok());
 
-    let state_with_user1: State = result1.unwrap().new_state;
+    let api_result1 = result1.unwrap();
+    let transition1 = TransitionResult {
+        audit_event: api_result1.audit_event,
+        new_state: api_result1.new_state,
+    };
+    persistence
+        .persist_transition(&transition1, false)
+        .expect("Failed to persist transition");
+    // Reload state from persistence to get assigned user_ids
+    let state_with_user1: State = persistence
+        .get_current_state(&bid_year, &area)
+        .expect("Failed to reload state");
 
     let request2: RegisterUserRequest = RegisterUserRequest {
         initials: String::from("CD"),
@@ -1289,7 +1301,18 @@ fn test_list_users_with_users() {
     );
     assert!(result2.is_ok());
 
-    let final_state: State = result2.unwrap().new_state;
+    let api_result2 = result2.unwrap();
+    let transition2 = TransitionResult {
+        audit_event: api_result2.audit_event,
+        new_state: api_result2.new_state,
+    };
+    persistence
+        .persist_transition(&transition2, false)
+        .expect("Failed to persist transition");
+    // Reload state from persistence to get assigned user_ids
+    let final_state: State = persistence
+        .get_current_state(&bid_year, &area)
+        .expect("Failed to reload state");
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
         vec![create_test_canonical_bid_year()];
     let response: ListUsersResponse = list_users(
@@ -1306,6 +1329,7 @@ fn test_list_users_with_users() {
     assert_eq!(response.users.len(), 2);
 
     let ab_user = response.users.iter().find(|u| u.initials == "AB").unwrap();
+    assert!(ab_user.user_id > 0, "user_id must be present");
     assert_eq!(ab_user.name, "Alice Brown");
     assert_eq!(ab_user.crew, Some(1));
     assert_eq!(ab_user.user_type, "CPC");
@@ -1316,6 +1340,7 @@ fn test_list_users_with_users() {
     assert!(!ab_user.is_overdrawn);
 
     let cd_user = response.users.iter().find(|u| u.initials == "CD").unwrap();
+    assert!(cd_user.user_id > 0, "user_id must be present");
     assert_eq!(cd_user.name, "Charlie Davis");
     assert_eq!(cd_user.crew, Some(2));
     assert_eq!(cd_user.user_type, "CPC");
@@ -1328,7 +1353,7 @@ fn test_list_users_with_users() {
 
 #[test]
 fn test_list_users_with_no_crew() {
-    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
+    let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
@@ -1360,7 +1385,18 @@ fn test_list_users_with_no_crew() {
     );
     assert!(result.is_ok());
 
-    let final_state: State = result.unwrap().new_state;
+    let api_result = result.unwrap();
+    let transition = TransitionResult {
+        audit_event: api_result.audit_event,
+        new_state: api_result.new_state,
+    };
+    persistence
+        .persist_transition(&transition, false)
+        .expect("Failed to persist transition");
+    // Reload state from persistence to get assigned user_ids
+    let final_state: State = persistence
+        .get_current_state(&bid_year, &area)
+        .expect("Failed to reload state");
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
         vec![create_test_canonical_bid_year()];
     let response: ListUsersResponse = list_users(
@@ -1373,6 +1409,7 @@ fn test_list_users_with_no_crew() {
     .unwrap();
 
     assert_eq!(response.users.len(), 1);
+    assert!(response.users[0].user_id > 0, "user_id must be present");
     assert_eq!(response.users[0].initials, "EF");
     assert_eq!(response.users[0].name, "Eve Foster");
     assert_eq!(response.users[0].crew, None);
@@ -1561,7 +1598,7 @@ fn test_api_error_display_authentication_failed() {
 
 #[test]
 fn test_get_leave_availability_zero_usage() {
-    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
+    let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
@@ -1575,7 +1612,7 @@ fn test_get_leave_availability_zero_usage() {
     request.service_computation_date = String::from("2020-01-15");
 
     // Create initial state
-    let state: State = State::new(bid_year, area.clone());
+    let state: State = State::new(bid_year.clone(), area.clone());
 
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
@@ -1591,7 +1628,18 @@ fn test_get_leave_availability_zero_usage() {
     );
     assert!(register_result.is_ok());
 
-    let new_state: State = register_result.unwrap().new_state;
+    let api_result = register_result.unwrap();
+    let transition = TransitionResult {
+        audit_event: api_result.audit_event,
+        new_state: api_result.new_state,
+    };
+    persistence
+        .persist_transition(&transition, false)
+        .expect("Failed to persist transition");
+    // Reload state from persistence to get assigned user_ids
+    let new_state: State = persistence
+        .get_current_state(&bid_year, &area)
+        .expect("Failed to reload state");
     let initials = zab_bid_domain::Initials::new("AB");
 
     // Get leave availability
@@ -1601,6 +1649,8 @@ fn test_get_leave_availability_zero_usage() {
     assert!(result.is_ok());
     let response: GetLeaveAvailabilityResponse = result.unwrap();
 
+    // User should have a valid user_id
+    assert!(response.user_id > 0, "user_id must be present");
     // User has 6+ years of service, so should get 6-hour tier
     // 26 PPs * 6 hours + 4 bonus = 160 hours = 20 days
     assert_eq!(response.earned_hours, 160);
@@ -1664,7 +1714,7 @@ fn test_get_leave_availability_area_not_found() {
 
 #[test]
 fn test_get_leave_availability_explanation_text() {
-    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
+    let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
@@ -1675,7 +1725,7 @@ fn test_get_leave_availability_explanation_text() {
     let mut request: RegisterUserRequest = create_valid_request();
     request.service_computation_date = String::from("2024-01-15");
 
-    let state: State = State::new(bid_year, area.clone());
+    let state: State = State::new(bid_year.clone(), area.clone());
 
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
@@ -1691,7 +1741,17 @@ fn test_get_leave_availability_explanation_text() {
     );
     assert!(register_result.is_ok());
 
-    let new_state: State = register_result.unwrap().new_state;
+    let api_result = register_result.unwrap();
+    let transition = TransitionResult {
+        audit_event: api_result.audit_event,
+        new_state: api_result.new_state,
+    };
+    persistence
+        .persist_transition(&transition, false)
+        .expect("Failed to persist transition");
+    let new_state: State = persistence
+        .get_current_state(&bid_year, &area)
+        .expect("Failed to reload state");
     let initials = zab_bid_domain::Initials::new("AB");
 
     let result: Result<GetLeaveAvailabilityResponse, ApiError> =
@@ -1700,6 +1760,8 @@ fn test_get_leave_availability_explanation_text() {
     assert!(result.is_ok());
     let response: GetLeaveAvailabilityResponse = result.unwrap();
 
+    // User should have a valid user_id
+    assert!(response.user_id > 0, "user_id must be present");
     // Check that explanation contains key information
     assert!(response.explanation.contains("AB"));
     assert!(response.explanation.contains("2026"));
@@ -1710,7 +1772,7 @@ fn test_get_leave_availability_explanation_text() {
 
 #[test]
 fn test_get_leave_availability_different_service_tiers() {
-    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
+    let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
@@ -1739,7 +1801,18 @@ fn test_get_leave_availability_different_service_tiers() {
     );
     assert!(register_result1.is_ok());
 
-    let state1: State = register_result1.unwrap().new_state;
+    let api_result1 = register_result1.unwrap();
+    let transition1 = TransitionResult {
+        audit_event: api_result1.audit_event,
+        new_state: api_result1.new_state,
+    };
+    persistence
+        .persist_transition(&transition1, false)
+        .expect("Failed to persist transition");
+    // Reload state from persistence to get assigned user_ids
+    let state1: State = persistence
+        .get_current_state(&BidYear::new(2026), &Area::new("North"))
+        .expect("Failed to reload state");
     let initials1 = zab_bid_domain::Initials::new("U1");
 
     let result1: Result<GetLeaveAvailabilityResponse, ApiError> =
@@ -1747,6 +1820,8 @@ fn test_get_leave_availability_different_service_tiers() {
     assert!(result1.is_ok());
     let response1: GetLeaveAvailabilityResponse = result1.unwrap();
 
+    // User should have a valid user_id
+    assert!(response1.user_id > 0, "user_id must be present");
     // 26 PPs * 4 hours = 104 hours = 13 days
     assert_eq!(response1.earned_hours, 104);
     assert_eq!(response1.earned_days, 13);
@@ -1767,7 +1842,18 @@ fn test_get_leave_availability_different_service_tiers() {
     );
     assert!(register_result2.is_ok());
 
-    let state2: State = register_result2.unwrap().new_state;
+    let api_result2 = register_result2.unwrap();
+    let transition2 = TransitionResult {
+        audit_event: api_result2.audit_event,
+        new_state: api_result2.new_state,
+    };
+    persistence
+        .persist_transition(&transition2, false)
+        .expect("Failed to persist transition");
+    // Reload state from persistence to get assigned user_ids
+    let state2: State = persistence
+        .get_current_state(&BidYear::new(2026), &Area::new("North"))
+        .expect("Failed to reload state");
     let initials2 = zab_bid_domain::Initials::new("U2");
 
     let result2: Result<GetLeaveAvailabilityResponse, ApiError> =
@@ -1775,6 +1861,8 @@ fn test_get_leave_availability_different_service_tiers() {
     assert!(result2.is_ok());
     let response2: GetLeaveAvailabilityResponse = result2.unwrap();
 
+    // User should have a valid user_id
+    assert!(response2.user_id > 0, "user_id must be present");
     // 26 PPs * 8 hours = 208 hours = 26 days
     assert_eq!(response2.earned_hours, 208);
     assert_eq!(response2.earned_days, 26);
