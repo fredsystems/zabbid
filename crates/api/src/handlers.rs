@@ -585,10 +585,18 @@ pub fn list_users(
             )))
         })?;
 
-    let users: Vec<UserInfo> = state
+    let users: Result<Vec<UserInfo>, ApiError> = state
         .users
         .iter()
         .map(|user| {
+            // Verify user_id is present (data integrity check)
+            let user_id: i64 = user.user_id.ok_or_else(|| ApiError::Internal {
+                message: format!(
+                    "User '{}' loaded from database is missing user_id (data integrity violation)",
+                    user.initials.value()
+                ),
+            })?;
+
             // Calculate leave accrual for this user
             let leave_accrual_result: LeaveAccrualResult =
                 calculate_leave_accrual(user, canonical_bid_year).unwrap_or_else(|_| {
@@ -617,8 +625,8 @@ pub fn list_users(
                         is_overdrawn: false,
                     });
 
-            UserInfo {
-                user_id: user.user_id.unwrap_or(0), // Should always be set when reading from state
+            Ok(UserInfo {
+                user_id,
                 initials: user.initials.value().to_string(),
                 name: user.name.clone(),
                 crew: user.crew.as_ref().map(Crew::number),
@@ -629,14 +637,14 @@ pub fn list_users(
                 remaining_days: availability.remaining_days,
                 is_exhausted: availability.is_exhausted,
                 is_overdrawn: availability.is_overdrawn,
-            }
+            })
         })
         .collect();
 
     Ok(ListUsersResponse {
         bid_year: state.bid_year.year(),
         area: state.area.id().to_string(),
-        users,
+        users: users?,
     })
 }
 
@@ -767,9 +775,13 @@ pub fn get_leave_availability(
             ),
         })?;
 
-    // TODO(Phase 21B): After full migration, user_id should always be present.
-    // For now, default to 0 for unpersisted users (tests only).
-    let user_id: i64 = user.user_id.unwrap_or(0);
+    // Verify user_id is present (data integrity check)
+    let user_id: i64 = user.user_id.ok_or_else(|| ApiError::Internal {
+        message: format!(
+            "User '{}' loaded from database is missing user_id (data integrity violation)",
+            user.initials.value()
+        ),
+    })?;
 
     // Calculate leave accrual using Phase 9
     let accrual =
@@ -2555,13 +2567,13 @@ pub fn preview_csv_users(
 #[allow(clippy::too_many_lines)]
 pub fn import_csv_users(
     metadata: &BootstrapMetadata,
-    state: &State,
-    persistence: &SqlitePersistence,
+    _state: &State,
+    persistence: &mut SqlitePersistence,
     request: &ImportCsvUsersRequest,
     authenticated_actor: &AuthenticatedActor,
     operator: &OperatorData,
     cause: &Cause,
-) -> Result<(ImportCsvUsersResponse, Vec<AuditEvent>, State), ApiError> {
+) -> Result<ImportCsvUsersResponse, ApiError> {
     // Enforce authorization - only admins can import users
     if authenticated_actor.role != Role::Admin {
         return Err(ApiError::Unauthorized {
@@ -2611,8 +2623,6 @@ pub fn import_csv_users(
     let mut successful_count: usize = 0;
     let mut failed_count: usize = 0;
     let mut results: Vec<CsvImportRowResult> = Vec::new();
-    let mut audit_events: Vec<AuditEvent> = Vec::new();
-    let mut current_state: State = state.clone();
 
     // Process each selected row
     for &row_index in &request.selected_row_indices {
@@ -2787,11 +2797,17 @@ pub fn import_csv_users(
             lottery_value,
         );
 
+        // Load current state for this user's area from the database
+        // This ensures duplicate detection works correctly across areas
+        let area_state: State = persistence
+            .get_current_state(&active_bid_year, &area)
+            .unwrap_or_else(|_| State::new(active_bid_year.clone(), area.clone()));
+
         // Create the command
         let command = Command::RegisterUser {
             initials: initials.clone(),
             name: name.clone(),
-            area,
+            area: area.clone(),
             user_type,
             crew,
             seniority_data,
@@ -2800,7 +2816,7 @@ pub fn import_csv_users(
         // Attempt to apply the command
         match apply(
             metadata,
-            &current_state,
+            &area_state,
             &active_bid_year,
             command,
             actor.clone(),
@@ -2809,6 +2825,20 @@ pub fn import_csv_users(
         .map_err(translate_core_error)
         {
             Ok(transition_result) => {
+                // Persist immediately to ensure subsequent rows see this user
+                if let Err(persist_err) = persistence.persist_transition(&transition_result, false)
+                {
+                    results.push(CsvImportRowResult {
+                        row_index,
+                        row_number,
+                        initials: Some(initials.value().to_string()),
+                        status: CsvImportRowStatus::Failed,
+                        error: Some(format!("Failed to persist: {persist_err}")),
+                    });
+                    failed_count += 1;
+                    continue;
+                }
+
                 // Success
                 results.push(CsvImportRowResult {
                     row_index,
@@ -2818,8 +2848,6 @@ pub fn import_csv_users(
                     error: None,
                 });
                 successful_count += 1;
-                audit_events.push(transition_result.audit_event);
-                current_state = transition_result.new_state;
             }
             Err(e) => {
                 // Failure
@@ -2843,5 +2871,5 @@ pub fn import_csv_users(
         results,
     };
 
-    Ok((response, audit_events, current_state))
+    Ok(response)
 }

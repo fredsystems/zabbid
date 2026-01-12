@@ -209,7 +209,7 @@ export function UserListView({
                 : "data-card";
 
             return (
-              <div key={user.initials} className={cardClassName}>
+              <div key={user.user_id} className={cardClassName}>
                 <div className="card-header">
                   <div>
                     <h3 className="card-title">

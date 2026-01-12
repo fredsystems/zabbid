@@ -479,6 +479,7 @@ export async function setExpectedUserCount(
  */
 export async function updateUser(
   sessionToken: string,
+  userId: number,
   initials: string,
   name: string,
   area: string,
@@ -499,6 +500,7 @@ export async function updateUser(
     body: JSON.stringify({
       cause_id: `update-user-${Date.now()}`,
       cause_description: `Update user ${initials} in ${area}`,
+      user_id: userId,
       initials,
       name,
       area,
