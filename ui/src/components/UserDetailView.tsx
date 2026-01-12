@@ -335,38 +335,77 @@ export function UserDetailView({
 
       <div className="leave-breakdown">
         <h3>Leave Breakdown</h3>
-        <table className="breakdown-table">
-          <thead>
-            <tr>
-              <th>Category</th>
-              <th>Days</th>
-              <th>Hours</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Total Earned</td>
-              <td>{leaveData.earned_days}</td>
-              <td>{leaveData.earned_hours}</td>
-            </tr>
-            <tr>
-              <td>Total Used</td>
-              <td>—</td>
-              <td>{leaveData.used_hours}</td>
-            </tr>
-            <tr className={leaveData.remaining_days < 0 ? "negative-row" : ""}>
-              <td>
-                <strong>Remaining</strong>
-              </td>
-              <td>
-                <strong>{leaveData.remaining_days}</strong>
-              </td>
-              <td>
-                <strong>{leaveData.remaining_hours}</strong>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div className="card-list">
+          <div className="data-card">
+            <div className="card-header">
+              <h4 className="card-title">Total Earned</h4>
+            </div>
+            <div className="card-body">
+              <div className="card-field">
+                <span className="card-field-label">Days</span>
+                <span className="card-field-value">
+                  {leaveData.earned_days}
+                </span>
+              </div>
+              <div className="card-field">
+                <span className="card-field-label">Hours</span>
+                <span className="card-field-value">
+                  {leaveData.earned_hours}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="data-card">
+            <div className="card-header">
+              <h4 className="card-title">Total Used</h4>
+            </div>
+            <div className="card-body">
+              <div className="card-field">
+                <span className="card-field-label">Hours</span>
+                <span className="card-field-value">{leaveData.used_hours}</span>
+              </div>
+            </div>
+          </div>
+
+          <div
+            className={
+              leaveData.remaining_days < 0
+                ? "data-card card-overdrawn"
+                : "data-card"
+            }
+          >
+            <div className="card-header">
+              <h4 className="card-title">Remaining</h4>
+            </div>
+            <div className="card-body">
+              <div className="card-field">
+                <span className="card-field-label">Days</span>
+                <span
+                  className={
+                    leaveData.remaining_days < 0
+                      ? "card-field-value negative"
+                      : "card-field-value"
+                  }
+                >
+                  <strong>{leaveData.remaining_days}</strong>
+                </span>
+              </div>
+              <div className="card-field">
+                <span className="card-field-label">Hours</span>
+                <span
+                  className={
+                    leaveData.remaining_hours < 0
+                      ? "card-field-value negative"
+                      : "card-field-value"
+                  }
+                >
+                  <strong>{leaveData.remaining_hours}</strong>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

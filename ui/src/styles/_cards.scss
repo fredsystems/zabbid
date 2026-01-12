@@ -1,0 +1,381 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Card-based layout styles for mobile-first design.
+ * Provides reusable card patterns that replace table layouts on mobile.
+ */
+
+@use "variables" as *;
+
+// ============================================================================
+// Base Card
+// ============================================================================
+
+.card {
+  background-color: $color-bg-surface;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  margin-bottom: $spacing-md;
+  box-shadow: $shadow-sm;
+  transition: box-shadow $transition-base;
+
+  @media (min-width: 768px) {
+    padding: $spacing-lg;
+  }
+
+  &:hover {
+    box-shadow: $shadow-md;
+  }
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+// ============================================================================
+// Card List Container
+// ============================================================================
+
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  margin: $spacing-md 0;
+}
+
+// ============================================================================
+// Data Card (for list items like users, areas, etc.)
+// ============================================================================
+
+.data-card {
+  background-color: $color-bg-surface;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  margin-bottom: $spacing-md;
+  box-shadow: $shadow-sm;
+  border-left: 4px solid transparent;
+  transition: all $transition-base;
+
+  &:hover {
+    box-shadow: $shadow-md;
+    border-left-color: $color-accent-primary;
+  }
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  // State variants
+  &.card-overdrawn {
+    background-color: rgba($color-error, 0.1);
+    border-left-color: $color-error;
+  }
+
+  &.card-exhausted {
+    background-color: rgba($color-warning, 0.1);
+    border-left-color: $color-warning;
+  }
+
+  &.card-active {
+    background-color: rgba($color-success, 0.1);
+    border-left-color: $color-success;
+  }
+}
+
+// ============================================================================
+// Card Header
+// ============================================================================
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: $spacing-sm;
+  gap: $spacing-sm;
+}
+
+.card-title {
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $color-text-primary;
+  margin: 0;
+}
+
+.card-subtitle {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  margin: $spacing-xs 0 0 0;
+}
+
+// ============================================================================
+// Card Body
+// ============================================================================
+
+.card-body {
+  margin: $spacing-sm 0;
+}
+
+// ============================================================================
+// Card Footer (Actions)
+// ============================================================================
+
+.card-footer {
+  margin-top: $spacing-md;
+  padding-top: $spacing-md;
+  border-top: 1px solid $color-border-subtle;
+  display: flex;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+
+  a {
+    flex: 1;
+    min-width: fit-content;
+    text-align: center;
+    padding: $spacing-sm $spacing-md;
+    min-height: 44px; // Ensure touch-friendly target
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    background-color: $color-accent-primary;
+    color: $color-text-primary;
+    border-radius: $radius-sm;
+    font-weight: 500;
+    transition: background-color $transition-base;
+
+    &:hover {
+      background-color: $mocha-sapphire;
+      text-decoration: none;
+    }
+
+    &:visited {
+      color: $color-text-primary;
+    }
+  }
+
+  button {
+    flex: 1;
+    min-width: fit-content;
+  }
+}
+
+// ============================================================================
+// Card Field (Key-Value Pair)
+// ============================================================================
+
+.card-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: $spacing-sm 0;
+  gap: $spacing-md;
+
+  @media (min-width: 768px) {
+    padding: $spacing-xs 0;
+  }
+
+  &:not(:last-child) {
+    border-bottom: 1px solid $color-border-subtle;
+  }
+}
+
+.card-field-label {
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: $color-text-muted;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.card-field-value {
+  font-size: $font-size-base;
+  color: $color-text-primary;
+  text-align: right;
+  word-break: break-word;
+
+  &.negative {
+    color: $color-error;
+    font-weight: 600;
+  }
+
+  &.positive {
+    color: $color-success;
+    font-weight: 600;
+  }
+}
+
+// ============================================================================
+// Card Grid (for detail views with multiple fields)
+// ============================================================================
+
+.card-grid {
+  display: grid;
+  gap: $spacing-sm;
+  margin-top: $spacing-md;
+
+  // Single column on mobile
+  grid-template-columns: 1fr;
+
+  // Two columns on tablet and up
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+// ============================================================================
+// Card Badge Container
+// ============================================================================
+
+.card-badges {
+  display: flex;
+  gap: $spacing-xs;
+  flex-wrap: wrap;
+  margin-top: $spacing-xs;
+}
+
+// ============================================================================
+// Responsive Table Wrapper
+// ============================================================================
+
+// For admin interfaces that need tables but should still be mobile-usable
+.responsive-table-wrapper {
+  overflow-x: auto;
+  margin: $spacing-md 0;
+  border-radius: $radius-md;
+  box-shadow: $shadow-sm;
+  -webkit-overflow-scrolling: touch; // Smooth scrolling on iOS
+
+  table {
+    margin: 0;
+    min-width: 600px; // Force horizontal scroll on small screens
+  }
+}
+
+// ============================================================================
+// Mobile/Desktop Toggle Pattern
+// ============================================================================
+
+// Hide tables on mobile, show cards
+.mobile-cards {
+  display: block;
+
+  @media (min-width: 768px) {
+    display: none;
+  }
+}
+
+// Hide cards on desktop, show tables
+.desktop-table {
+  display: none;
+
+  @media (min-width: 768px) {
+    display: block;
+  }
+}
+
+// ============================================================================
+// Stacked List (Alternative to cards for dense data)
+// ============================================================================
+
+.stacked-list {
+  background-color: $color-bg-surface;
+  border-radius: $radius-md;
+  box-shadow: $shadow-sm;
+  overflow: hidden;
+  margin: $spacing-md 0;
+}
+
+.stacked-list-item {
+  padding: $spacing-md;
+  border-bottom: 1px solid $color-border-subtle;
+  transition: background-color $transition-fast;
+  min-height: 60px; // Ensure touch-friendly height
+
+  @media (min-width: 768px) {
+    min-height: auto;
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background-color: $color-bg-surface-elevated;
+  }
+
+  // State variants
+  &.item-overdrawn {
+    background-color: rgba($color-error, 0.1);
+  }
+
+  &.item-exhausted {
+    background-color: rgba($color-warning, 0.1);
+  }
+
+  &.item-active {
+    background-color: rgba($color-success, 0.05);
+  }
+}
+
+.stacked-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-xs;
+}
+
+.stacked-list-title {
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $color-text-primary;
+}
+
+.stacked-list-meta {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+}
+
+.stacked-list-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: $spacing-sm;
+  margin: $spacing-sm 0;
+}
+
+.stacked-list-detail {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.stacked-list-detail-label {
+  font-size: $font-size-xs;
+  font-weight: 600;
+  color: $color-text-muted;
+  text-transform: uppercase;
+}
+
+.stacked-list-detail-value {
+  font-size: $font-size-base;
+  color: $color-text-primary;
+}
+
+.stacked-list-actions {
+  margin-top: $spacing-sm;
+  display: flex;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+
+  a,
+  button {
+    font-size: $font-size-sm;
+    padding: $spacing-sm $spacing-md;
+    min-height: 44px; // Touch-friendly target
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}

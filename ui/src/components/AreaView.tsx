@@ -175,32 +175,37 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
       )}
 
       {areas.length > 0 && (
-        <table className="areas-table">
-          <thead>
-            <tr>
-              <th>Area ID</th>
-              <th>User Count</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {areas.map((area) => (
-              <tr key={area.area_id}>
-                <td>{area.area_id}</td>
-                <td>{area.user_count}</td>
-                <td>
-                  <Link
-                    to={`/bid-year/${bidYear}/area/${encodeURIComponent(
-                      area.area_id,
-                    )}/users`}
-                  >
-                    View Users
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="card-list">
+          {areas.map((area) => (
+            <div key={area.area_id} className="data-card">
+              <div className="card-header">
+                <div>
+                  <h3 className="card-title">Area {area.area_id}</h3>
+                  <p className="card-subtitle">
+                    {area.user_count} {area.user_count === 1 ? "user" : "users"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="card-body">
+                <div className="card-field">
+                  <span className="card-field-label">User Count</span>
+                  <span className="card-field-value">{area.user_count}</span>
+                </div>
+              </div>
+
+              <div className="card-footer">
+                <Link
+                  to={`/bid-year/${bidYear}/area/${encodeURIComponent(
+                    area.area_id,
+                  )}/users`}
+                >
+                  View Users
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       <div className="area-summary">

@@ -44,7 +44,7 @@ body {
 .app-header {
   background-color: $color-bg-mantle;
   color: $color-text-primary;
-  padding: $spacing-md $spacing-xl;
+  padding: $spacing-md;
   box-shadow: $shadow-md;
   display: flex;
   justify-content: space-between;
@@ -52,22 +52,41 @@ body {
   flex-wrap: wrap;
   gap: $spacing-md;
 
+  @media (min-width: 768px) {
+    padding: $spacing-md $spacing-xl;
+  }
+
   h1 {
     margin: 0;
-    font-size: $font-size-2xl;
+    font-size: $font-size-xl;
     color: $color-text-primary;
+
+    @media (min-width: 768px) {
+      font-size: $font-size-2xl;
+    }
   }
 
   nav {
     display: flex;
-    gap: $spacing-md;
+    gap: $spacing-sm;
+    flex-wrap: wrap;
+
+    @media (min-width: 768px) {
+      gap: $spacing-md;
+    }
 
     a {
       color: $color-text-secondary;
       text-decoration: none;
-      padding: $spacing-sm $spacing-md;
+      padding: $spacing-xs $spacing-sm;
       border-radius: $radius-sm;
       transition: background-color $transition-base;
+      font-size: $font-size-sm;
+
+      @media (min-width: 768px) {
+        padding: $spacing-sm $spacing-md;
+        font-size: $font-size-base;
+      }
 
       &:hover {
         background-color: $color-bg-surface;
@@ -105,10 +124,14 @@ body {
 
 .app-main {
   flex: 1;
-  padding: $spacing-xl;
+  padding: $spacing-md;
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
+
+  @media (min-width: 768px) {
+    padding: $spacing-xl;
+  }
 }
 
 // ============================================================================
@@ -118,7 +141,9 @@ body {
 .view-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: $spacing-md;
   margin-bottom: $spacing-lg;
   padding-bottom: $spacing-md;
   border-bottom: 2px solid $color-border;
@@ -126,7 +151,21 @@ body {
   h2 {
     margin: 0;
     color: $color-text-primary;
-    font-size: $font-size-2xl;
+    font-size: $font-size-xl;
+    flex: 1 1 auto;
+
+    @media (min-width: 768px) {
+      font-size: $font-size-2xl;
+    }
+  }
+
+  button {
+    flex-shrink: 0;
+    font-size: $font-size-sm;
+
+    @media (min-width: 768px) {
+      font-size: $font-size-base;
+    }
   }
 }
 
@@ -143,15 +182,23 @@ body {
 .leave-explanation,
 .leave-breakdown {
   background-color: $color-bg-surface;
-  padding: $spacing-lg;
+  padding: $spacing-md;
   border-radius: $radius-md;
   box-shadow: $shadow-sm;
   margin-bottom: $spacing-lg;
 
+  @media (min-width: 768px) {
+    padding: $spacing-lg;
+  }
+
   h3 {
     margin-top: 0;
     color: $color-text-primary;
-    font-size: $font-size-xl;
+    font-size: $font-size-lg;
+
+    @media (min-width: 768px) {
+      font-size: $font-size-xl;
+    }
   }
 
   ul {
@@ -163,6 +210,15 @@ body {
   li {
     padding: $spacing-sm 0;
     border-bottom: 1px solid $color-border-subtle;
+    font-size: $font-size-sm;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: $spacing-sm;
+
+    @media (min-width: 768px) {
+      font-size: $font-size-base;
+    }
 
     &:last-child {
       border-bottom: none;
@@ -177,9 +233,13 @@ body {
 .metadata-grid,
 .summary-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: 1fr;
   gap: $spacing-md;
   margin-top: $spacing-md;
+
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
 }
 
 .metadata-item {
@@ -206,10 +266,14 @@ body {
 
 .summary-card {
   background-color: $color-bg-surface;
-  padding: $spacing-lg;
+  padding: $spacing-md;
   border-radius: $radius-md;
   box-shadow: $shadow-sm;
   border-left: 4px solid $color-accent-primary;
+
+  @media (min-width: 768px) {
+    padding: $spacing-lg;
+  }
 
   &.card-success {
     border-left-color: $color-success;
@@ -232,10 +296,14 @@ body {
   }
 
   .card-value {
-    font-size: $font-size-2xl;
+    font-size: $font-size-xl;
     font-weight: 700;
     color: $color-text-primary;
     margin-bottom: $spacing-sm;
+
+    @media (min-width: 768px) {
+      font-size: $font-size-2xl;
+    }
   }
 
   .card-subtitle {

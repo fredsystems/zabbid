@@ -25,6 +25,11 @@ button {
   font-family: $font-family-base;
   transition: background-color $transition-base;
   font-weight: 500;
+  min-height: 44px; // Touch-friendly target size
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: $spacing-xs;
 
   &:hover:not(:disabled) {
     background-color: $mocha-sapphire;
@@ -91,13 +96,14 @@ input[type="tel"],
 textarea,
 select {
   width: 100%;
-  padding: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
   font-size: $font-size-base;
   font-family: $font-family-base;
   color: $color-text-primary;
   background-color: $color-bg-surface;
   border: 1px solid $color-border;
   border-radius: $radius-sm;
+  min-height: 44px; // Touch-friendly target size
   transition:
     border-color $transition-base,
     box-shadow $transition-base;
@@ -159,10 +165,15 @@ label {
   display: inline-block;
   padding: $spacing-xs $spacing-sm;
   border-radius: $radius-sm;
-  font-size: $font-size-sm;
+  font-size: $font-size-xs;
   font-weight: 600;
   text-transform: uppercase;
-  line-height: 1;
+  line-height: 1.2;
+  white-space: nowrap;
+
+  @media (min-width: 768px) {
+    font-size: $font-size-sm;
+  }
 
   &.active {
     background-color: $color-success;
