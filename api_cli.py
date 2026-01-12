@@ -166,6 +166,7 @@ ENDPOINTS: Sequence[Endpoint] = (
     ),
     Endpoint("26", "Update User", "POST", "/api/users/update"),
     Endpoint("27", "Bootstrap Completeness", "GET", "/api/bootstrap/completeness"),
+    Endpoint("28", "Preview CSV Users", "POST", "/api/bootstrap/users/csv/preview"),
 )
 
 
@@ -260,6 +261,11 @@ class UpdateUserRequest(ActorEnvelope):
     eod_faa_date: str
     service_computation_date: str
     lottery_value: Optional[int]
+
+
+class PreviewCsvUsersRequest(TypedDict):
+    bid_year: int
+    csv_content: str
 
 
 # -----------------------------
@@ -491,6 +497,33 @@ def build_post_payload(path: str) -> JSONObject:
         SESSION["bid_year"] = bid_year
         SESSION["area"] = area
         return cast(JSONObject, req_update)
+
+    if path == "/api/bootstrap/users/csv/preview":
+        bid_year = prompt_int("Bid Year", default=SESSION.get("bid_year"))
+        print("\nEnter CSV content (paste your CSV, then press Ctrl+D or Ctrl+Z):")
+        print(
+            "Expected headers: initials,name,area_id,crew,user_type,service_computation_date,eod_faa_date"
+        )
+        print("Optional headers: lottery_value,cumulative_natca_bu_date,natca_bu_date")
+        print()
+
+        # Read multiline CSV input
+        csv_lines = []
+        try:
+            while True:
+                line = input()
+                csv_lines.append(line)
+        except EOFError:
+            pass
+
+        csv_content = "\n".join(csv_lines)
+
+        req_preview: PreviewCsvUsersRequest = PreviewCsvUsersRequest(
+            bid_year=bid_year,
+            csv_content=csv_content,
+        )
+        SESSION["bid_year"] = bid_year
+        return cast(JSONObject, req_preview)
 
     # For now, we don't implement other POST bodies until you provide schemas.
     raise NotImplementedError(f"POST body schema not implemented for {path}")

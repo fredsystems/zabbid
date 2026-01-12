@@ -18,20 +18,22 @@ use zab_bid_domain::{
 use zab_bid_persistence::{OperatorData, SqlitePersistence};
 
 use crate::auth::{AuthenticatedActor, AuthenticationService, AuthorizationService, Role};
+use crate::csv_preview::{CsvRowResult, preview_csv_users as preview_csv_users_impl};
 use crate::error::{ApiError, AuthError, translate_core_error, translate_domain_error};
 use crate::password_policy::PasswordPolicy;
 use crate::request_response::{
     AreaCompletenessInfo, BidYearCompletenessInfo, BidYearInfo, BlockingReason,
     ChangePasswordRequest, ChangePasswordResponse, CreateAreaRequest, CreateBidYearRequest,
-    CreateOperatorRequest, CreateOperatorResponse, DeleteOperatorRequest, DeleteOperatorResponse,
-    DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
-    GetActiveBidYearResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse,
-    ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListOperatorsResponse,
-    ListUsersResponse, LoginRequest, LoginResponse, OperatorInfo, RegisterUserRequest,
-    RegisterUserResponse, ResetPasswordRequest, ResetPasswordResponse, SetActiveBidYearRequest,
-    SetActiveBidYearResponse, SetExpectedAreaCountRequest, SetExpectedAreaCountResponse,
-    SetExpectedUserCountRequest, SetExpectedUserCountResponse, UpdateUserRequest,
-    UpdateUserResponse, UserInfo, WhoAmIResponse,
+    CreateOperatorRequest, CreateOperatorResponse, CsvRowPreview, CsvRowStatus,
+    DeleteOperatorRequest, DeleteOperatorResponse, DisableOperatorRequest, DisableOperatorResponse,
+    EnableOperatorRequest, EnableOperatorResponse, GetActiveBidYearResponse,
+    GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse, ListAreasRequest,
+    ListAreasResponse, ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse,
+    LoginRequest, LoginResponse, OperatorInfo, PreviewCsvUsersRequest, PreviewCsvUsersResponse,
+    RegisterUserRequest, RegisterUserResponse, ResetPasswordRequest, ResetPasswordResponse,
+    SetActiveBidYearRequest, SetActiveBidYearResponse, SetExpectedAreaCountRequest,
+    SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
+    UpdateUserRequest, UpdateUserResponse, UserInfo, WhoAmIResponse,
 };
 use zab_bid_persistence::PersistenceError;
 
@@ -2361,5 +2363,81 @@ pub fn get_bootstrap_completeness(
         areas: areas_info,
         is_ready_for_bidding,
         blocking_reasons: top_level_blocking,
+    })
+}
+
+/// Previews and validates CSV user data without persisting.
+///
+/// This handler:
+/// - Accepts CSV content and a bid year
+/// - Parses and validates each row
+/// - Returns structured preview results
+/// - Does NOT mutate state or emit audit events
+///
+/// # Arguments
+///
+/// * `metadata` - The current bootstrap metadata
+/// * `persistence` - The persistence layer for querying existing users
+/// * `request` - The preview request containing bid year and CSV content
+/// * `authenticated_actor` - The authenticated actor making the request
+///
+/// # Returns
+///
+/// * `Ok(PreviewCsvUsersResponse)` with per-row validation results
+/// * `Err(ApiError)` if unauthorized or CSV format is invalid
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not an admin
+/// - The bid year does not exist
+/// - The CSV format is invalid
+pub fn preview_csv_users(
+    metadata: &BootstrapMetadata,
+    persistence: &SqlitePersistence,
+    request: &PreviewCsvUsersRequest,
+    authenticated_actor: &AuthenticatedActor,
+) -> Result<PreviewCsvUsersResponse, ApiError> {
+    // Enforce authorization - only admins can preview CSV imports
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("preview_csv_users"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Validate bid year exists
+    let bid_year: BidYear = BidYear::new(request.bid_year);
+    validate_bid_year_exists(metadata, &bid_year).map_err(translate_domain_error)?;
+
+    // Perform CSV preview validation
+    let preview_result =
+        preview_csv_users_impl(&request.csv_content, &bid_year, metadata, persistence)?;
+
+    // Convert internal result to API response
+    let rows: Vec<CsvRowPreview> = preview_result
+        .rows
+        .into_iter()
+        .map(|r: CsvRowResult| CsvRowPreview {
+            row_number: r.row_number,
+            initials: r.initials,
+            name: r.name,
+            area_id: r.area_id,
+            user_type: r.user_type,
+            crew: r.crew,
+            status: match r.status {
+                crate::csv_preview::CsvRowStatus::Valid => CsvRowStatus::Valid,
+                crate::csv_preview::CsvRowStatus::Invalid => CsvRowStatus::Invalid,
+            },
+            errors: r.errors,
+        })
+        .collect();
+
+    Ok(PreviewCsvUsersResponse {
+        bid_year: request.bid_year,
+        rows,
+        total_rows: preview_result.total_rows,
+        valid_count: preview_result.valid_count,
+        invalid_count: preview_result.invalid_count,
     })
 }

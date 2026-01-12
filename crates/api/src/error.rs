@@ -93,6 +93,11 @@ pub enum ApiError {
         /// A human-readable description of the policy violation.
         message: String,
     },
+    /// Invalid CSV format.
+    InvalidCsvFormat {
+        /// A human-readable description of the format error.
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for ApiError {
@@ -124,6 +129,9 @@ impl std::fmt::Display for ApiError {
             }
             Self::PasswordPolicyViolation { message } => {
                 write!(f, "Password policy violation: {message}")
+            }
+            Self::InvalidCsvFormat { reason } => {
+                write!(f, "Invalid CSV format: {reason}")
             }
         }
     }

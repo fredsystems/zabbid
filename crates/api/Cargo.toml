@@ -10,6 +10,7 @@ readme.workspace = true
 description = "API boundary layer for the ZAB Bidding System"
 
 [dependencies]
+csv.workspace = true
 rand.workspace = true
 serde.workspace = true
 thiserror.workspace = true
