@@ -46,6 +46,11 @@ pub enum LiveEvent {
         /// The year identifier.
         year: u16,
     },
+    /// A bid year was activated.
+    BidYearActivated {
+        /// The year identifier.
+        year: u16,
+    },
     /// An area was created within a bid year.
     AreaCreated {
         /// The bid year.

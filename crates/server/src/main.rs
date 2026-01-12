@@ -32,10 +32,15 @@ use tracing::{error, info};
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_api::{
     ApiError, ApiResult, BootstrapStatusResponse, CreateAreaRequest, CreateBidYearRequest,
-    GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
-    ListUsersResponse, RegisterUserRequest, RegisterUserResponse, checkpoint, create_area,
-    create_bid_year, finalize, get_bootstrap_status, get_current_state, get_historical_state,
-    get_leave_availability, list_areas, list_bid_years, list_users, register_user, rollback,
+    GetActiveBidYearResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse,
+    ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListUsersResponse,
+    RegisterUserRequest, RegisterUserResponse, SetActiveBidYearRequest, SetActiveBidYearResponse,
+    SetExpectedAreaCountRequest, SetExpectedAreaCountResponse, SetExpectedUserCountRequest,
+    SetExpectedUserCountResponse, UpdateUserRequest, UpdateUserResponse, checkpoint, create_area,
+    create_bid_year, finalize, get_active_bid_year, get_bootstrap_completeness,
+    get_bootstrap_status, get_current_state, get_historical_state, get_leave_availability,
+    list_areas, list_bid_years, list_users, register_user, rollback, set_active_bid_year,
+    set_expected_area_count, set_expected_user_count, update_user,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials};
@@ -1494,7 +1499,77 @@ struct DeleteOperatorApiRequest {
     operator_id: i64,
 }
 
-/// Request body for checkpoint endpoint.
+/// Request body for set active bid year endpoint.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct SetActiveBidYearApiRequest {
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The bid year to set as active.
+    year: u16,
+}
+
+/// Request body for set expected area count endpoint.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct SetExpectedAreaCountApiRequest {
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The bid year to set expected count for.
+    bid_year: u16,
+    /// The expected number of areas.
+    expected_count: u32,
+}
+
+/// Request body for set expected user count endpoint.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct SetExpectedUserCountApiRequest {
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The bid year.
+    bid_year: u16,
+    /// The area identifier.
+    area: String,
+    /// The expected number of users.
+    expected_count: u32,
+}
+
+/// Request body for update user endpoint.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct UpdateUserApiRequest {
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The bid year.
+    bid_year: u16,
+    /// The user's initials.
+    initials: String,
+    /// The user's name.
+    name: String,
+    /// The user's area identifier.
+    area: String,
+    /// The user's type classification.
+    user_type: String,
+    /// The user's crew identifier.
+    crew: Option<u8>,
+    /// Cumulative NATCA bargaining unit date (ISO 8601).
+    cumulative_natca_bu_date: String,
+    /// NATCA bargaining unit date (ISO 8601).
+    natca_bu_date: String,
+    /// Entry on Duty / FAA date (ISO 8601).
+    eod_faa_date: String,
+    /// Service Computation Date (ISO 8601).
+    service_computation_date: String,
+    /// Optional lottery value.
+    lottery_value: Option<u32>,
+}
+
+/// Request body for logout endpoint.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct LogoutRequest {
     /// The session token to delete.
@@ -1550,7 +1625,257 @@ async fn handle_create_first_admin(
     Ok(Json(response))
 }
 
-/// Builds the application router with all endpoints.
+/// Handler for POST `/bootstrap/bid-years/active` endpoint.
+///
+/// Sets the active bid year. Admin only.
+async fn handle_set_active_bid_year(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<SetActiveBidYearApiRequest>,
+) -> Result<Json<SetActiveBidYearResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        year = req.year,
+        "Handling set_active_bid_year request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    // Get current bootstrap metadata
+    let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    drop(persistence);
+
+    // Build API request
+    let set_request: SetActiveBidYearRequest = SetActiveBidYearRequest { year: req.year };
+
+    // Execute command via API
+    let mut persistence = app_state.persistence.lock().await;
+    let response: SetActiveBidYearResponse = set_active_bid_year(
+        &mut persistence,
+        &metadata,
+        &set_request,
+        &actor,
+        &operator,
+        cause,
+    )?;
+    drop(persistence);
+
+    info!(year = req.year, "Successfully set active bid year");
+
+    // Broadcast live event
+    app_state
+        .live_events
+        .broadcast(&LiveEvent::BidYearActivated { year: req.year });
+
+    Ok(Json(response))
+}
+
+/// Handler for GET `/bootstrap/bid-years/active` endpoint.
+///
+/// Gets the currently active bid year.
+async fn handle_get_active_bid_year(
+    AxumState(app_state): AxumState<AppState>,
+) -> Result<Json<GetActiveBidYearResponse>, HttpError> {
+    info!("Handling get_active_bid_year request");
+
+    let persistence = app_state.persistence.lock().await;
+    let response: GetActiveBidYearResponse = get_active_bid_year(&persistence)?;
+    drop(persistence);
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/bootstrap/bid-years/{year}/expected-areas` endpoint.
+///
+/// Sets the expected area count for a bid year. Admin only.
+async fn handle_set_expected_area_count(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<SetExpectedAreaCountApiRequest>,
+) -> Result<Json<SetExpectedAreaCountResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year = req.bid_year,
+        expected_count = req.expected_count,
+        "Handling set_expected_area_count request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    // Get current bootstrap metadata
+    let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    drop(persistence);
+
+    // Build API request
+    let set_request: SetExpectedAreaCountRequest = SetExpectedAreaCountRequest {
+        bid_year: req.bid_year,
+        expected_count: req.expected_count,
+    };
+
+    // Execute command via API
+    let mut persistence = app_state.persistence.lock().await;
+    let response: SetExpectedAreaCountResponse = set_expected_area_count(
+        &mut persistence,
+        &metadata,
+        &set_request,
+        &actor,
+        &operator,
+        cause,
+    )?;
+    drop(persistence);
+
+    info!(
+        bid_year = req.bid_year,
+        expected_count = req.expected_count,
+        "Successfully set expected area count"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/bootstrap/areas/expected-users` endpoint.
+///
+/// Sets the expected user count for an area. Admin only.
+async fn handle_set_expected_user_count(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<SetExpectedUserCountApiRequest>,
+) -> Result<Json<SetExpectedUserCountResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year = req.bid_year,
+        area = %req.area,
+        expected_count = req.expected_count,
+        "Handling set_expected_user_count request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    // Get current bootstrap metadata
+    let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    drop(persistence);
+
+    // Build API request
+    let set_request: SetExpectedUserCountRequest = SetExpectedUserCountRequest {
+        bid_year: req.bid_year,
+        area: req.area.clone(),
+        expected_count: req.expected_count,
+    };
+
+    // Execute command via API
+    let mut persistence = app_state.persistence.lock().await;
+    let response: SetExpectedUserCountResponse = set_expected_user_count(
+        &mut persistence,
+        &metadata,
+        &set_request,
+        &actor,
+        &operator,
+        cause,
+    )?;
+    drop(persistence);
+
+    info!(
+        bid_year = req.bid_year,
+        area = %req.area,
+        expected_count = req.expected_count,
+        "Successfully set expected user count"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for PUT `/users/{initials}` endpoint.
+///
+/// Updates an existing user. Admin only.
+async fn handle_update_user(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<UpdateUserApiRequest>,
+) -> Result<Json<UpdateUserResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        initials = %req.initials,
+        "Handling update_user request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    // Get bootstrap metadata and current state
+    let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    let bid_year_ref = BidYear::new(req.bid_year);
+    let area_ref = Area::new(&req.area);
+    let state: State = persistence.get_current_state(&bid_year_ref, &area_ref)?;
+    drop(persistence);
+
+    // Build API request
+    let update_request: UpdateUserRequest = UpdateUserRequest {
+        bid_year: req.bid_year,
+        initials: req.initials.clone(),
+        name: req.name.clone(),
+        area: req.area.clone(),
+        user_type: req.user_type.clone(),
+        crew: req.crew,
+        cumulative_natca_bu_date: req.cumulative_natca_bu_date.clone(),
+        natca_bu_date: req.natca_bu_date.clone(),
+        eod_faa_date: req.eod_faa_date.clone(),
+        service_computation_date: req.service_computation_date.clone(),
+        lottery_value: req.lottery_value,
+    };
+
+    // Execute command via API
+    let mut persistence = app_state.persistence.lock().await;
+    let result: ApiResult<UpdateUserResponse> = update_user(
+        &mut persistence,
+        &metadata,
+        &state,
+        &update_request,
+        &actor,
+        &operator,
+        cause,
+    )?;
+    drop(persistence);
+
+    info!(
+        initials = %req.initials,
+        event_id = result.audit_event.event_id,
+        "Successfully updated user"
+    );
+
+    // Broadcast live event
+    app_state.live_events.broadcast(&LiveEvent::UserUpdated {
+        bid_year: req.bid_year,
+        area: req.area.clone(),
+        initials: req.initials.clone(),
+    });
+
+    Ok(Json(result.response))
+}
+
+/// Handler for GET `/bootstrap/completeness` endpoint.
+///
+/// Gets the bootstrap completeness status for all bid years and areas.
+async fn handle_get_bootstrap_completeness(
+    AxumState(app_state): AxumState<AppState>,
+) -> Result<Json<GetBootstrapCompletenessResponse>, HttpError> {
+    info!("Handling get_bootstrap_completeness request");
+
+    let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    let response: GetBootstrapCompletenessResponse =
+        get_bootstrap_completeness(&persistence, &metadata)?;
+    drop(persistence);
+
+    Ok(Json(response))
+}
+
 fn build_router(state: AppState) -> Router {
     let live_broadcaster = Arc::clone(&state.live_events);
 
@@ -1590,6 +1915,28 @@ fn build_router(state: AppState) -> Router {
         .route("/audit/timeline", get(handle_get_audit_timeline))
         .route("/audit/event/{id}", get(handle_get_audit_event))
         .route("/bootstrap/status", get(handle_get_bootstrap_status))
+        // Bootstrap completeness endpoints
+        .route(
+            "/bootstrap/bid-years/active",
+            post(handle_set_active_bid_year),
+        )
+        .route(
+            "/bootstrap/bid-years/active",
+            get(handle_get_active_bid_year),
+        )
+        .route(
+            "/bootstrap/bid-years/expected-areas",
+            post(handle_set_expected_area_count),
+        )
+        .route(
+            "/bootstrap/areas/expected-users",
+            post(handle_set_expected_user_count),
+        )
+        .route(
+            "/bootstrap/completeness",
+            get(handle_get_bootstrap_completeness),
+        )
+        .route("/users/update", post(handle_update_user))
         .with_state(state);
 
     let live_router = Router::new()
