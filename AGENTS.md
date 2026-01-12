@@ -347,6 +347,96 @@ They act as trusted operators entering data provided by many users.
 - APIs must not support simultaneous multi-bid-year operation
 - Historical bid years may be queried only via explicit historical read APIs
 
+## UI & Frontend Design Constraints
+
+### Mobile-First Requirement
+
+All frontend UI work **must be designed mobile-first**.
+
+This applies especially to the **public-facing interface**, which must be:
+
+- Fully usable on mobile devices
+- Designed assuming a small viewport first
+- Touch-friendly (no hover-only interactions)
+- Legible without zooming
+- Navigable without relying on precise pointer input
+
+Desktop layouts may enhance or expand the UI, but **mobile usability is the baseline**.
+
+---
+
+### Admin Interface Expectations
+
+- The admin interface **must function correctly on mobile**, but:
+  - It is acceptable for it to be less ergonomic than desktop
+  - Dense tables or advanced workflows may degrade gracefully
+- Admin UX should prioritize correctness and clarity over compactness
+
+---
+
+### Design Rules
+
+Agents must:
+
+- Use responsive layouts (`flex`, `grid`, fluid widths)
+- Avoid fixed-width assumptions
+- Avoid desktop-only affordances
+- Prefer vertical stacking over horizontal density
+- Ensure critical actions are reachable on mobile screens
+
+Agents must **not**:
+
+- Treat mobile support as a later enhancement
+- Design desktop-only layouts and “adapt later”
+- Introduce UI patterns that are unusable without a mouse
+
+---
+
+### Frontend Logic Boundary (Reminder)
+
+Frontend validation is permitted **only** to improve UX.
+
+- The frontend may:
+  - Prevent obviously invalid input
+  - Provide early feedback
+  - Disable impossible actions
+- The backend remains the **sole authority**
+- All frontend checks must assume they can be bypassed
+
+---
+
+### Failure to Comply
+
+If a UI design cannot be reasonably adapted to mobile **without significant refactoring**, the agent must stop and ask before proceeding.
+
+### UI Refactor Allowance (Mobile Compliance)
+
+If existing UI code violates the mobile-first requirement (e.g. desktop-first `<table>` layouts),
+agents are **explicitly permitted and expected** to refactor those components to achieve mobile usability.
+
+Refactors must:
+
+- Preserve all existing functionality
+- Preserve API interactions and semantics
+- Avoid introducing new domain logic
+- Prefer incremental component replacement over wholesale rewrites
+
+Acceptable refactor patterns include:
+
+- Replacing `<table>` layouts with:
+  - stacked card layouts
+  - definition lists
+  - responsive grids
+- Using progressive disclosure on mobile (collapse / expand)
+- Rendering different layouts at different breakpoints using the same data source
+
+Unacceptable refactors include:
+
+- Changing API contracts
+- Reworking backend logic to suit the UI
+- Introducing new state models or abstractions “for convenience”
+- Rewriting the entire UI when targeted refactors suffice
+
 ## When to Stop
 
 If any of the following are true:
