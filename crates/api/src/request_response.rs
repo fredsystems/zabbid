@@ -485,3 +485,302 @@ pub struct CreateFirstAdminResponse {
     /// Success message.
     pub message: String,
 }
+
+// ========================================================================
+// Phase 18: Bootstrap Workflow Completion Request/Response Types
+// ========================================================================
+
+/// API request to set the active bid year.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SetActiveBidYearRequest {
+    /// The year to mark as active.
+    pub year: u16,
+}
+
+/// API response for setting the active bid year.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SetActiveBidYearResponse {
+    /// The year that was set as active.
+    pub year: u16,
+    /// Success message.
+    pub message: String,
+}
+
+/// API response for getting the active bid year.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GetActiveBidYearResponse {
+    /// The currently active year, if any.
+    pub year: Option<u16>,
+}
+
+/// API request to set the expected area count for a bid year.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SetExpectedAreaCountRequest {
+    /// The bid year.
+    pub bid_year: u16,
+    /// The expected number of areas.
+    pub expected_count: u32,
+}
+
+/// API response for setting the expected area count.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SetExpectedAreaCountResponse {
+    /// The bid year.
+    pub bid_year: u16,
+    /// The expected area count that was set.
+    pub expected_count: u32,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to set the expected user count for an area.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SetExpectedUserCountRequest {
+    /// The bid year.
+    pub bid_year: u16,
+    /// The area identifier.
+    pub area: String,
+    /// The expected number of users.
+    pub expected_count: u32,
+}
+
+/// API response for setting the expected user count.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SetExpectedUserCountResponse {
+    /// The bid year.
+    pub bid_year: u16,
+    /// The area identifier.
+    pub area: String,
+    /// The expected user count that was set.
+    pub expected_count: u32,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to update an existing user.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateUserRequest {
+    /// The bid year.
+    pub bid_year: u16,
+    /// The user's initials (identifier, cannot be changed).
+    pub initials: String,
+    /// The user's name.
+    pub name: String,
+    /// The user's area identifier.
+    pub area: String,
+    /// The user's type classification (CPC, CPC-IT, Dev-R, Dev-D).
+    pub user_type: String,
+    /// The user's crew number (1-7, optional).
+    pub crew: Option<u8>,
+    /// Cumulative NATCA bargaining unit date (ISO 8601).
+    pub cumulative_natca_bu_date: String,
+    /// NATCA bargaining unit date (ISO 8601).
+    pub natca_bu_date: String,
+    /// Entry on Duty / FAA date (ISO 8601).
+    pub eod_faa_date: String,
+    /// Service Computation Date (ISO 8601).
+    pub service_computation_date: String,
+    /// Optional lottery value.
+    pub lottery_value: Option<u32>,
+}
+
+/// API response for successful user update.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateUserResponse {
+    /// The bid year.
+    pub bid_year: u16,
+    /// The user's initials.
+    pub initials: String,
+    /// The user's name.
+    pub name: String,
+    /// Success message.
+    pub message: String,
+}
+
+/// Blocking reason for bootstrap incompleteness.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum BlockingReason {
+    /// No active bid year is set.
+    NoActiveBidYear,
+    /// Expected area count not set.
+    ExpectedAreaCountNotSet {
+        /// The bid year.
+        bid_year: u16,
+    },
+    /// Actual area count does not match expected.
+    AreaCountMismatch {
+        /// The bid year.
+        bid_year: u16,
+        /// Expected count.
+        expected: u32,
+        /// Actual count.
+        actual: usize,
+    },
+    /// Expected user count not set for an area.
+    ExpectedUserCountNotSet {
+        /// The bid year.
+        bid_year: u16,
+        /// The area identifier.
+        area: String,
+    },
+    /// Actual user count does not match expected for an area.
+    UserCountMismatch {
+        /// The bid year.
+        bid_year: u16,
+        /// The area identifier.
+        area: String,
+        /// Expected count.
+        expected: u32,
+        /// Actual count.
+        actual: usize,
+    },
+}
+
+/// Completeness status for a bid year.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BidYearCompletenessInfo {
+    /// The bid year.
+    pub year: u16,
+    /// Whether this bid year is active.
+    pub is_active: bool,
+    /// Expected area count, if set.
+    pub expected_area_count: Option<u32>,
+    /// Actual area count.
+    pub actual_area_count: usize,
+    /// Whether the bid year is complete.
+    pub is_complete: bool,
+    /// Blocking reasons preventing completeness.
+    pub blocking_reasons: Vec<BlockingReason>,
+}
+
+/// Completeness status for an area.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AreaCompletenessInfo {
+    /// The bid year.
+    pub bid_year: u16,
+    /// The area identifier.
+    pub area: String,
+    /// Expected user count, if set.
+    pub expected_user_count: Option<u32>,
+    /// Actual user count.
+    pub actual_user_count: usize,
+    /// Whether the area is complete.
+    pub is_complete: bool,
+    /// Blocking reasons preventing completeness.
+    pub blocking_reasons: Vec<BlockingReason>,
+}
+
+/// API response for bootstrap completeness status.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GetBootstrapCompletenessResponse {
+    /// The currently active bid year, if any.
+    pub active_bid_year: Option<u16>,
+    /// Completeness information for all bid years.
+    pub bid_years: Vec<BidYearCompletenessInfo>,
+    /// Completeness information for all areas.
+    pub areas: Vec<AreaCompletenessInfo>,
+    /// Whether the system is ready for bidding.
+    pub is_ready_for_bidding: bool,
+    /// Top-level blocking reasons.
+    pub blocking_reasons: Vec<BlockingReason>,
+}
+
+/// A single row from a CSV import preview.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CsvUserRow {
+    /// The row index (0-based).
+    pub row_index: usize,
+    /// The user's initials.
+    pub initials: String,
+    /// The user's name.
+    pub name: String,
+    /// The user's area identifier.
+    pub area: String,
+    /// The user's type classification.
+    pub user_type: String,
+    /// The user's crew number (optional).
+    pub crew: Option<u8>,
+    /// Cumulative NATCA bargaining unit date.
+    pub cumulative_natca_bu_date: String,
+    /// NATCA bargaining unit date.
+    pub natca_bu_date: String,
+    /// Entry on Duty / FAA date.
+    pub eod_faa_date: String,
+    /// Service Computation Date.
+    pub service_computation_date: String,
+    /// Optional lottery value.
+    pub lottery_value: Option<u32>,
+    /// Whether this row is valid.
+    pub is_valid: bool,
+    /// Validation error message, if invalid.
+    pub validation_error: Option<String>,
+}
+
+/// API request to preview CSV user data.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PreviewCsvRequest {
+    /// The bid year these users will be imported into.
+    pub bid_year: u16,
+    /// The CSV content as a string.
+    pub csv_content: String,
+}
+
+/// API response for CSV preview.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PreviewCsvResponse {
+    /// The bid year.
+    pub bid_year: u16,
+    /// Parsed rows with validation status.
+    pub rows: Vec<CsvUserRow>,
+    /// Total number of rows.
+    pub total_rows: usize,
+    /// Number of valid rows.
+    pub valid_rows: usize,
+    /// Number of invalid rows.
+    pub invalid_rows: usize,
+}
+
+/// API request to import selected CSV rows.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ImportSelectedUsersRequest {
+    /// The bid year.
+    pub bid_year: u16,
+    /// The row indices to import (0-based).
+    pub selected_rows: Vec<usize>,
+    /// The CSV content (same as in preview).
+    pub csv_content: String,
+}
+
+/// Result of importing a single user.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UserImportResult {
+    /// The row index (0-based).
+    pub row_index: usize,
+    /// The user's initials.
+    pub initials: String,
+    /// Whether the import succeeded.
+    pub success: bool,
+    /// Error message if the import failed.
+    pub error: Option<String>,
+}
+
+/// API response for selective CSV import.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ImportSelectedUsersResponse {
+    /// The bid year.
+    pub bid_year: u16,
+    /// Import results for each selected row.
+    pub results: Vec<UserImportResult>,
+    /// Total number of rows attempted.
+    pub total_attempted: usize,
+    /// Number of successful imports.
+    pub successful: usize,
+    /// Number of failed imports.
+    pub failed: usize,
+}

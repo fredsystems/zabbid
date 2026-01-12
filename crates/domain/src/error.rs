@@ -88,6 +88,34 @@ pub enum DomainError {
         /// The parsing error message.
         error: String,
     },
+    /// User not found.
+    UserNotFound {
+        /// The bid year.
+        bid_year: u16,
+        /// The area identifier.
+        area: String,
+        /// The user's initials.
+        initials: String,
+    },
+    /// Multiple bid years cannot be active simultaneously.
+    MultipleBidYearsActive {
+        /// The currently active year.
+        current_active: u16,
+        /// The year attempting to become active.
+        requested_active: u16,
+    },
+    /// No active bid year is set.
+    NoActiveBidYear,
+    /// Expected area count must be positive.
+    InvalidExpectedAreaCount {
+        /// The invalid count value.
+        count: u32,
+    },
+    /// Expected user count must be positive.
+    InvalidExpectedUserCount {
+        /// The invalid count value.
+        count: u32,
+    },
 }
 
 impl std::fmt::Display for DomainError {
@@ -150,6 +178,40 @@ impl std::fmt::Display for DomainError {
             }
             Self::DateParseError { date_string, error } => {
                 write!(f, "Failed to parse date '{date_string}': {error}")
+            }
+            Self::UserNotFound {
+                bid_year,
+                area,
+                initials,
+            } => {
+                write!(
+                    f,
+                    "User with initials '{initials}' not found in area '{area}' for bid year {bid_year}"
+                )
+            }
+            Self::MultipleBidYearsActive {
+                current_active,
+                requested_active,
+            } => {
+                write!(
+                    f,
+                    "Cannot set bid year {requested_active} as active: bid year {current_active} is already active"
+                )
+            }
+            Self::NoActiveBidYear => {
+                write!(f, "No active bid year is currently set")
+            }
+            Self::InvalidExpectedAreaCount { count } => {
+                write!(
+                    f,
+                    "Invalid expected area count: {count}. Must be greater than 0"
+                )
+            }
+            Self::InvalidExpectedUserCount { count } => {
+                write!(
+                    f,
+                    "Invalid expected user count: {count}. Must be greater than 0"
+                )
             }
         }
     }

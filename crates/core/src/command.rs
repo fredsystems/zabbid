@@ -55,4 +55,42 @@ pub enum Command {
         /// Must be within the same `(bid_year, area)` scope.
         target_event_id: i64,
     },
+    /// Set the active bid year (only one can be active at a time).
+    SetActiveBidYear {
+        /// The year to mark as active.
+        year: u16,
+    },
+    /// Set the expected number of areas for a bid year.
+    SetExpectedAreaCount {
+        /// The bid year.
+        bid_year: BidYear,
+        /// The expected number of areas.
+        expected_count: u32,
+    },
+    /// Set the expected number of users for an area.
+    SetExpectedUserCount {
+        /// The bid year.
+        bid_year: BidYear,
+        /// The area.
+        area: Area,
+        /// The expected number of users.
+        expected_count: u32,
+    },
+    /// Update an existing user's information.
+    UpdateUser {
+        /// The bid year.
+        bid_year: BidYear,
+        /// The user's initials (identifier, cannot be changed).
+        initials: Initials,
+        /// The user's name.
+        name: String,
+        /// The user's area.
+        area: Area,
+        /// The user's type classification.
+        user_type: UserType,
+        /// The user's crew (optional).
+        crew: Option<Crew>,
+        /// The user's seniority data.
+        seniority_data: SeniorityData,
+    },
 }

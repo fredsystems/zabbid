@@ -158,6 +158,7 @@ impl From<PasswordPolicyError> for ApiError {
 ///
 /// This translation is explicit and ensures domain errors are not leaked directly.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn translate_domain_error(err: DomainError) -> ApiError {
     match err {
         DomainError::DuplicateInitials { bid_year, initials } => ApiError::DomainRuleViolation {
@@ -242,6 +243,37 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
         DomainError::DateParseError { date_string, error } => ApiError::InvalidInput {
             field: String::from("date"),
             message: format!("Failed to parse date '{date_string}': {error}"),
+        },
+        DomainError::UserNotFound {
+            bid_year,
+            area,
+            initials,
+        } => ApiError::ResourceNotFound {
+            resource_type: String::from("User"),
+            message: format!(
+                "User with initials '{initials}' not found in area '{area}' for bid year {bid_year}"
+            ),
+        },
+        DomainError::MultipleBidYearsActive {
+            current_active,
+            requested_active,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("single_active_bid_year"),
+            message: format!(
+                "Cannot set bid year {requested_active} as active: bid year {current_active} is already active"
+            ),
+        },
+        DomainError::NoActiveBidYear => ApiError::ResourceNotFound {
+            resource_type: String::from("Active bid year"),
+            message: String::from("No active bid year is currently set"),
+        },
+        DomainError::InvalidExpectedAreaCount { count } => ApiError::InvalidInput {
+            field: String::from("expected_area_count"),
+            message: format!("Invalid expected area count: {count}. Must be greater than 0"),
+        },
+        DomainError::InvalidExpectedUserCount { count } => ApiError::InvalidInput {
+            field: String::from("expected_user_count"),
+            message: format!("Invalid expected user count: {count}. Must be greater than 0"),
         },
     }
 }
