@@ -63,6 +63,7 @@ pub struct OperatorData {
     pub operator_id: i64,
     pub login_name: String,
     pub display_name: String,
+    pub password_hash: String,
     pub role: String,
     pub is_disabled: bool,
     pub created_at: String,

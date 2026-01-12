@@ -26,6 +26,8 @@ pub enum PersistenceError {
     SessionExpired(String),
     /// Operator cannot be deleted because it is referenced by audit events.
     OperatorReferenced { operator_id: i64 },
+    /// A general error occurred.
+    Other(String),
 }
 
 impl std::fmt::Display for PersistenceError {
@@ -48,6 +50,7 @@ impl std::fmt::Display for PersistenceError {
                     "Operator {operator_id} cannot be deleted: referenced by audit events"
                 )
             }
+            Self::Other(msg) => write!(f, "{msg}"),
         }
     }
 }

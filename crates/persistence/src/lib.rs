@@ -403,9 +403,10 @@ impl SqlitePersistence {
         &mut self,
         login_name: &str,
         display_name: &str,
+        password: &str,
         role: &str,
     ) -> Result<i64, PersistenceError> {
-        sqlite::create_operator(&self.conn, login_name, display_name, role)
+        sqlite::create_operator(&self.conn, login_name, display_name, password, role)
     }
 
     /// Retrieves an operator by login name.
@@ -492,6 +493,29 @@ impl SqlitePersistence {
     /// Returns an error if the database query fails.
     pub fn is_operator_referenced(&self, operator_id: i64) -> Result<bool, PersistenceError> {
         sqlite::is_operator_referenced(&self.conn, operator_id)
+    }
+
+    /// Counts the total number of operators.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub fn count_operators(&self) -> Result<i64, PersistenceError> {
+        sqlite::count_operators(&self.conn)
+    }
+
+    /// Verifies a password against a stored hash.
+    ///
+    /// # Arguments
+    ///
+    /// * `password` - The plain text password to verify
+    /// * `password_hash` - The stored bcrypt hash
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if password verification fails.
+    pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, PersistenceError> {
+        sqlite::verify_password(password, password_hash)
     }
 
     /// Creates a new session for an operator.

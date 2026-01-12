@@ -246,14 +246,13 @@ impl AuthenticationService {
 
     /// Authenticates an operator and creates a session.
     ///
-    /// This is a simplified authentication that validates the operator exists
-    /// and is not disabled. In a production system, this would validate
-    /// credentials (password, token, etc.).
+    /// Validates the operator exists, is not disabled, and verifies the password.
     ///
     /// # Arguments
     ///
     /// * `persistence` - The persistence layer
     /// * `login_name` - The operator login name
+    /// * `password` - The operator password
     ///
     /// # Returns
     ///
@@ -265,6 +264,7 @@ impl AuthenticationService {
     pub fn login(
         persistence: &mut SqlitePersistence,
         login_name: &str,
+        password: &str,
     ) -> Result<(String, AuthenticatedActor, OperatorData), AuthError> {
         // Retrieve operator by login name
         let operator: OperatorData = persistence
@@ -280,6 +280,20 @@ impl AuthenticationService {
         if operator.is_disabled {
             return Err(AuthError::AuthenticationFailed {
                 reason: String::from("Operator is disabled"),
+            });
+        }
+
+        // Verify password
+        let password_valid: bool =
+            SqlitePersistence::verify_password(password, &operator.password_hash).map_err(|e| {
+                AuthError::AuthenticationFailed {
+                    reason: format!("Password verification failed: {e}"),
+                }
+            })?;
+
+        if !password_valid {
+            return Err(AuthError::AuthenticationFailed {
+                reason: String::from("Invalid password"),
             });
         }
 

@@ -13,9 +13,10 @@ pub use bootstrap::{
     get_bootstrap_metadata, list_areas, list_bid_years, list_users, verify_foreign_key_enforcement,
 };
 pub use operators::{
-    create_operator, create_session, delete_expired_sessions, delete_session, disable_operator,
-    get_operator_by_id, get_operator_by_login, get_session_by_token, is_operator_referenced,
-    list_operators, update_last_login, update_session_activity,
+    count_operators, create_operator, create_session, delete_expired_sessions, delete_session,
+    disable_operator, get_operator_by_id, get_operator_by_login, get_session_by_token,
+    is_operator_referenced, list_operators, update_last_login, update_session_activity,
+    verify_password,
 };
 pub use persistence::{persist_bootstrap, persist_transition};
 pub use queries::{

@@ -269,6 +269,8 @@ pub struct GetLeaveAvailabilityResponse {
 pub struct LoginRequest {
     /// The operator login name.
     pub login_name: String,
+    /// The operator password.
+    pub password: String,
 }
 
 /// API response for successful login.
@@ -347,4 +349,53 @@ pub struct OperatorInfo {
 pub struct ListOperatorsResponse {
     /// The list of operators.
     pub operators: Vec<OperatorInfo>,
+}
+
+/// API response for checking bootstrap status.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BootstrapAuthStatusResponse {
+    /// Whether the system is in bootstrap mode (no operators exist).
+    pub is_bootstrap_mode: bool,
+}
+
+/// API request for bootstrap login with hardcoded credentials.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BootstrapLoginRequest {
+    /// Username (must be "admin" in bootstrap mode).
+    pub username: String,
+    /// Password (must be "admin" in bootstrap mode).
+    pub password: String,
+}
+
+/// API response for successful bootstrap login.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BootstrapLoginResponse {
+    /// Bootstrap session token (temporary, not a real operator session).
+    pub bootstrap_token: String,
+    /// Indicates this is a bootstrap session.
+    pub is_bootstrap: bool,
+}
+
+/// API request to create the first admin operator during bootstrap.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CreateFirstAdminRequest {
+    /// The new admin login name.
+    pub login_name: String,
+    /// The new admin display name.
+    pub display_name: String,
+    /// The password for the new admin.
+    pub password: String,
+}
+
+/// API response for successful first admin creation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CreateFirstAdminResponse {
+    /// The operator ID.
+    pub operator_id: i64,
+    /// The operator login name.
+    pub login_name: String,
+    /// The operator display name.
+    pub display_name: String,
+    /// Success message.
+    pub message: String,
 }
