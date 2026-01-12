@@ -14,6 +14,7 @@
 #![allow(deprecated)]
 
 mod auth;
+mod csv_preview;
 mod error;
 mod handlers;
 mod password_policy;
@@ -40,15 +41,16 @@ pub use request_response::{
     BootstrapLoginResponse, BootstrapStatusResponse, ChangePasswordRequest, ChangePasswordResponse,
     CreateAreaRequest, CreateAreaResponse, CreateBidYearRequest, CreateBidYearResponse,
     CreateFirstAdminRequest, CreateFirstAdminResponse, CreateOperatorRequest,
-    CreateOperatorResponse, DeleteOperatorRequest, DeleteOperatorResponse, DisableOperatorRequest,
-    DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
-    GetActiveBidYearResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityRequest,
-    GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
-    ListOperatorsResponse, ListUsersRequest, ListUsersResponse, LoginRequest, LoginResponse,
-    OperatorInfo, RegisterUserRequest, RegisterUserResponse, ResetPasswordRequest,
-    ResetPasswordResponse, SetActiveBidYearRequest, SetActiveBidYearResponse,
-    SetExpectedAreaCountRequest, SetExpectedAreaCountResponse, SetExpectedUserCountRequest,
-    SetExpectedUserCountResponse, UpdateUserRequest, UpdateUserResponse, UserInfo, WhoAmIResponse,
+    CreateOperatorResponse, CsvRowPreview, CsvRowStatus, DeleteOperatorRequest,
+    DeleteOperatorResponse, DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest,
+    EnableOperatorResponse, GetActiveBidYearResponse, GetBootstrapCompletenessResponse,
+    GetLeaveAvailabilityRequest, GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse,
+    ListBidYearsResponse, ListOperatorsResponse, ListUsersRequest, ListUsersResponse, LoginRequest,
+    LoginResponse, OperatorInfo, PreviewCsvUsersRequest, PreviewCsvUsersResponse,
+    RegisterUserRequest, RegisterUserResponse, ResetPasswordRequest, ResetPasswordResponse,
+    SetActiveBidYearRequest, SetActiveBidYearResponse, SetExpectedAreaCountRequest,
+    SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
+    UpdateUserRequest, UpdateUserResponse, UserInfo, WhoAmIResponse,
 };
 
 // Re-export public functions from handlers module
@@ -57,7 +59,7 @@ pub use handlers::{
     create_bid_year, create_first_admin, create_operator, delete_operator, disable_operator,
     enable_operator, finalize, get_active_bid_year, get_bootstrap_completeness,
     get_bootstrap_status, get_current_state, get_historical_state, get_leave_availability,
-    list_areas, list_bid_years, list_operators, list_users, login, logout, register_user,
-    reset_password, rollback, set_active_bid_year, set_expected_area_count,
+    list_areas, list_bid_years, list_operators, list_users, login, logout, preview_csv_users,
+    register_user, reset_password, rollback, set_active_bid_year, set_expected_area_count,
     set_expected_user_count, update_user, whoami,
 };

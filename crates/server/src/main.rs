@@ -34,13 +34,14 @@ use zab_bid_api::{
     ApiError, ApiResult, BootstrapStatusResponse, CreateAreaRequest, CreateBidYearRequest,
     GetActiveBidYearResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse,
     ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListUsersResponse,
-    RegisterUserRequest, RegisterUserResponse, SetActiveBidYearRequest, SetActiveBidYearResponse,
-    SetExpectedAreaCountRequest, SetExpectedAreaCountResponse, SetExpectedUserCountRequest,
-    SetExpectedUserCountResponse, UpdateUserRequest, UpdateUserResponse, checkpoint, create_area,
-    create_bid_year, finalize, get_active_bid_year, get_bootstrap_completeness,
-    get_bootstrap_status, get_current_state, get_historical_state, get_leave_availability,
-    list_areas, list_bid_years, list_users, register_user, rollback, set_active_bid_year,
-    set_expected_area_count, set_expected_user_count, update_user,
+    PreviewCsvUsersRequest, PreviewCsvUsersResponse, RegisterUserRequest, RegisterUserResponse,
+    SetActiveBidYearRequest, SetActiveBidYearResponse, SetExpectedAreaCountRequest,
+    SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
+    UpdateUserRequest, UpdateUserResponse, checkpoint, create_area, create_bid_year, finalize,
+    get_active_bid_year, get_bootstrap_completeness, get_bootstrap_status, get_current_state,
+    get_historical_state, get_leave_availability, list_areas, list_bid_years, list_users,
+    preview_csv_users, register_user, rollback, set_active_bid_year, set_expected_area_count,
+    set_expected_user_count, update_user,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials};
@@ -442,7 +443,9 @@ impl From<ApiError> for HttpError {
                 status: StatusCode::UNPROCESSABLE_ENTITY,
                 message: err.to_string(),
             },
-            ApiError::InvalidInput { .. } | ApiError::PasswordPolicyViolation { .. } => Self {
+            ApiError::InvalidInput { .. }
+            | ApiError::PasswordPolicyViolation { .. }
+            | ApiError::InvalidCsvFormat { .. } => Self {
                 status: StatusCode::BAD_REQUEST,
                 message: err.to_string(),
             },
@@ -1551,11 +1554,11 @@ struct UpdateUserApiRequest {
     initials: String,
     /// The user's name.
     name: String,
-    /// The user's area identifier.
+    /// The user's area.
     area: String,
-    /// The user's type classification.
+    /// The user's type classification (CPC, CPC-IT, Dev-R, Dev-D).
     user_type: String,
-    /// The user's crew identifier.
+    /// The user's crew number (1-7, optional).
     crew: Option<u8>,
     /// Cumulative NATCA bargaining unit date (ISO 8601).
     cumulative_natca_bu_date: String,
@@ -1567,6 +1570,15 @@ struct UpdateUserApiRequest {
     service_computation_date: String,
     /// Optional lottery value.
     lottery_value: Option<u32>,
+}
+
+/// API request to preview CSV user data.
+#[derive(Debug, serde::Deserialize)]
+struct PreviewCsvUsersApiRequest {
+    /// The bid year to validate against.
+    bid_year: u16,
+    /// The raw CSV content.
+    csv_content: String,
 }
 
 /// Request body for logout endpoint.
@@ -1876,6 +1888,47 @@ async fn handle_get_bootstrap_completeness(
     Ok(Json(response))
 }
 
+/// Handler for POST `/bootstrap/users/csv/preview` endpoint.
+///
+/// Previews and validates CSV user data without persisting.
+async fn handle_preview_csv_users(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<PreviewCsvUsersApiRequest>,
+) -> Result<Json<PreviewCsvUsersResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year = req.bid_year,
+        "Handling preview_csv_users request"
+    );
+
+    // Get bootstrap metadata
+    let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Build API request
+    let preview_request: PreviewCsvUsersRequest = PreviewCsvUsersRequest {
+        bid_year: req.bid_year,
+        csv_content: req.csv_content,
+    };
+
+    // Execute preview via API (no persistence mutations)
+    let response: PreviewCsvUsersResponse =
+        preview_csv_users(&metadata, &persistence, &preview_request, &actor)?;
+
+    drop(persistence);
+
+    info!(
+        total_rows = response.total_rows,
+        valid_count = response.valid_count,
+        invalid_count = response.invalid_count,
+        "Successfully previewed CSV users"
+    );
+
+    Ok(Json(response))
+}
+
 fn build_router(state: AppState) -> Router {
     let live_broadcaster = Arc::clone(&state.live_events);
 
@@ -1937,6 +1990,10 @@ fn build_router(state: AppState) -> Router {
             get(handle_get_bootstrap_completeness),
         )
         .route("/users/update", post(handle_update_user))
+        .route(
+            "/bootstrap/users/csv/preview",
+            post(handle_preview_csv_users),
+        )
         .with_state(state);
 
     let live_router = Router::new()

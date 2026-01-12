@@ -784,3 +784,62 @@ pub struct ImportSelectedUsersResponse {
     /// Number of failed imports.
     pub failed: usize,
 }
+
+// ========================================================================
+// CSV Preview Types
+// ========================================================================
+
+/// API request to preview CSV user data.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreviewCsvUsersRequest {
+    /// The bid year to validate against.
+    pub bid_year: u16,
+    /// The raw CSV content.
+    pub csv_content: String,
+}
+
+/// Status of a single CSV row validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CsvRowStatus {
+    /// Row is valid and can be imported.
+    Valid,
+    /// Row has validation errors and cannot be imported.
+    Invalid,
+}
+
+/// Result for a single CSV row.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CsvRowPreview {
+    /// The row number (1-based, excluding header).
+    pub row_number: usize,
+    /// The parsed initials (if valid).
+    pub initials: Option<String>,
+    /// The parsed name (if valid).
+    pub name: Option<String>,
+    /// The parsed area ID (if valid).
+    pub area_id: Option<String>,
+    /// The parsed user type (if valid).
+    pub user_type: Option<String>,
+    /// The parsed crew (if valid).
+    pub crew: Option<u8>,
+    /// The row validation status.
+    pub status: CsvRowStatus,
+    /// Zero or more validation error messages.
+    pub errors: Vec<String>,
+}
+
+/// API response for CSV preview.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PreviewCsvUsersResponse {
+    /// The bid year being validated against.
+    pub bid_year: u16,
+    /// Per-row validation results.
+    pub rows: Vec<CsvRowPreview>,
+    /// Total number of rows.
+    pub total_rows: usize,
+    /// Number of valid rows.
+    pub valid_count: usize,
+    /// Number of invalid rows.
+    pub invalid_count: usize,
+}
