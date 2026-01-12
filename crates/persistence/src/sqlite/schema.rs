@@ -58,12 +58,15 @@ pub fn initialize_schema(conn: &Connection) -> Result<(), PersistenceError> {
         CREATE TABLE IF NOT EXISTS bid_years (
             year INTEGER PRIMARY KEY NOT NULL,
             start_date TEXT NOT NULL,
-            num_pay_periods INTEGER NOT NULL CHECK(num_pay_periods IN (26, 27))
+            num_pay_periods INTEGER NOT NULL CHECK(num_pay_periods IN (26, 27)),
+            is_active INTEGER NOT NULL DEFAULT 0 CHECK(is_active IN (0, 1)),
+            expected_area_count INTEGER
         );
 
         CREATE TABLE IF NOT EXISTS areas (
             bid_year INTEGER NOT NULL,
             area_id TEXT NOT NULL,
+            expected_user_count INTEGER,
             PRIMARY KEY (bid_year, area_id),
             FOREIGN KEY(bid_year) REFERENCES bid_years(year)
         );

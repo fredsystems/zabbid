@@ -21,13 +21,17 @@ use crate::auth::{AuthenticatedActor, AuthenticationService, AuthorizationServic
 use crate::error::{ApiError, AuthError, translate_core_error, translate_domain_error};
 use crate::password_policy::PasswordPolicy;
 use crate::request_response::{
-    BidYearInfo, ChangePasswordRequest, ChangePasswordResponse, CreateAreaRequest,
-    CreateBidYearRequest, CreateOperatorRequest, CreateOperatorResponse, DeleteOperatorRequest,
-    DeleteOperatorResponse, DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest,
-    EnableOperatorResponse, GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse,
-    ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse,
-    OperatorInfo, RegisterUserRequest, RegisterUserResponse, ResetPasswordRequest,
-    ResetPasswordResponse, UserInfo, WhoAmIResponse,
+    AreaCompletenessInfo, BidYearCompletenessInfo, BidYearInfo, BlockingReason,
+    ChangePasswordRequest, ChangePasswordResponse, CreateAreaRequest, CreateBidYearRequest,
+    CreateOperatorRequest, CreateOperatorResponse, DeleteOperatorRequest, DeleteOperatorResponse,
+    DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
+    GetActiveBidYearResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse,
+    ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListOperatorsResponse,
+    ListUsersResponse, LoginRequest, LoginResponse, OperatorInfo, RegisterUserRequest,
+    RegisterUserResponse, ResetPasswordRequest, ResetPasswordResponse, SetActiveBidYearRequest,
+    SetActiveBidYearResponse, SetExpectedAreaCountRequest, SetExpectedAreaCountResponse,
+    SetExpectedUserCountRequest, SetExpectedUserCountResponse, UpdateUserRequest,
+    UpdateUserResponse, UserInfo, WhoAmIResponse,
 };
 use zab_bid_persistence::PersistenceError;
 
@@ -1860,5 +1864,502 @@ pub fn create_first_admin(
         login_name: request.login_name,
         display_name: request.display_name,
         message: String::from("First admin operator created successfully"),
+    })
+}
+
+// ========================================================================
+// Phase 18: Bootstrap Workflow Completion Handlers
+// ========================================================================
+
+/// Sets the active bid year.
+#[allow(dead_code)]
+///
+/// Only admins can set the active bid year.
+/// Exactly one bid year may be active at a time.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+/// * `request` - The set active bid year request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data
+/// * `cause` - The cause or reason for this action
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The bid year does not exist
+/// - Database operations fail
+pub fn set_active_bid_year(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    request: &SetActiveBidYearRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<SetActiveBidYearResponse, ApiError> {
+    // Enforce authorization - only admins can set active bid year
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("set_active_bid_year"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Apply the command
+    let command = Command::SetActiveBidYear { year: request.year };
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
+    let result: BootstrapResult =
+        apply_bootstrap(metadata, command, actor, cause).map_err(translate_core_error)?;
+
+    // Persist the active bid year setting
+    persistence
+        .set_active_bid_year(request.year)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to set active bid year: {e}"),
+        })?;
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&result.audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    Ok(SetActiveBidYearResponse {
+        year: request.year,
+        message: format!("Bid year {} is now active", request.year),
+    })
+}
+
+/// Gets the currently active bid year.
+#[allow(dead_code)]
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+///
+/// # Errors
+///
+/// Returns an error if database operations fail.
+pub fn get_active_bid_year(
+    persistence: &SqlitePersistence,
+) -> Result<GetActiveBidYearResponse, ApiError> {
+    let year: Option<u16> = persistence
+        .get_active_bid_year()
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get active bid year: {e}"),
+        })?;
+
+    Ok(GetActiveBidYearResponse { year })
+}
+
+/// Sets the expected area count for a bid year.
+#[allow(dead_code)]
+///
+/// Only admins can set expected area counts.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+/// * `request` - The set expected area count request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data
+/// * `cause` - The cause or reason for this action
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The bid year does not exist
+/// - The expected count is zero
+/// - Database operations fail
+pub fn set_expected_area_count(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    request: &SetExpectedAreaCountRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<SetExpectedAreaCountResponse, ApiError> {
+    // Enforce authorization - only admins can set expected counts
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("set_expected_area_count"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    let bid_year = BidYear::new(request.bid_year);
+    let command = Command::SetExpectedAreaCount {
+        bid_year,
+        expected_count: request.expected_count,
+    };
+
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
+    let result: BootstrapResult =
+        apply_bootstrap(metadata, command, actor, cause).map_err(translate_core_error)?;
+
+    // Persist the expected area count
+    persistence
+        .set_expected_area_count(request.bid_year, request.expected_count)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to set expected area count: {e}"),
+        })?;
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&result.audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    Ok(SetExpectedAreaCountResponse {
+        bid_year: request.bid_year,
+        expected_count: request.expected_count,
+        message: format!(
+            "Expected area count set to {} for bid year {}",
+            request.expected_count, request.bid_year
+        ),
+    })
+}
+
+/// Sets the expected user count for an area.
+#[allow(dead_code)]
+///
+/// Only admins can set expected user counts.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+/// * `request` - The set expected user count request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data
+/// * `cause` - The cause or reason for this action
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The bid year or area does not exist
+/// - The expected count is zero
+/// - Database operations fail
+pub fn set_expected_user_count(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    request: &SetExpectedUserCountRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<SetExpectedUserCountResponse, ApiError> {
+    // Enforce authorization - only admins can set expected counts
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("set_expected_user_count"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    let bid_year = BidYear::new(request.bid_year);
+    let area = Area::new(&request.area);
+    let command = Command::SetExpectedUserCount {
+        bid_year,
+        area,
+        expected_count: request.expected_count,
+    };
+
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
+    let result: BootstrapResult =
+        apply_bootstrap(metadata, command, actor, cause).map_err(translate_core_error)?;
+
+    // Persist the expected user count
+    let area_ref = Area::new(&request.area);
+    persistence
+        .set_expected_user_count(
+            &BidYear::new(request.bid_year),
+            &area_ref,
+            request.expected_count,
+        )
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to set expected user count: {e}"),
+        })?;
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&result.audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    Ok(SetExpectedUserCountResponse {
+        bid_year: request.bid_year,
+        area: request.area.clone(),
+        expected_count: request.expected_count,
+        message: format!(
+            "Expected user count set to {} for area '{}' in bid year {}",
+            request.expected_count, request.area, request.bid_year
+        ),
+    })
+}
+
+/// Updates an existing user's information.
+#[allow(dead_code)]
+///
+/// Only admins can update users.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+/// * `state` - The current system state
+/// * `request` - The update user request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data
+/// * `cause` - The cause or reason for this action
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The user does not exist
+/// - Validation fails
+/// - Database operations fail
+pub fn update_user(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    state: &State,
+    request: &UpdateUserRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<ApiResult<UpdateUserResponse>, ApiError> {
+    // Enforce authorization - only admins can update users
+    AuthorizationService::authorize_register_user(authenticated_actor)?;
+
+    // Translate API request into domain types
+    let bid_year: BidYear = BidYear::new(request.bid_year);
+    let initials: Initials = Initials::new(&request.initials);
+    let area: Area = Area::new(&request.area);
+    let user_type: UserType =
+        UserType::parse(&request.user_type).map_err(translate_domain_error)?;
+    let crew: Option<Crew> = match request.crew {
+        Some(crew_num) => Some(Crew::new(crew_num).map_err(translate_domain_error)?),
+        None => None,
+    };
+    let seniority_data: SeniorityData = SeniorityData::new(
+        request.cumulative_natca_bu_date.clone(),
+        request.natca_bu_date.clone(),
+        request.eod_faa_date.clone(),
+        request.service_computation_date.clone(),
+        request.lottery_value,
+    );
+
+    // Create command
+    let command = Command::UpdateUser {
+        bid_year: bid_year.clone(),
+        initials: initials.clone(),
+        name: request.name.clone(),
+        area: area.clone(),
+        user_type,
+        crew,
+        seniority_data,
+    };
+
+    // Convert authenticated actor to audit actor
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
+
+    // Apply the command
+    let result: TransitionResult =
+        apply(metadata, state, command, actor, cause).map_err(translate_core_error)?;
+
+    // Persist the updated canonical user state
+    persistence
+        .update_user(
+            &bid_year,
+            &initials,
+            &request.name,
+            &area,
+            &request.user_type,
+            request.crew,
+            &request.cumulative_natca_bu_date,
+            &request.natca_bu_date,
+            &request.eod_faa_date,
+            &request.service_computation_date,
+            request.lottery_value,
+        )
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to update user: {e}"),
+        })?;
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&result.audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    // Build response
+    let response = UpdateUserResponse {
+        bid_year: request.bid_year,
+        initials: request.initials.clone(),
+        name: request.name.clone(),
+        message: String::from("User updated successfully"),
+    };
+
+    Ok(ApiResult {
+        response,
+        audit_event: result.audit_event,
+        new_state: result.new_state,
+    })
+}
+
+/// Gets the bootstrap completeness status for all bid years and areas.
+#[allow(dead_code)]
+///
+/// This function computes whether each bid year and area meets its
+/// expected counts and returns detailed blocking reasons.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+///
+/// # Errors
+///
+/// Returns an error if database operations fail.
+#[allow(clippy::too_many_lines)]
+pub fn get_bootstrap_completeness(
+    persistence: &SqlitePersistence,
+    metadata: &BootstrapMetadata,
+) -> Result<GetBootstrapCompletenessResponse, ApiError> {
+    let active_bid_year: Option<u16> =
+        persistence
+            .get_active_bid_year()
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get active bid year: {e}"),
+            })?;
+
+    let mut bid_years_info: Vec<BidYearCompletenessInfo> = Vec::new();
+    let mut areas_info: Vec<AreaCompletenessInfo> = Vec::new();
+    let mut top_level_blocking: Vec<BlockingReason> = Vec::new();
+
+    // If no active bid year, that's a top-level blocker
+    if active_bid_year.is_none() {
+        top_level_blocking.push(BlockingReason::NoActiveBidYear);
+    }
+
+    // Check each bid year
+    for bid_year in &metadata.bid_years {
+        let year: u16 = bid_year.year();
+        let is_active: bool = active_bid_year == Some(year);
+
+        let expected_area_count: Option<u32> =
+            persistence
+                .get_expected_area_count(year)
+                .map_err(|e| ApiError::Internal {
+                    message: format!("Failed to get expected area count: {e}"),
+                })?;
+
+        let actual_area_count: usize =
+            persistence
+                .get_actual_area_count(year)
+                .map_err(|e| ApiError::Internal {
+                    message: format!("Failed to get actual area count: {e}"),
+                })?;
+
+        let mut blocking_reasons: Vec<BlockingReason> = Vec::new();
+
+        // Check if expected count is set
+        let expected_count = expected_area_count.unwrap_or_else(|| {
+            blocking_reasons.push(BlockingReason::ExpectedAreaCountNotSet { bid_year: year });
+            0 // Placeholder
+        });
+
+        // Check if actual matches expected
+        if expected_area_count.is_some() && actual_area_count != expected_count as usize {
+            blocking_reasons.push(BlockingReason::AreaCountMismatch {
+                bid_year: year,
+                expected: expected_count,
+                actual: actual_area_count,
+            });
+        }
+
+        let is_complete: bool = blocking_reasons.is_empty() && expected_area_count.is_some();
+
+        bid_years_info.push(BidYearCompletenessInfo {
+            year,
+            is_active,
+            expected_area_count,
+            actual_area_count,
+            is_complete,
+            blocking_reasons,
+        });
+    }
+
+    // Check each area
+    for (bid_year, area) in &metadata.areas {
+        let year: u16 = bid_year.year();
+
+        let expected_user_count: Option<u32> = persistence
+            .get_expected_user_count(bid_year, area)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get expected user count: {e}"),
+            })?;
+
+        let actual_user_count: usize =
+            persistence
+                .get_actual_user_count(bid_year, area)
+                .map_err(|e| ApiError::Internal {
+                    message: format!("Failed to get actual user count: {e}"),
+                })?;
+
+        let mut blocking_reasons: Vec<BlockingReason> = Vec::new();
+
+        // Check if expected count is set
+        let expected_count = expected_user_count.unwrap_or_else(|| {
+            blocking_reasons.push(BlockingReason::ExpectedUserCountNotSet {
+                bid_year: year,
+                area: area.id().to_string(),
+            });
+            0 // Placeholder
+        });
+
+        // Check if actual matches expected
+        if expected_user_count.is_some() && actual_user_count != expected_count as usize {
+            blocking_reasons.push(BlockingReason::UserCountMismatch {
+                bid_year: year,
+                area: area.id().to_string(),
+                expected: expected_count,
+                actual: actual_user_count,
+            });
+        }
+
+        let is_complete: bool = blocking_reasons.is_empty() && expected_user_count.is_some();
+
+        areas_info.push(AreaCompletenessInfo {
+            bid_year: year,
+            area: area.id().to_string(),
+            expected_user_count,
+            actual_user_count,
+            is_complete,
+            blocking_reasons,
+        });
+    }
+
+    // Determine if system is ready for bidding
+    let is_ready_for_bidding: bool = active_bid_year.is_some()
+        && bid_years_info.iter().all(|b| b.is_complete)
+        && areas_info.iter().all(|a| a.is_complete);
+
+    Ok(GetBootstrapCompletenessResponse {
+        active_bid_year,
+        bid_years: bid_years_info,
+        areas: areas_info,
+        is_ready_for_bidding,
+        blocking_reasons: top_level_blocking,
     })
 }

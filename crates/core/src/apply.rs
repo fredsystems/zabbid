@@ -143,6 +143,160 @@ pub fn apply_bootstrap(
                 canonical_bid_year: None,
             })
         }
+        Command::SetActiveBidYear { year } => {
+            // Validate the year is reasonable
+            validate_bid_year(year)?;
+
+            let bid_year: BidYear = BidYear::new(year);
+
+            // Check if bid year exists
+            if !metadata.has_bid_year(&bid_year) {
+                return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
+                    year,
+                )));
+            }
+
+            // Create new metadata (unchanged, active status is managed in persistence)
+            let new_metadata: BootstrapMetadata = metadata.clone();
+
+            // Create audit event
+            let before: StateSnapshot = StateSnapshot::new(String::from("active_bid_year_change"));
+            let after: StateSnapshot = StateSnapshot::new(format!("active_bid_year={year}"));
+
+            let action: Action = Action::new(
+                String::from("SetActiveBidYear"),
+                Some(format!("Set bid year {year} as active")),
+            );
+
+            // Use a placeholder area for global operations
+            let placeholder_area: Area = Area::new("_global");
+            let audit_event: AuditEvent = AuditEvent::new(
+                actor,
+                cause,
+                action,
+                before,
+                after,
+                bid_year,
+                placeholder_area,
+            );
+
+            Ok(BootstrapResult {
+                new_metadata,
+                audit_event,
+                canonical_bid_year: None,
+            })
+        }
+        Command::SetExpectedAreaCount {
+            bid_year,
+            expected_count,
+        } => {
+            // Validate bid year exists
+            if !metadata.has_bid_year(&bid_year) {
+                return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
+                    bid_year.year(),
+                )));
+            }
+
+            // Validate count is positive
+            if expected_count == 0 {
+                return Err(CoreError::DomainViolation(
+                    DomainError::InvalidExpectedAreaCount {
+                        count: expected_count,
+                    },
+                ));
+            }
+
+            // Create new metadata (unchanged, expected counts are managed in persistence)
+            let new_metadata: BootstrapMetadata = metadata.clone();
+
+            // Create audit event
+            let before: StateSnapshot =
+                StateSnapshot::new(String::from("expected_area_count_change"));
+            let after: StateSnapshot =
+                StateSnapshot::new(format!("expected_area_count={expected_count}"));
+
+            let action: Action = Action::new(
+                String::from("SetExpectedAreaCount"),
+                Some(format!(
+                    "Set expected area count to {expected_count} for bid year {}",
+                    bid_year.year()
+                )),
+            );
+
+            // Use a placeholder area for global operations
+            let placeholder_area: Area = Area::new("_global");
+            let audit_event: AuditEvent = AuditEvent::new(
+                actor,
+                cause,
+                action,
+                before,
+                after,
+                bid_year,
+                placeholder_area,
+            );
+
+            Ok(BootstrapResult {
+                new_metadata,
+                audit_event,
+                canonical_bid_year: None,
+            })
+        }
+        Command::SetExpectedUserCount {
+            bid_year,
+            area,
+            expected_count,
+        } => {
+            // Validate bid year exists
+            if !metadata.has_bid_year(&bid_year) {
+                return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
+                    bid_year.year(),
+                )));
+            }
+
+            // Validate area exists in bid year
+            if !metadata.has_area(&bid_year, &area) {
+                return Err(CoreError::DomainViolation(DomainError::AreaNotFound {
+                    bid_year: bid_year.year(),
+                    area: area.id().to_string(),
+                }));
+            }
+
+            // Validate count is positive
+            if expected_count == 0 {
+                return Err(CoreError::DomainViolation(
+                    DomainError::InvalidExpectedUserCount {
+                        count: expected_count,
+                    },
+                ));
+            }
+
+            // Create new metadata (unchanged, expected counts are managed in persistence)
+            let new_metadata: BootstrapMetadata = metadata.clone();
+
+            // Create audit event
+            let before: StateSnapshot =
+                StateSnapshot::new(String::from("expected_user_count_change"));
+            let after: StateSnapshot =
+                StateSnapshot::new(format!("expected_user_count={expected_count}"));
+
+            let action: Action = Action::new(
+                String::from("SetExpectedUserCount"),
+                Some(format!(
+                    "Set expected user count to {expected_count} for area '{}' in bid year {}",
+                    area.id(),
+                    bid_year.year()
+                )),
+            );
+
+            let audit_event: AuditEvent =
+                AuditEvent::new(actor, cause, action, before, after, bid_year, area);
+
+            Ok(BootstrapResult {
+                new_metadata,
+                audit_event,
+                canonical_bid_year: None,
+            })
+        }
         _ => {
             // Non-bootstrap commands should use apply() instead
             unreachable!("apply_bootstrap called with non-bootstrap command")
@@ -339,7 +493,102 @@ pub fn apply(
                 audit_event,
             })
         }
-        Command::CreateBidYear { .. } | Command::CreateArea { .. } => {
+        Command::UpdateUser {
+            bid_year,
+            initials,
+            name,
+            area,
+            user_type,
+            crew,
+            seniority_data,
+        } => {
+            // Validate bid year exists
+            if !metadata.has_bid_year(&bid_year) {
+                return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
+                    bid_year.year(),
+                )));
+            }
+
+            // Validate area exists in bid year
+            if !metadata.has_area(&bid_year, &area) {
+                return Err(CoreError::DomainViolation(DomainError::AreaNotFound {
+                    bid_year: bid_year.year(),
+                    area: area.id().to_string(),
+                }));
+            }
+
+            // Find the user to update
+            let user_index: Option<usize> = state
+                .users
+                .iter()
+                .position(|u| u.initials == initials && u.bid_year == bid_year);
+
+            let user_index: usize = user_index.ok_or_else(|| {
+                CoreError::DomainViolation(DomainError::UserNotFound {
+                    bid_year: bid_year.year(),
+                    area: area.id().to_string(),
+                    initials: initials.value().to_string(),
+                })
+            })?;
+
+            // Create the updated user object
+            let updated_user: User = User::new(
+                bid_year.clone(),
+                initials.clone(),
+                name,
+                area,
+                user_type,
+                crew,
+                seniority_data,
+            );
+
+            // Validate user field constraints
+            validate_user_fields(&updated_user)?;
+
+            // Capture state before transition
+            let before: StateSnapshot = state.to_snapshot();
+
+            // Create new state with the user updated
+            let mut new_users: Vec<User> = state.users.clone();
+            new_users[user_index] = updated_user;
+            let new_state: State = State {
+                bid_year: state.bid_year.clone(),
+                area: state.area.clone(),
+                users: new_users,
+            };
+
+            // Capture state after transition
+            let after: StateSnapshot = new_state.to_snapshot();
+
+            // Create audit event
+            let action: Action = Action::new(
+                String::from("UpdateUser"),
+                Some(format!(
+                    "Updated user with initials '{}' for bid year {}",
+                    initials.value(),
+                    bid_year.year()
+                )),
+            );
+            let audit_event: AuditEvent = AuditEvent::new(
+                actor,
+                cause,
+                action,
+                before,
+                after,
+                state.bid_year.clone(),
+                state.area.clone(),
+            );
+
+            Ok(TransitionResult {
+                new_state,
+                audit_event,
+            })
+        }
+        Command::CreateBidYear { .. }
+        | Command::CreateArea { .. }
+        | Command::SetActiveBidYear { .. }
+        | Command::SetExpectedAreaCount { .. }
+        | Command::SetExpectedUserCount { .. } => {
             // Bootstrap commands should use apply_bootstrap() instead
             unreachable!("apply called with bootstrap command")
         }

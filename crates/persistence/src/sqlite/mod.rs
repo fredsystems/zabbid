@@ -10,7 +10,10 @@ mod queries;
 mod schema;
 
 pub use bootstrap::{
-    get_bootstrap_metadata, list_areas, list_bid_years, list_users, verify_foreign_key_enforcement,
+    get_active_bid_year, get_actual_area_count, get_actual_user_count, get_bootstrap_metadata,
+    get_expected_area_count, get_expected_user_count, list_areas, list_bid_years, list_users,
+    set_active_bid_year, set_expected_area_count, set_expected_user_count,
+    verify_foreign_key_enforcement,
 };
 pub use operators::{
     count_operators, create_operator, create_session, delete_expired_sessions, delete_operator,

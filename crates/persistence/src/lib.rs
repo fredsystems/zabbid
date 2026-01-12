@@ -681,4 +681,205 @@ impl SqlitePersistence {
     pub fn delete_expired_sessions(&mut self) -> Result<usize, PersistenceError> {
         sqlite::delete_expired_sessions(&self.conn)
     }
+
+    // ========================================================================
+    // Phase 18: Bootstrap Workflow Completion Methods
+    // ========================================================================
+
+    /// Sets a bid year as active, ensuring only one bid year is active at a time.
+    ///
+    /// # Arguments
+    ///
+    /// * `year` - The year to mark as active
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be updated or the bid year does not exist.
+    pub fn set_active_bid_year(&mut self, year: u16) -> Result<(), PersistenceError> {
+        sqlite::set_active_bid_year(&self.conn, year)
+    }
+
+    /// Gets the currently active bid year, if any.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn get_active_bid_year(&self) -> Result<Option<u16>, PersistenceError> {
+        sqlite::get_active_bid_year(&self.conn)
+    }
+
+    /// Sets the expected area count for a bid year.
+    ///
+    /// # Arguments
+    ///
+    /// * `year` - The bid year
+    /// * `expected_count` - The expected number of areas
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be updated or the bid year does not exist.
+    pub fn set_expected_area_count(
+        &mut self,
+        year: u16,
+        expected_count: u32,
+    ) -> Result<(), PersistenceError> {
+        sqlite::set_expected_area_count(&self.conn, year, expected_count)
+    }
+
+    /// Gets the expected area count for a bid year.
+    ///
+    /// # Arguments
+    ///
+    /// * `year` - The bid year
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn get_expected_area_count(&self, year: u16) -> Result<Option<u32>, PersistenceError> {
+        sqlite::get_expected_area_count(&self.conn, year)
+    }
+
+    /// Sets the expected user count for an area.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year` - The bid year
+    /// * `area` - The area
+    /// * `expected_count` - The expected number of users
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be updated or the area does not exist.
+    pub fn set_expected_user_count(
+        &mut self,
+        bid_year: &BidYear,
+        area: &Area,
+        expected_count: u32,
+    ) -> Result<(), PersistenceError> {
+        sqlite::set_expected_user_count(&self.conn, bid_year, area, expected_count)
+    }
+
+    /// Gets the expected user count for an area.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year` - The bid year
+    /// * `area` - The area
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn get_expected_user_count(
+        &self,
+        bid_year: &BidYear,
+        area: &Area,
+    ) -> Result<Option<u32>, PersistenceError> {
+        sqlite::get_expected_user_count(&self.conn, bid_year, area)
+    }
+
+    /// Gets the actual area count for a bid year.
+    ///
+    /// # Arguments
+    ///
+    /// * `year` - The bid year
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn get_actual_area_count(&self, year: u16) -> Result<usize, PersistenceError> {
+        sqlite::get_actual_area_count(&self.conn, year)
+    }
+
+    /// Gets the actual user count for an area.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year` - The bid year
+    /// * `area` - The area
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn get_actual_user_count(
+        &self,
+        bid_year: &BidYear,
+        area: &Area,
+    ) -> Result<usize, PersistenceError> {
+        sqlite::get_actual_user_count(&self.conn, bid_year, area)
+    }
+
+    /// Updates an existing user's information.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year` - The bid year
+    /// * `initials` - The user's initials (identifier)
+    /// * `name` - The user's name
+    /// * `area` - The user's area
+    /// * `user_type` - The user's type classification
+    /// * `crew` - The user's crew (optional)
+    /// * `cumulative_natca_bu_date` - Cumulative NATCA bargaining unit date
+    /// * `natca_bu_date` - NATCA bargaining unit date
+    /// * `eod_faa_date` - Entry on Duty / FAA date
+    /// * `service_computation_date` - Service Computation Date
+    /// * `lottery_value` - Optional lottery value
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be updated or the user does not exist.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_user(
+        &mut self,
+        bid_year: &BidYear,
+        initials: &zab_bid_domain::Initials,
+        name: &str,
+        area: &Area,
+        user_type: &str,
+        crew: Option<u8>,
+        cumulative_natca_bu_date: &str,
+        natca_bu_date: &str,
+        eod_faa_date: &str,
+        service_computation_date: &str,
+        lottery_value: Option<u32>,
+    ) -> Result<(), PersistenceError> {
+        let crew_i32: Option<i32> = crew.map(i32::from);
+        let lottery_i32: Option<i32> = lottery_value.and_then(|v| i32::try_from(v).ok());
+
+        let rows_affected: usize = self.conn.execute(
+            "UPDATE users SET
+                name = ?1,
+                area_id = ?2,
+                user_type = ?3,
+                crew = ?4,
+                cumulative_natca_bu_date = ?5,
+                natca_bu_date = ?6,
+                eod_faa_date = ?7,
+                service_computation_date = ?8,
+                lottery_value = ?9
+             WHERE bid_year = ?10 AND initials = ?11",
+            rusqlite::params![
+                name,
+                area.id(),
+                user_type,
+                crew_i32,
+                cumulative_natca_bu_date,
+                natca_bu_date,
+                eod_faa_date,
+                service_computation_date,
+                lottery_i32,
+                bid_year.year(),
+                initials.value(),
+            ],
+        )?;
+
+        if rows_affected == 0 {
+            return Err(PersistenceError::NotFound(format!(
+                "User with initials '{}' not found in bid year {}",
+                initials.value(),
+                bid_year.year()
+            )));
+        }
+
+        Ok(())
+    }
 }

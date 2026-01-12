@@ -266,3 +266,239 @@ pub fn list_users(
 
     Ok(users)
 }
+
+/// Sets a bid year as active, ensuring only one bid year is active at a time.
+///
+/// This method atomically updates the active status:
+/// 1. Clears the active flag from all bid years
+/// 2. Sets the active flag on the specified bid year
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `year` - The year to mark as active
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The database cannot be updated
+/// - The bid year does not exist
+pub fn set_active_bid_year(conn: &Connection, year: u16) -> Result<(), PersistenceError> {
+    // First, clear all active flags
+    conn.execute("UPDATE bid_years SET is_active = 0", [])?;
+
+    // Then set the specified year as active
+    let rows_affected: usize = conn.execute(
+        "UPDATE bid_years SET is_active = 1 WHERE year = ?1",
+        params![year],
+    )?;
+
+    if rows_affected == 0 {
+        return Err(PersistenceError::NotFound(format!(
+            "Bid year {year} not found"
+        )));
+    }
+
+    Ok(())
+}
+
+/// Gets the currently active bid year, if any.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried.
+pub fn get_active_bid_year(conn: &Connection) -> Result<Option<u16>, PersistenceError> {
+    let result = conn.query_row(
+        "SELECT year FROM bid_years WHERE is_active = 1",
+        [],
+        |row| {
+            let year_value: i32 = row.get(0)?;
+            Ok(u16::try_from(year_value).expect("bid_year value out of u16 range"))
+        },
+    );
+
+    match result {
+        Ok(year) => Ok(Some(year)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Sets the expected area count for a bid year.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `year` - The bid year
+/// * `expected_count` - The expected number of areas
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The database cannot be updated
+/// - The bid year does not exist
+pub fn set_expected_area_count(
+    conn: &Connection,
+    year: u16,
+    expected_count: u32,
+) -> Result<(), PersistenceError> {
+    let rows_affected: usize = conn.execute(
+        "UPDATE bid_years SET expected_area_count = ?1 WHERE year = ?2",
+        params![expected_count, year],
+    )?;
+
+    if rows_affected == 0 {
+        return Err(PersistenceError::NotFound(format!(
+            "Bid year {year} not found"
+        )));
+    }
+
+    Ok(())
+}
+
+/// Sets the expected user count for an area.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year` - The bid year
+/// * `area` - The area
+/// * `expected_count` - The expected number of users
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The database cannot be updated
+/// - The area does not exist
+pub fn set_expected_user_count(
+    conn: &Connection,
+    bid_year: &BidYear,
+    area: &Area,
+    expected_count: u32,
+) -> Result<(), PersistenceError> {
+    let rows_affected: usize = conn.execute(
+        "UPDATE areas SET expected_user_count = ?1 WHERE bid_year = ?2 AND area_id = ?3",
+        params![expected_count, bid_year.year(), area.id()],
+    )?;
+
+    if rows_affected == 0 {
+        return Err(PersistenceError::NotFound(format!(
+            "Area '{}' in bid year {} not found",
+            area.id(),
+            bid_year.year()
+        )));
+    }
+
+    Ok(())
+}
+
+/// Gets the expected area count for a bid year.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `year` - The bid year
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried.
+pub fn get_expected_area_count(
+    conn: &Connection,
+    year: u16,
+) -> Result<Option<u32>, PersistenceError> {
+    let result = conn.query_row(
+        "SELECT expected_area_count FROM bid_years WHERE year = ?1",
+        params![year],
+        |row| {
+            let count: Option<i32> = row.get(0)?;
+            Ok(count.and_then(|c| u32::try_from(c).ok()))
+        },
+    );
+
+    match result {
+        Ok(count) => Ok(count),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Gets the expected user count for an area.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year` - The bid year
+/// * `area` - The area
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried.
+pub fn get_expected_user_count(
+    conn: &Connection,
+    bid_year: &BidYear,
+    area: &Area,
+) -> Result<Option<u32>, PersistenceError> {
+    let result = conn.query_row(
+        "SELECT expected_user_count FROM areas WHERE bid_year = ?1 AND area_id = ?2",
+        params![bid_year.year(), area.id()],
+        |row| {
+            let count: Option<i32> = row.get(0)?;
+            Ok(count.and_then(|c| u32::try_from(c).ok()))
+        },
+    );
+
+    match result {
+        Ok(count) => Ok(count),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Gets the actual area count for a bid year.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `year` - The bid year
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried.
+pub fn get_actual_area_count(conn: &Connection, year: u16) -> Result<usize, PersistenceError> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM areas WHERE bid_year = ?1",
+        params![year],
+        |row| row.get(0),
+    )?;
+
+    Ok(usize::try_from(count).expect("count out of usize range"))
+}
+
+/// Gets the actual user count for an area.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year` - The bid year
+/// * `area` - The area
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried.
+pub fn get_actual_user_count(
+    conn: &Connection,
+    bid_year: &BidYear,
+    area: &Area,
+) -> Result<usize, PersistenceError> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM users WHERE bid_year = ?1 AND area_id = ?2",
+        params![bid_year.year(), area.id()],
+        |row| row.get(0),
+    )?;
+
+    Ok(usize::try_from(count).expect("count out of usize range"))
+}
