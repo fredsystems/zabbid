@@ -1,0 +1,268 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * State styles for loading, error, disabled, and connection states.
+ * Handles all visual feedback for system and UI states.
+ */
+
+@use "variables" as *;
+
+// ============================================================================
+// Loading States
+// ============================================================================
+
+.loading {
+  text-align: center;
+  padding: $spacing-2xl;
+  font-size: $font-size-lg;
+  color: $color-text-muted;
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  border: 3px solid $color-border;
+  border-top-color: $color-accent-primary;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// ============================================================================
+// Error States
+// ============================================================================
+
+.error {
+  background-color: rgba($color-error, 0.15);
+  border: 1px solid $color-error;
+  border-radius: $radius-md;
+  padding: $spacing-lg;
+  margin: $spacing-md 0;
+
+  h2 {
+    margin-top: 0;
+    color: $color-error;
+    font-size: $font-size-xl;
+  }
+
+  p {
+    margin-bottom: $spacing-md;
+    color: $color-text-primary;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+}
+
+// ============================================================================
+// Message Boxes
+// ============================================================================
+
+.info-message {
+  background-color: rgba($color-info, 0.15);
+  border: 1px solid $color-info;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  margin: $spacing-md 0;
+  color: $color-text-primary;
+}
+
+.warning-message {
+  background-color: rgba($color-warning, 0.15);
+  border: 1px solid $color-warning;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  margin: $spacing-md 0;
+  color: $color-text-primary;
+}
+
+.success-message,
+.active-bid-year-notice {
+  background-color: rgba($color-success, 0.15);
+  border: 1px solid $color-success;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  margin: $spacing-md 0;
+  color: $color-text-primary;
+}
+
+// ============================================================================
+// Status Items
+// ============================================================================
+
+.status-badges {
+  margin-top: $spacing-md;
+}
+
+.status-item {
+  padding: $spacing-md;
+  border-radius: $radius-sm;
+  margin-bottom: $spacing-md;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  &.success {
+    background-color: rgba($color-success, 0.15);
+    border: 1px solid $color-success;
+  }
+
+  &.warning {
+    background-color: rgba($color-warning, 0.15);
+    border: 1px solid $color-warning;
+  }
+
+  &.error {
+    background-color: rgba($color-error, 0.15);
+    border: 1px solid $color-error;
+  }
+
+  &.info {
+    background-color: rgba($color-info, 0.15);
+    border: 1px solid $color-info;
+  }
+
+  p {
+    margin: $spacing-sm 0 0 0;
+    color: $color-text-primary;
+  }
+}
+
+// ============================================================================
+// Disabled States
+// ============================================================================
+
+.disabled,
+[disabled],
+.state-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+  background-color: $color-disabled-bg;
+  color: $color-disabled-text;
+}
+
+// ============================================================================
+// Connection Status (Phase 15)
+// ============================================================================
+
+.connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-xs;
+  padding: $spacing-xs $spacing-sm;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  font-weight: 600;
+
+  &.connected {
+    color: $color-success;
+    background-color: rgba($color-success, 0.1);
+  }
+
+  &.connecting {
+    color: $color-warning;
+    background-color: rgba($color-warning, 0.1);
+  }
+
+  &.disconnected {
+    color: $color-error;
+    background-color: rgba($color-error, 0.1);
+  }
+}
+
+.connection-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: currentColor;
+
+  &.pulse {
+    animation: pulse 2s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.connection-text {
+  font-weight: 500;
+}
+
+.connection-description {
+  font-size: $font-size-xs;
+  color: $color-text-muted;
+  margin-top: $spacing-xs;
+}
+
+// ============================================================================
+// Unavailable / Offline States
+// ============================================================================
+
+.unavailable,
+.state-unavailable {
+  background-color: rgba($color-error, 0.2);
+  border: 2px dashed $color-error;
+  border-radius: $radius-md;
+  padding: $spacing-lg;
+  text-align: center;
+  color: $color-text-primary;
+
+  .unavailable-title {
+    font-size: $font-size-xl;
+    font-weight: 700;
+    color: $color-error;
+    margin-bottom: $spacing-sm;
+  }
+
+  .unavailable-message {
+    font-size: $font-size-base;
+    color: $color-text-secondary;
+  }
+}
+
+// ============================================================================
+// Empty States
+// ============================================================================
+
+.empty-state {
+  text-align: center;
+  padding: $spacing-2xl;
+  color: $color-text-muted;
+
+  .empty-icon {
+    font-size: $font-size-3xl;
+    margin-bottom: $spacing-md;
+    opacity: 0.5;
+  }
+
+  .empty-title {
+    font-size: $font-size-xl;
+    font-weight: 600;
+    margin-bottom: $spacing-sm;
+    color: $color-text-secondary;
+  }
+
+  .empty-message {
+    font-size: $font-size-base;
+    color: $color-text-muted;
+  }
+}

@@ -29,7 +29,7 @@ import { UserDetailView } from "./components/UserDetailView";
 import { UserListView } from "./components/UserListView";
 import type { LiveEvent } from "./types";
 import { useLiveEvents } from "./useLiveEvents";
-import "./App.css";
+import "./styles/main.scss";
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -174,7 +174,7 @@ function AppRoutes() {
   if (checkingAuth) {
     return (
       <div className="app">
-        <div style={{ padding: "2rem", textAlign: "center" }}>
+        <div className="centered-loading">
           <p>Loading...</p>
         </div>
       </div>
@@ -204,16 +204,7 @@ function AppRoutes() {
 function PublicLandingPage() {
   return (
     <div className="app">
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "100vh",
-          textAlign: "center",
-        }}
-      >
+      <div className="landing-container">
         <h1>Welcome to ZAB Bidding</h1>
       </div>
     </div>
@@ -292,46 +283,16 @@ function BootstrapLoginPage({ onBootstrapLogin }: BootstrapLoginPageProps) {
 
   return (
     <div className="app">
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "100vh",
-        }}
-      >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "400px",
-            padding: "2rem",
-            border: "1px solid #ccc",
-            borderRadius: "8px",
-            backgroundColor: "#fff",
-          }}
-        >
-          <h2 style={{ marginBottom: "1.5rem", textAlign: "center" }}>
-            Bootstrap Login
-          </h2>
-          <p
-            style={{
-              marginBottom: "1.5rem",
-              color: "#666",
-              fontSize: "0.9rem",
-            }}
-          >
+      <div className="auth-container">
+        <div className="auth-card">
+          <h2 className="auth-title">Bootstrap Login</h2>
+          <p className="auth-description">
             The system has no operators. Use the bootstrap credentials to create
             the first admin.
           </p>
-          <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: "1rem" }}>
-              <label
-                htmlFor="bootstrap-username"
-                style={{ display: "block", marginBottom: "0.5rem" }}
-              >
-                Username
-              </label>
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label htmlFor="bootstrap-username">Username</label>
               <input
                 id="bootstrap-username"
                 type="text"
@@ -339,22 +300,10 @@ function BootstrapLoginPage({ onBootstrapLogin }: BootstrapLoginPageProps) {
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="admin"
                 required
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  fontSize: "1rem",
-                  border: "1px solid #ccc",
-                  borderRadius: "4px",
-                }}
               />
             </div>
-            <div style={{ marginBottom: "1.5rem" }}>
-              <label
-                htmlFor="bootstrap-password"
-                style={{ display: "block", marginBottom: "0.5rem" }}
-              >
-                Password
-              </label>
+            <div className="form-group">
+              <label htmlFor="bootstrap-password">Password</label>
               <input
                 id="bootstrap-password"
                 type="password"
@@ -362,44 +311,10 @@ function BootstrapLoginPage({ onBootstrapLogin }: BootstrapLoginPageProps) {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="admin"
                 required
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  fontSize: "1rem",
-                  border: "1px solid #ccc",
-                  borderRadius: "4px",
-                }}
               />
             </div>
-            {error && (
-              <div
-                style={{
-                  marginBottom: "1rem",
-                  padding: "0.75rem",
-                  backgroundColor: "#fee",
-                  color: "#c00",
-                  borderRadius: "4px",
-                  fontSize: "0.9rem",
-                }}
-              >
-                {error}
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                fontSize: "1rem",
-                backgroundColor: "#007bff",
-                color: "#fff",
-                border: "none",
-                borderRadius: "4px",
-                cursor: loading ? "not-allowed" : "pointer",
-                opacity: loading ? 0.6 : 1,
-              }}
-            >
+            {error && <div className="auth-error">{error}</div>}
+            <button type="submit" disabled={loading}>
               {loading ? "Logging in..." : "Bootstrap Login"}
             </button>
           </form>
@@ -456,156 +371,56 @@ function CreateFirstAdminPage({ onComplete }: CreateFirstAdminPageProps) {
 
   return (
     <div className="app">
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "100vh",
-        }}
-      >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "500px",
-            padding: "2rem",
-            border: "1px solid #ccc",
-            borderRadius: "8px",
-            backgroundColor: "#fff",
-          }}
-        >
-          <h2 style={{ marginBottom: "1.5rem", textAlign: "center" }}>
-            Create Initial Admin
-          </h2>
-          <p
-            style={{
-              marginBottom: "1.5rem",
-              color: "#666",
-              fontSize: "0.9rem",
-            }}
-          >
+      <div className="auth-container">
+        <div className="auth-card auth-card-wide">
+          <h2 className="auth-title">Create Initial Admin</h2>
+          <p className="auth-description">
             Create the first admin operator. After creation, you will be logged
             out and must log in with these credentials.
           </p>
-          <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: "1rem" }}>
-              <label
-                htmlFor="first-admin-login"
-                style={{ display: "block", marginBottom: "0.5rem" }}
-              >
-                Login Name
-              </label>
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label htmlFor="first-admin-login">Login Name</label>
               <input
                 id="first-admin-login"
                 type="text"
                 value={loginName}
                 onChange={(e) => setLoginName(e.target.value)}
                 required
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  fontSize: "1rem",
-                  border: "1px solid #ccc",
-                  borderRadius: "4px",
-                }}
               />
             </div>
-            <div style={{ marginBottom: "1rem" }}>
-              <label
-                htmlFor="first-admin-display"
-                style={{ display: "block", marginBottom: "0.5rem" }}
-              >
-                Display Name
-              </label>
+            <div className="form-group">
+              <label htmlFor="first-admin-display">Display Name</label>
               <input
                 id="first-admin-display"
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 required
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  fontSize: "1rem",
-                  border: "1px solid #ccc",
-                  borderRadius: "4px",
-                }}
               />
             </div>
-            <div style={{ marginBottom: "1rem" }}>
-              <label
-                htmlFor="first-admin-password"
-                style={{ display: "block", marginBottom: "0.5rem" }}
-              >
-                Password
-              </label>
+            <div className="form-group">
+              <label htmlFor="first-admin-password">Password</label>
               <input
                 id="first-admin-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  fontSize: "1rem",
-                  border: "1px solid #ccc",
-                  borderRadius: "4px",
-                }}
               />
             </div>
-            <div style={{ marginBottom: "1.5rem" }}>
-              <label
-                htmlFor="first-admin-confirm"
-                style={{ display: "block", marginBottom: "0.5rem" }}
-              >
-                Confirm Password
-              </label>
+            <div className="form-group">
+              <label htmlFor="first-admin-confirm">Confirm Password</label>
               <input
                 id="first-admin-confirm"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  fontSize: "1rem",
-                  border: "1px solid #ccc",
-                  borderRadius: "4px",
-                }}
               />
             </div>
-            {error && (
-              <div
-                style={{
-                  marginBottom: "1rem",
-                  padding: "0.75rem",
-                  backgroundColor: "#fee",
-                  color: "#c00",
-                  borderRadius: "4px",
-                  fontSize: "0.9rem",
-                }}
-              >
-                {error}
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                fontSize: "1rem",
-                backgroundColor: "#28a745",
-                color: "#fff",
-                border: "none",
-                borderRadius: "4px",
-                cursor: loading ? "not-allowed" : "pointer",
-                opacity: loading ? 0.6 : 1,
-              }}
-            >
+            {error && <div className="auth-error">{error}</div>}
+            <button type="submit" disabled={loading} className="button-success">
               {loading ? "Creating..." : "Create Admin"}
             </button>
           </form>
@@ -658,102 +473,32 @@ function LoginPage({ onLogin }: LoginPageProps) {
 
   return (
     <div className="app">
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "100vh",
-        }}
-      >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "400px",
-            padding: "2rem",
-            border: "1px solid #ccc",
-            borderRadius: "8px",
-            backgroundColor: "#fff",
-          }}
-        >
-          <h2 style={{ marginBottom: "1.5rem", textAlign: "center" }}>
-            Operator Login
-          </h2>
-          <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: "1rem" }}>
-              <label
-                htmlFor="login-name"
-                style={{ display: "block", marginBottom: "0.5rem" }}
-              >
-                Login Name
-              </label>
+      <div className="auth-container">
+        <div className="auth-card">
+          <h2 className="auth-title">Operator Login</h2>
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label htmlFor="login-name">Login Name</label>
               <input
                 id="login-name"
                 type="text"
                 value={loginName}
                 onChange={(e) => setLoginName(e.target.value)}
                 required
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  fontSize: "1rem",
-                  border: "1px solid #ccc",
-                  borderRadius: "4px",
-                }}
               />
             </div>
-            <div style={{ marginBottom: "1.5rem" }}>
-              <label
-                htmlFor="login-password"
-                style={{ display: "block", marginBottom: "0.5rem" }}
-              >
-                Password
-              </label>
+            <div className="form-group">
+              <label htmlFor="login-password">Password</label>
               <input
                 id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                style={{
-                  width: "100%",
-                  padding: "0.5rem",
-                  fontSize: "1rem",
-                  border: "1px solid #ccc",
-                  borderRadius: "4px",
-                }}
               />
             </div>
-            {error && (
-              <div
-                style={{
-                  marginBottom: "1rem",
-                  padding: "0.75rem",
-                  backgroundColor: "#fee",
-                  color: "#c00",
-                  borderRadius: "4px",
-                  fontSize: "0.9rem",
-                }}
-              >
-                {error}
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                fontSize: "1rem",
-                backgroundColor: "#007bff",
-                color: "#fff",
-                border: "none",
-                borderRadius: "4px",
-                cursor: loading ? "not-allowed" : "pointer",
-                opacity: loading ? 0.6 : 1,
-              }}
-            >
+            {error && <div className="auth-error">{error}</div>}
+            <button type="submit" disabled={loading}>
               {loading ? "Logging in..." : "Login"}
             </button>
           </form>
@@ -790,30 +535,21 @@ function AuthenticatedAdminApp({
   return (
     <div className="app">
       <header className="app-header">
-        <div style={{ display: "flex", alignItems: "center", gap: "2rem" }}>
+        <div>
           <h1>Zabbid Operator UI</h1>
           <ConnectionStatus state={connectionState} />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <div style={{ fontSize: "0.9rem", color: "#666" }}>
-            <div>
-              <strong>{authState.displayName}</strong>
-            </div>
-            <div style={{ fontSize: "0.8rem" }}>
+        <div className="operator-info">
+          <div className="operator-details">
+            <div className="operator-name">{authState.displayName}</div>
+            <div className="operator-meta">
               {authState.loginName} ({authState.role})
             </div>
           </div>
           <button
             type="button"
             onClick={handleLogoutClick}
-            style={{
-              padding: "0.5rem 1rem",
-              backgroundColor: "#dc3545",
-              color: "#fff",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-            }}
+            className="button-error"
           >
             Logout
           </button>

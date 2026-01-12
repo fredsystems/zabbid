@@ -1,0 +1,196 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Form styles for inputs, buttons, and interactive elements.
+ * Handles all form-related UI components.
+ */
+
+@use "variables" as *;
+
+// ============================================================================
+// Buttons
+// ============================================================================
+
+button {
+  background-color: $color-accent-primary;
+  color: $color-text-primary;
+  border: none;
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius-sm;
+  cursor: pointer;
+  font-size: $font-size-base;
+  font-family: $font-family-base;
+  transition: background-color $transition-base;
+  font-weight: 500;
+
+  &:hover:not(:disabled) {
+    background-color: $mocha-sapphire;
+  }
+
+  &:active:not(:disabled) {
+    background-color: $mocha-sky;
+  }
+
+  &:disabled {
+    background-color: $color-disabled-bg;
+    color: $color-disabled-text;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+// Button variants
+.button-success {
+  background-color: $color-success;
+
+  &:hover:not(:disabled) {
+    background-color: $mocha-teal;
+  }
+}
+
+.button-error,
+.button-danger {
+  background-color: $color-error;
+
+  &:hover:not(:disabled) {
+    background-color: $mocha-maroon;
+  }
+}
+
+.button-warning {
+  background-color: $color-warning;
+  color: $color-bg-base;
+
+  &:hover:not(:disabled) {
+    background-color: $mocha-peach;
+  }
+}
+
+.button-secondary {
+  background-color: $color-bg-surface-elevated;
+  color: $color-text-primary;
+
+  &:hover:not(:disabled) {
+    background-color: $color-bg-surface-overlay;
+  }
+}
+
+// ============================================================================
+// Inputs
+// ============================================================================
+
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="date"],
+input[type="tel"],
+textarea,
+select {
+  width: 100%;
+  padding: $spacing-sm;
+  font-size: $font-size-base;
+  font-family: $font-family-base;
+  color: $color-text-primary;
+  background-color: $color-bg-surface;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  transition:
+    border-color $transition-base,
+    box-shadow $transition-base;
+
+  &:focus {
+    outline: none;
+    border-color: $color-accent-primary;
+    box-shadow: 0 0 0 2px rgba($color-accent-primary, 0.2);
+  }
+
+  &:disabled {
+    background-color: $color-disabled-bg;
+    color: $color-disabled-text;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  &::placeholder {
+    color: $color-text-overlay;
+  }
+}
+
+textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+// ============================================================================
+// Labels
+// ============================================================================
+
+label {
+  display: block;
+  margin-bottom: $spacing-xs;
+  font-weight: 600;
+  color: $color-text-secondary;
+  font-size: $font-size-base;
+}
+
+// ============================================================================
+// Form Groups
+// ============================================================================
+
+.form-group {
+  margin-bottom: $spacing-md;
+}
+
+.form-row {
+  display: flex;
+  gap: $spacing-md;
+  margin-bottom: $spacing-md;
+}
+
+// ============================================================================
+// Badges
+// ============================================================================
+
+.badge {
+  display: inline-block;
+  padding: $spacing-xs $spacing-sm;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  text-transform: uppercase;
+  line-height: 1;
+
+  &.active {
+    background-color: $color-success;
+    color: $color-bg-base;
+  }
+
+  &.inactive {
+    background-color: $color-bg-surface-overlay;
+    color: $color-text-muted;
+  }
+
+  &.success {
+    background-color: $color-success;
+    color: $color-bg-base;
+  }
+
+  &.warning {
+    background-color: $color-warning;
+    color: $color-bg-base;
+  }
+
+  &.error {
+    background-color: $color-error;
+    color: $color-text-primary;
+  }
+
+  &.info {
+    background-color: $color-info;
+    color: $color-text-primary;
+  }
+}

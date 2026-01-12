@@ -1,0 +1,129 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Table styles for data display.
+ * Handles all tabular data presentation.
+ */
+
+@use "variables" as *;
+
+// ============================================================================
+// Tables
+// ============================================================================
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: $color-bg-surface;
+  box-shadow: $shadow-sm;
+  margin: $spacing-md 0;
+  border-radius: $radius-sm;
+  overflow: hidden;
+}
+
+thead {
+  background-color: $color-bg-surface-elevated;
+  color: $color-text-primary;
+}
+
+th {
+  text-align: left;
+  padding: $spacing-sm $spacing-md;
+  font-weight: 600;
+  font-size: $font-size-sm;
+  text-transform: uppercase;
+  color: $color-text-secondary;
+  border-bottom: 2px solid $color-border;
+}
+
+td {
+  padding: $spacing-sm $spacing-md;
+  border-bottom: 1px solid $color-border-subtle;
+  color: $color-text-primary;
+}
+
+tbody tr {
+  transition: background-color $transition-fast;
+
+  &:hover {
+    background-color: $color-bg-surface-elevated;
+  }
+
+  &:last-child td {
+    border-bottom: none;
+  }
+}
+
+// ============================================================================
+// Row States
+// ============================================================================
+
+tbody tr.active-row {
+  background-color: rgba($color-success, 0.15);
+}
+
+tbody tr.user-overdrawn {
+  background-color: rgba($color-error, 0.15);
+}
+
+tbody tr.user-exhausted {
+  background-color: rgba($color-warning, 0.15);
+}
+
+tbody tr.negative-row {
+  background-color: rgba($color-error, 0.1);
+}
+
+// ============================================================================
+// Cell States
+// ============================================================================
+
+td.negative-balance {
+  color: $color-error;
+  font-weight: 600;
+}
+
+td.positive-balance {
+  color: $color-success;
+  font-weight: 600;
+}
+
+// ============================================================================
+// Links in Tables
+// ============================================================================
+
+td a {
+  color: $color-accent-primary;
+  text-decoration: none;
+  transition: color $transition-fast;
+
+  &:hover {
+    color: $mocha-sapphire;
+    text-decoration: underline;
+  }
+
+  &:visited {
+    color: $color-accent-secondary;
+  }
+}
+
+// ============================================================================
+// Breakdown Table (User Detail)
+// ============================================================================
+
+.breakdown-table {
+  margin-top: $spacing-md;
+
+  thead {
+    background-color: $color-bg-surface-elevated;
+  }
+
+  tbody tr:last-child {
+    font-weight: 600;
+    background-color: $color-bg-surface-elevated;
+    border-top: 2px solid $color-border;
+  }
+}

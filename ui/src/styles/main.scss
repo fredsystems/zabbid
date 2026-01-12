@@ -1,0 +1,22 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Main SCSS entry point.
+ * Imports all partial files in the correct order.
+ *
+ * Import order matters:
+ * 1. Variables (used by everything)
+ * 2. Layout (structure)
+ * 3. Forms (interactive elements)
+ * 4. Tables (data display)
+ * 5. States (loading, error, disabled, etc.)
+ */
+
+@use "variables";
+@use "layout";
+@use "forms";
+@use "tables";
+@use "states";
