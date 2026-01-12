@@ -257,6 +257,9 @@ fn persist_state_snapshot_tx(
 /// This is an idempotent operation that replaces all users for the given
 /// `(bid_year, area)` with the users in the provided state.
 ///
+/// Users with existing `user_id` values are updated in place.
+/// Users without `user_id` are inserted as new rows.
+///
 /// # Arguments
 ///
 /// * `tx` - The active database transaction
@@ -274,26 +277,52 @@ fn sync_canonical_users_tx(tx: &Transaction<'_>, state: &State) -> Result<(), Pe
 
     // Insert all users from the new state
     for user in &state.users {
-        tx.execute(
-            "INSERT INTO users (
-                bid_year, area_id, initials, name, user_type, crew,
-                cumulative_natca_bu_date, natca_bu_date,
-                eod_faa_date, service_computation_date, lottery_value
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-            params![
-                user.bid_year.year(),
-                user.area.id(),
-                user.initials.value(),
-                user.name,
-                user.user_type.as_str(),
-                user.crew.as_ref().map(Crew::number),
-                user.seniority_data.cumulative_natca_bu_date,
-                user.seniority_data.natca_bu_date,
-                user.seniority_data.eod_faa_date,
-                user.seniority_data.service_computation_date,
-                user.seniority_data.lottery_value,
-            ],
-        )?;
+        if let Some(user_id) = user.user_id {
+            // User has an existing user_id, insert with explicit ID
+            tx.execute(
+                "INSERT INTO users (
+                    user_id, bid_year, area_id, initials, name, user_type, crew,
+                    cumulative_natca_bu_date, natca_bu_date,
+                    eod_faa_date, service_computation_date, lottery_value
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                params![
+                    user_id,
+                    user.bid_year.year(),
+                    user.area.id(),
+                    user.initials.value(),
+                    user.name,
+                    user.user_type.as_str(),
+                    user.crew.as_ref().map(Crew::number),
+                    user.seniority_data.cumulative_natca_bu_date,
+                    user.seniority_data.natca_bu_date,
+                    user.seniority_data.eod_faa_date,
+                    user.seniority_data.service_computation_date,
+                    user.seniority_data.lottery_value,
+                ],
+            )?;
+        } else {
+            // User has no user_id, insert and let SQLite assign one
+            tx.execute(
+                "INSERT INTO users (
+                    bid_year, area_id, initials, name, user_type, crew,
+                    cumulative_natca_bu_date, natca_bu_date,
+                    eod_faa_date, service_computation_date, lottery_value
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    user.bid_year.year(),
+                    user.area.id(),
+                    user.initials.value(),
+                    user.name,
+                    user.user_type.as_str(),
+                    user.crew.as_ref().map(Crew::number),
+                    user.seniority_data.cumulative_natca_bu_date,
+                    user.seniority_data.natca_bu_date,
+                    user.seniority_data.eod_faa_date,
+                    user.seniority_data.service_computation_date,
+                    user.seniority_data.lottery_value,
+                ],
+            )?;
+        }
     }
 
     Ok(())
