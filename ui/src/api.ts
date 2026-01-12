@@ -145,3 +145,103 @@ export async function getLeaveAvailability(
 export async function getBootstrapStatus(): Promise<BootstrapStatusResponse> {
   return fetchJson<BootstrapStatusResponse>(`${API_BASE}/bootstrap/status`);
 }
+
+/**
+ * Check if the system is in bootstrap mode (no operators exist).
+ */
+export async function checkBootstrapAuthStatus(): Promise<{
+  is_bootstrap_mode: boolean;
+}> {
+  return fetchJson(`${API_BASE}/auth/bootstrap/status`);
+}
+
+/**
+ * Perform bootstrap login with admin/admin credentials.
+ */
+export async function bootstrapLogin(
+  username: string,
+  password: string,
+): Promise<{ bootstrap_token: string; is_bootstrap: boolean }> {
+  return fetchJson(`${API_BASE}/auth/bootstrap/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+/**
+ * Create the first admin operator during bootstrap.
+ */
+export async function createFirstAdmin(
+  loginName: string,
+  displayName: string,
+  password: string,
+): Promise<{
+  operator_id: number;
+  login_name: string;
+  display_name: string;
+  message: string;
+}> {
+  return fetchJson(`${API_BASE}/auth/bootstrap/create-first-admin`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      login_name: loginName,
+      display_name: displayName,
+      password,
+    }),
+  });
+}
+
+/**
+ * Login with operator credentials.
+ */
+export async function login(
+  loginName: string,
+  password: string,
+): Promise<{
+  session_token: string;
+  login_name: string;
+  display_name: string;
+  role: string;
+  expires_at: string;
+}> {
+  return fetchJson(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      login_name: loginName,
+      password,
+    }),
+  });
+}
+
+/**
+ * Logout and delete the current session.
+ */
+export async function logout(sessionToken: string): Promise<void> {
+  await fetchJson(`${API_BASE}/auth/logout`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({ session_token: sessionToken }),
+  });
+}
+
+/**
+ * Get current operator information.
+ */
+export async function whoami(sessionToken: string): Promise<{
+  login_name: string;
+  display_name: string;
+  role: string;
+  is_disabled: boolean;
+}> {
+  return fetchJson(`${API_BASE}/auth/me`, {
+    headers: {
+      Authorization: `Bearer ${sessionToken}`,
+    },
+  });
+}

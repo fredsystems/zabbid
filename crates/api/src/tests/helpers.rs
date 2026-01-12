@@ -34,6 +34,7 @@ pub fn create_test_admin_operator() -> OperatorData {
         operator_id: 1,
         login_name: String::from("ADMIN-123"),
         display_name: String::from("Test Admin"),
+        password_hash: String::from("$2b$12$test_hash"),
         role: String::from("Admin"),
         is_disabled: false,
         created_at: String::from("2026-01-01T00:00:00Z"),
@@ -48,6 +49,7 @@ pub fn create_test_bidder_operator() -> OperatorData {
         operator_id: 2,
         login_name: String::from("BIDDER-456"),
         display_name: String::from("Test Bidder"),
+        password_hash: String::from("$2b$12$test_hash"),
         role: String::from("Bidder"),
         is_disabled: false,
         created_at: String::from("2026-01-01T00:00:00Z"),
@@ -150,7 +152,7 @@ pub struct TestSession {
 pub fn create_persisted_admin_operator(
     persistence: &mut SqlitePersistence,
 ) -> Result<i64, zab_bid_persistence::PersistenceError> {
-    persistence.create_operator("test-admin", "Test Admin", "Admin")
+    persistence.create_operator("test-admin", "Test Admin", "password", "Admin")
 }
 
 /// Creates and persists a test bidder operator, returning the operator ID.
@@ -162,7 +164,7 @@ pub fn create_persisted_admin_operator(
 pub fn create_persisted_bidder_operator(
     persistence: &mut SqlitePersistence,
 ) -> Result<i64, zab_bid_persistence::PersistenceError> {
-    persistence.create_operator("test-bidder", "Test Bidder", "Bidder")
+    persistence.create_operator("test-bidder", "Test Bidder", "password", "Bidder")
 }
 
 /// Creates a test session for an admin operator.
@@ -227,7 +229,8 @@ pub fn create_custom_session(
     display_name: &str,
     role: &str,
 ) -> Result<TestSession, zab_bid_persistence::PersistenceError> {
-    let operator_id: i64 = persistence.create_operator(login_name, display_name, role)?;
+    let operator_id: i64 =
+        persistence.create_operator(login_name, display_name, "password", role)?;
 
     let session_token: String = format!("session-{operator_id}");
     let expires_at: String = String::from("2026-12-31T23:59:59Z");

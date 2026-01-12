@@ -30,6 +30,7 @@ pub fn initialize_schema(conn: &Connection) -> Result<(), PersistenceError> {
             operator_id INTEGER PRIMARY KEY AUTOINCREMENT,
             login_name TEXT NOT NULL UNIQUE COLLATE NOCASE,
             display_name TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
             role TEXT NOT NULL CHECK(role IN ('Admin', 'Bidder')),
             is_disabled INTEGER NOT NULL DEFAULT 0 CHECK(is_disabled IN (0, 1)),
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

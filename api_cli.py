@@ -140,8 +140,17 @@ ENDPOINTS: Sequence[Endpoint] = (
     Endpoint("12", "Current State", "GET", "/api/state/current"),
     Endpoint("13", "Historical State", "GET", "/api/state/historical"),
     Endpoint("14", "Audit Timeline", "GET", "/api/audit/timeline"),
-    #
     Endpoint("15", "Audit Event by ID", "GET", "/api/audit/event"),
+    #
+    # Authentication endpoints
+    Endpoint("16", "Bootstrap Status", "GET", "/api/auth/bootstrap/status"),
+    Endpoint("17", "Bootstrap Login", "POST", "/api/auth/bootstrap/login"),
+    Endpoint(
+        "18", "Create First Admin", "POST", "/api/auth/bootstrap/create-first-admin"
+    ),
+    Endpoint("19", "Login", "POST", "/api/auth/login"),
+    Endpoint("20", "Logout", "POST", "/api/auth/logout"),
+    Endpoint("21", "Who Am I", "GET", "/api/auth/me"),
 )
 
 
@@ -187,6 +196,26 @@ class RegisterUserRequest(ActorEnvelope):
     eod_faa_date: str
     service_computation_date: str
     lottery_value: Optional[int]
+
+
+class BootstrapLoginRequest(TypedDict):
+    username: str
+    password: str
+
+
+class CreateFirstAdminRequest(TypedDict):
+    login_name: str
+    display_name: str
+    password: str
+
+
+class LoginRequest(TypedDict):
+    login_name: str
+    password: str
+
+
+class LogoutRequest(TypedDict):
+    session_token: str
 
 
 # -----------------------------
@@ -292,6 +321,40 @@ def build_post_payload(path: str) -> JSONObject:
         SESSION["bid_year"] = req_finalize["bid_year"]
         SESSION["area"] = req_finalize["area"]
         return req_finalize
+
+    if path == "/api/auth/bootstrap/login":
+        req_bootstrap: BootstrapLoginRequest = {
+            "username": prompt_str("Username", default="admin"),
+            "password": prompt_str("Password", default="admin"),
+        }
+        return cast(JSONObject, req_bootstrap)
+
+    if path == "/api/auth/bootstrap/create-first-admin":
+        login_name = prompt_str("New admin login name")
+        display_name = prompt_str("New admin display name")
+        password = prompt_str("New admin password")
+        req_first_admin: CreateFirstAdminRequest = {
+            "login_name": login_name,
+            "display_name": display_name,
+            "password": password,
+        }
+        return cast(JSONObject, req_first_admin)
+
+    if path == "/api/auth/login":
+        login_name = prompt_str("Login name")
+        password = prompt_str("Password")
+        req_login: LoginRequest = {
+            "login_name": login_name,
+            "password": password,
+        }
+        return cast(JSONObject, req_login)
+
+    if path == "/api/auth/logout":
+        session_token = prompt_str("Session token")
+        req_logout: LogoutRequest = {
+            "session_token": session_token,
+        }
+        return cast(JSONObject, req_logout)
 
     if path == "/api/rollback":
         env: ActorEnvelope = prompt_actor_envelope()

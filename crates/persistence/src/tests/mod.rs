@@ -86,6 +86,6 @@ pub fn create_test_pay_periods() -> u8 {
 /// This must be called before persisting any audit events to satisfy foreign key constraints.
 pub fn create_test_operator(persistence: &mut crate::SqlitePersistence) -> i64 {
     persistence
-        .create_operator("test-operator", "Test Operator", "Admin")
+        .create_operator("test-operator", "Test Operator", "password", "Admin")
         .expect("Failed to create test operator")
 }

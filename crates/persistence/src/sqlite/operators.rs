@@ -30,6 +30,7 @@ pub fn create_operator(
     conn: &Connection,
     login_name: &str,
     display_name: &str,
+    password: &str,
     role: &str,
 ) -> Result<i64, PersistenceError> {
     let normalized_login: String = login_name.to_uppercase();
@@ -39,10 +40,14 @@ pub fn create_operator(
         normalized_login, display_name, role
     );
 
+    // Hash the password using bcrypt
+    let password_hash: String = bcrypt::hash(password, bcrypt::DEFAULT_COST)
+        .map_err(|e| PersistenceError::Other(format!("Failed to hash password: {e}")))?;
+
     conn.execute(
-        "INSERT INTO operators (login_name, display_name, role)
-         VALUES (?1, ?2, ?3)",
-        params![normalized_login, display_name, role],
+        "INSERT INTO operators (login_name, display_name, password_hash, role)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![normalized_login, display_name, password_hash, role],
     )?;
 
     let operator_id: i64 = conn.last_insert_rowid();
@@ -74,7 +79,7 @@ pub fn get_operator_by_login(
 
     let result: Option<OperatorData> = conn
         .query_row(
-            "SELECT operator_id, login_name, display_name, role, is_disabled,
+            "SELECT operator_id, login_name, display_name, password_hash, role, is_disabled,
                     created_at, disabled_at, last_login_at
              FROM operators
              WHERE login_name = ?1",
@@ -84,11 +89,12 @@ pub fn get_operator_by_login(
                     operator_id: row.get(0)?,
                     login_name: row.get(1)?,
                     display_name: row.get(2)?,
-                    role: row.get(3)?,
-                    is_disabled: row.get::<_, i32>(4)? != 0,
-                    created_at: row.get(5)?,
-                    disabled_at: row.get(6)?,
-                    last_login_at: row.get(7)?,
+                    password_hash: row.get(3)?,
+                    role: row.get(4)?,
+                    is_disabled: row.get::<_, i32>(5)? != 0,
+                    created_at: row.get(6)?,
+                    disabled_at: row.get(7)?,
+                    last_login_at: row.get(8)?,
                 })
             },
         )
@@ -116,7 +122,7 @@ pub fn get_operator_by_id(
 
     let result: Option<OperatorData> = conn
         .query_row(
-            "SELECT operator_id, login_name, display_name, role, is_disabled,
+            "SELECT operator_id, login_name, display_name, password_hash, role, is_disabled,
                     created_at, disabled_at, last_login_at
              FROM operators
              WHERE operator_id = ?1",
@@ -126,11 +132,12 @@ pub fn get_operator_by_id(
                     operator_id: row.get(0)?,
                     login_name: row.get(1)?,
                     display_name: row.get(2)?,
-                    role: row.get(3)?,
-                    is_disabled: row.get::<_, i32>(4)? != 0,
-                    created_at: row.get(5)?,
-                    disabled_at: row.get(6)?,
-                    last_login_at: row.get(7)?,
+                    password_hash: row.get(3)?,
+                    role: row.get(4)?,
+                    is_disabled: row.get::<_, i32>(5)? != 0,
+                    created_at: row.get(6)?,
+                    disabled_at: row.get(7)?,
+                    last_login_at: row.get(8)?,
                 })
             },
         )
@@ -368,7 +375,7 @@ pub fn list_operators(conn: &Connection) -> Result<Vec<OperatorData>, Persistenc
     debug!("Listing all operators");
 
     let mut stmt = conn.prepare(
-        "SELECT operator_id, login_name, display_name, role, is_disabled,
+        "SELECT operator_id, login_name, display_name, password_hash, role, is_disabled,
                 created_at, disabled_at, last_login_at
          FROM operators
          ORDER BY login_name ASC",
@@ -379,11 +386,12 @@ pub fn list_operators(conn: &Connection) -> Result<Vec<OperatorData>, Persistenc
             operator_id: row.get(0)?,
             login_name: row.get(1)?,
             display_name: row.get(2)?,
-            role: row.get(3)?,
-            is_disabled: row.get::<_, i32>(4)? != 0,
-            created_at: row.get(5)?,
-            disabled_at: row.get(6)?,
-            last_login_at: row.get(7)?,
+            password_hash: row.get(3)?,
+            role: row.get(4)?,
+            is_disabled: row.get::<_, i32>(5)? != 0,
+            created_at: row.get(6)?,
+            disabled_at: row.get(7)?,
+            last_login_at: row.get(8)?,
         })
     })?;
 
@@ -393,4 +401,37 @@ pub fn list_operators(conn: &Connection) -> Result<Vec<OperatorData>, Persistenc
     }
 
     Ok(operators)
+}
+
+/// Verifies a password against a stored hash.
+///
+/// # Arguments
+///
+/// * `password` - The plain text password to verify
+/// * `password_hash` - The stored bcrypt hash
+///
+/// # Errors
+///
+/// Returns an error if password verification fails.
+pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, PersistenceError> {
+    bcrypt::verify(password, password_hash)
+        .map_err(|e| PersistenceError::Other(format!("Failed to verify password: {e}")))
+}
+
+/// Counts the total number of operators.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub fn count_operators(conn: &Connection) -> Result<i64, PersistenceError> {
+    debug!("Counting operators");
+
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM operators", [], |row| row.get(0))?;
+
+    debug!("Total operators: {}", count);
+    Ok(count)
 }

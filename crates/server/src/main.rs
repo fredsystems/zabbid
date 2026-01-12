@@ -1275,11 +1275,67 @@ struct LogoutRequest {
     session_token: String,
 }
 
+/// Handler for GET `/auth/bootstrap/status` endpoint.
+///
+/// Checks if the system is in bootstrap mode (no operators exist).
+async fn handle_bootstrap_status(
+    AxumState(app_state): AxumState<AppState>,
+) -> Result<Json<zab_bid_api::BootstrapAuthStatusResponse>, HttpError> {
+    info!("Handling bootstrap status check");
+
+    let persistence = app_state.persistence.lock().await;
+    let response = zab_bid_api::check_bootstrap_status(&persistence)?;
+    drop(persistence);
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/auth/bootstrap/login` endpoint.
+///
+/// Performs bootstrap login with hardcoded admin/admin credentials.
+async fn handle_bootstrap_login(
+    AxumState(app_state): AxumState<AppState>,
+    Json(req): Json<zab_bid_api::BootstrapLoginRequest>,
+) -> Result<Json<zab_bid_api::BootstrapLoginResponse>, HttpError> {
+    info!("Handling bootstrap login request");
+
+    let persistence = app_state.persistence.lock().await;
+    let response = zab_bid_api::bootstrap_login(&persistence, &req)?;
+    drop(persistence);
+
+    info!("Bootstrap login successful");
+    Ok(Json(response))
+}
+
+/// Handler for POST `/auth/bootstrap/create-first-admin` endpoint.
+///
+/// Creates the first admin operator during bootstrap.
+async fn handle_create_first_admin(
+    AxumState(app_state): AxumState<AppState>,
+    Json(req): Json<zab_bid_api::CreateFirstAdminRequest>,
+) -> Result<Json<zab_bid_api::CreateFirstAdminResponse>, HttpError> {
+    info!(login_name = %req.login_name, "Handling create first admin request");
+
+    let mut persistence = app_state.persistence.lock().await;
+    let response = zab_bid_api::create_first_admin(&mut persistence, req)?;
+    drop(persistence);
+
+    info!("First admin created successfully");
+    Ok(Json(response))
+}
+
 /// Builds the application router with all endpoints.
 fn build_router(state: AppState) -> Router {
     let live_broadcaster = Arc::clone(&state.live_events);
 
     let api_router = Router::new()
+        // Bootstrap authentication endpoints (no authentication required)
+        .route("/auth/bootstrap/status", get(handle_bootstrap_status))
+        .route("/auth/bootstrap/login", post(handle_bootstrap_login))
+        .route(
+            "/auth/bootstrap/create-first-admin",
+            post(handle_create_first_admin),
+        )
         // Authentication endpoints (no authentication required)
         .route("/auth/login", post(handle_login))
         // State-changing endpoints (authentication required)
@@ -1389,7 +1445,7 @@ mod tests {
         {
             let mut persistence = app_state.persistence.lock().await;
             persistence
-                .create_operator(login_name, display_name, role)
+                .create_operator(login_name, display_name, "password", role)
                 .expect("Failed to create operator");
             drop(persistence);
         }
@@ -1397,6 +1453,7 @@ mod tests {
         let mut persistence = app_state.persistence.lock().await;
         let login_req = zab_bid_api::LoginRequest {
             login_name: login_name.to_string(),
+            password: String::from("password"),
         };
         let response = zab_bid_api::login(&mut persistence, &login_req).expect("Failed to login");
         drop(persistence);
@@ -1411,13 +1468,14 @@ mod tests {
         // Create operator
         let mut persistence = app_state.persistence.lock().await;
         persistence
-            .create_operator("admin1", "Admin User", "Admin")
+            .create_operator("admin1", "Admin User", "password", "Admin")
             .expect("Failed to create operator");
         drop(persistence);
 
         // Login
         let login_req = zab_bid_api::LoginRequest {
             login_name: String::from("admin1"),
+            password: String::from("password"),
         };
 
         let response = app
@@ -1543,7 +1601,7 @@ mod tests {
         {
             let mut persistence = app_state.persistence.lock().await;
             let operator_id = persistence
-                .create_operator("admin1", "Admin User", "Admin")
+                .create_operator("admin1", "Admin User", "password", "Admin")
                 .expect("Failed to create operator");
             persistence
                 .disable_operator(operator_id)
@@ -1555,6 +1613,7 @@ mod tests {
             let mut persistence = app_state.persistence.lock().await;
             let login_req = zab_bid_api::LoginRequest {
                 login_name: String::from("admin1"),
+                password: String::from("password"),
             };
             zab_bid_api::login(&mut persistence, &login_req)
         };

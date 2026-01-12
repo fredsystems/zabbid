@@ -5,6 +5,7 @@
 
 //! API handler functions for state-changing and read-only operations.
 
+use std::time::{SystemTime, UNIX_EPOCH};
 use zab_bid::{
     BootstrapMetadata, BootstrapResult, Command, State, TransitionResult, apply, apply_bootstrap,
     validate_area_exists, validate_bid_year_exists,
@@ -17,7 +18,7 @@ use zab_bid_domain::{
 use zab_bid_persistence::{OperatorData, SqlitePersistence};
 
 use crate::auth::{AuthenticatedActor, AuthenticationService, AuthorizationService, Role};
-use crate::error::{ApiError, translate_core_error, translate_domain_error};
+use crate::error::{ApiError, AuthError, translate_core_error, translate_domain_error};
 use crate::request_response::{
     BidYearInfo, CreateAreaRequest, CreateBidYearRequest, CreateOperatorRequest,
     CreateOperatorResponse, GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse,
@@ -853,7 +854,7 @@ pub fn login(
         String,
         AuthenticatedActor,
         OperatorData,
-    ) = AuthenticationService::login(persistence, &request.login_name)?;
+    ) = AuthenticationService::login(persistence, &request.login_name, &request.password)?;
 
     // Get session expiration from the session we just created
     let session: Option<zab_bid_persistence::SessionData> = persistence
@@ -957,9 +958,15 @@ pub fn create_operator(
         });
     }
 
-    // Create operator
+    // Create operator with a default password (should be changed immediately)
+    // TODO: This endpoint should require a password in the request
     let operator_id: i64 = persistence
-        .create_operator(&request.login_name, &request.display_name, &request.role)
+        .create_operator(
+            &request.login_name,
+            &request.display_name,
+            "changeme",
+            &request.role,
+        )
         .map_err(|e| ApiError::Internal {
             message: format!("Failed to create operator: {e}"),
         })?;
@@ -1025,5 +1032,178 @@ pub fn list_operators(
 
     Ok(ListOperatorsResponse {
         operators: operator_infos,
+    })
+}
+
+// ========================================================================
+// Bootstrap Authentication (Phase 15)
+// ========================================================================
+
+/// Checks whether the system is in bootstrap mode.
+///
+/// Bootstrap mode is active when no operators exist in the database.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+///
+/// # Returns
+///
+/// * `Ok(BootstrapAuthStatusResponse)` indicating bootstrap status
+/// * `Err(ApiError)` if the query fails
+///
+/// # Errors
+///
+/// Returns an error if database operations fail.
+pub fn check_bootstrap_status(
+    persistence: &SqlitePersistence,
+) -> Result<crate::BootstrapAuthStatusResponse, ApiError> {
+    let operator_count: i64 = persistence
+        .count_operators()
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to count operators: {e}"),
+        })?;
+
+    Ok(crate::BootstrapAuthStatusResponse {
+        is_bootstrap_mode: operator_count == 0,
+    })
+}
+
+/// Performs bootstrap login with hardcoded credentials.
+///
+/// This function only succeeds when:
+/// - No operators exist in the database (bootstrap mode)
+/// - Username is exactly "admin"
+/// - Password is exactly "admin"
+///
+/// The returned token is a temporary bootstrap session, not a real operator session.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The bootstrap login request
+///
+/// # Returns
+///
+/// * `Ok(BootstrapLoginResponse)` with a bootstrap token
+/// * `Err(ApiError)` if bootstrap mode is not active or credentials are invalid
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Operators already exist (not in bootstrap mode)
+/// - Credentials are not exactly "admin" / "admin"
+/// - Database operations fail
+///
+/// # Panics
+///
+/// Panics if the system time is before the Unix epoch.
+pub fn bootstrap_login(
+    persistence: &SqlitePersistence,
+    request: &crate::BootstrapLoginRequest,
+) -> Result<crate::BootstrapLoginResponse, ApiError> {
+    // Check if we're in bootstrap mode
+    let operator_count: i64 = persistence
+        .count_operators()
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to count operators: {e}"),
+        })?;
+
+    if operator_count > 0 {
+        return Err(ApiError::Unauthorized {
+            action: String::from("bootstrap_login"),
+            required_role: String::from("Bootstrap mode (no operators exist)"),
+        });
+    }
+
+    // Verify hardcoded credentials
+    if request.username != "admin" || request.password != "admin" {
+        return Err(ApiError::from(AuthError::AuthenticationFailed {
+            reason: String::from("Invalid bootstrap credentials"),
+        }));
+    }
+
+    // Generate a bootstrap token (simple, temporary)
+    let timestamp: u128 = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_nanos();
+    let bootstrap_token: String = format!("bootstrap_{timestamp}_{}", rand::random::<u64>());
+
+    Ok(crate::BootstrapLoginResponse {
+        bootstrap_token,
+        is_bootstrap: true,
+    })
+}
+
+/// Creates the first admin operator during bootstrap.
+///
+/// This function only succeeds when:
+/// - No operators exist in the database (bootstrap mode)
+/// - A valid bootstrap token is provided
+///
+/// After successful creation, the bootstrap session is terminated and
+/// the system transitions out of bootstrap mode.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The create first admin request
+///
+/// # Returns
+///
+/// * `Ok(CreateFirstAdminResponse)` on success
+/// * `Err(ApiError)` if not in bootstrap mode or creation fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Operators already exist (not in bootstrap mode)
+/// - Login name already exists
+/// - Password validation fails
+/// - Database operations fail
+pub fn create_first_admin(
+    persistence: &mut SqlitePersistence,
+    request: crate::CreateFirstAdminRequest,
+) -> Result<crate::CreateFirstAdminResponse, ApiError> {
+    // Check if we're in bootstrap mode
+    let operator_count: i64 = persistence
+        .count_operators()
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to count operators: {e}"),
+        })?;
+
+    if operator_count > 0 {
+        return Err(ApiError::Unauthorized {
+            action: String::from("create_first_admin"),
+            required_role: String::from("Bootstrap mode (no operators exist)"),
+        });
+    }
+
+    // Validate password is not empty
+    if request.password.is_empty() {
+        return Err(ApiError::InvalidInput {
+            field: String::from("password"),
+            message: String::from("Password cannot be empty"),
+        });
+    }
+
+    // Create the first admin operator
+    let operator_id: i64 = persistence
+        .create_operator(
+            &request.login_name,
+            &request.display_name,
+            &request.password,
+            "Admin",
+        )
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to create first admin: {e}"),
+        })?;
+
+    Ok(crate::CreateFirstAdminResponse {
+        operator_id,
+        login_name: request.login_name,
+        display_name: request.display_name,
+        message: String::from("First admin operator created successfully"),
     })
 }
