@@ -192,6 +192,69 @@ pub fn disable_operator(conn: &Connection, operator_id: i64) -> Result<(), Persi
     Ok(())
 }
 
+/// Re-enables a disabled operator.
+///
+/// This sets `is_disabled` to false and clears the `disabled_at` timestamp.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `operator_id` - The operator ID
+///
+/// # Errors
+///
+/// Returns an error if the database update fails.
+pub fn enable_operator(conn: &Connection, operator_id: i64) -> Result<(), PersistenceError> {
+    info!("Re-enabling operator ID: {}", operator_id);
+
+    conn.execute(
+        "UPDATE operators
+         SET is_disabled = 0, disabled_at = NULL
+         WHERE operator_id = ?1",
+        params![operator_id],
+    )?;
+
+    Ok(())
+}
+
+/// Deletes an operator.
+///
+/// This operation will fail if the operator is referenced by any audit events,
+/// enforced by the foreign key constraint (ON DELETE RESTRICT).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `operator_id` - The operator ID
+///
+/// # Errors
+///
+/// Returns `PersistenceError::OperatorReferenced` if the operator is referenced
+/// by audit events. Returns other errors if the database delete fails.
+pub fn delete_operator(conn: &Connection, operator_id: i64) -> Result<(), PersistenceError> {
+    info!("Attempting to delete operator ID: {}", operator_id);
+
+    // Check if operator is referenced by audit events
+    if is_operator_referenced(conn, operator_id)? {
+        return Err(PersistenceError::OperatorReferenced { operator_id });
+    }
+
+    // Attempt deletion
+    let rows_affected: usize = conn.execute(
+        "DELETE FROM operators WHERE operator_id = ?1",
+        params![operator_id],
+    )?;
+
+    if rows_affected == 0 {
+        return Err(PersistenceError::OperatorNotFound(format!(
+            "Operator with ID {operator_id} not found"
+        )));
+    }
+
+    info!("Deleted operator ID: {}", operator_id);
+    Ok(())
+}
+
 /// Creates a new session for an operator.
 ///
 /// # Arguments

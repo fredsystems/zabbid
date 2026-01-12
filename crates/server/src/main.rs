@@ -1268,7 +1268,227 @@ async fn handle_whoami(
     Ok(Json(response))
 }
 
-/// Request body for logout endpoint.
+/// Handler for GET `/operators` endpoint.
+///
+/// Lists all operators (admin only).
+async fn handle_list_operators(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, _operator): session::SessionOperator,
+) -> Result<Json<zab_bid_api::ListOperatorsResponse>, HttpError> {
+    info!(actor_login = ?actor, "Handling list operators request");
+
+    let persistence = app_state.persistence.lock().await;
+    let response = zab_bid_api::list_operators(&persistence, &actor)?;
+    drop(persistence);
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/operators` endpoint.
+///
+/// Creates a new operator (admin only).
+async fn handle_create_operator(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<CreateOperatorApiRequest>,
+) -> Result<Json<WriteResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        new_operator_login = %req.login_name,
+        "Handling create operator request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    let create_request: zab_bid_api::CreateOperatorRequest = zab_bid_api::CreateOperatorRequest {
+        login_name: req.login_name.clone(),
+        display_name: req.display_name.clone(),
+        role: req.role.clone(),
+    };
+
+    let mut persistence = app_state.persistence.lock().await;
+    let response =
+        zab_bid_api::create_operator(&mut persistence, create_request, &actor, &operator, cause)?;
+    drop(persistence);
+
+    info!(
+        operator_id = response.operator_id,
+        login_name = %response.login_name,
+        "Successfully created operator"
+    );
+
+    Ok(Json(WriteResponse {
+        success: true,
+        message: Some(format!("Created operator {}", req.login_name)),
+        event_id: None,
+    }))
+}
+
+/// Handler for POST `/operators/disable` endpoint.
+///
+/// Disables an operator (admin only).
+async fn handle_disable_operator(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<DisableOperatorApiRequest>,
+) -> Result<Json<WriteResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        target_operator_id = req.operator_id,
+        "Handling disable operator request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    let disable_request: zab_bid_api::DisableOperatorRequest =
+        zab_bid_api::DisableOperatorRequest {
+            operator_id: req.operator_id,
+        };
+
+    let mut persistence = app_state.persistence.lock().await;
+    let response =
+        zab_bid_api::disable_operator(&mut persistence, disable_request, &actor, &operator, cause)?;
+    drop(persistence);
+
+    info!(
+        operator_id = req.operator_id,
+        "Successfully disabled operator"
+    );
+
+    Ok(Json(WriteResponse {
+        success: true,
+        message: Some(response.message),
+        event_id: None,
+    }))
+}
+
+/// Handler for POST `/operators/enable` endpoint.
+///
+/// Re-enables a disabled operator (admin only).
+async fn handle_enable_operator(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<EnableOperatorApiRequest>,
+) -> Result<Json<WriteResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        target_operator_id = req.operator_id,
+        "Handling enable operator request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    let enable_request: zab_bid_api::EnableOperatorRequest = zab_bid_api::EnableOperatorRequest {
+        operator_id: req.operator_id,
+    };
+
+    let mut persistence = app_state.persistence.lock().await;
+    let response =
+        zab_bid_api::enable_operator(&mut persistence, enable_request, &actor, &operator, cause)?;
+    drop(persistence);
+
+    info!(
+        operator_id = req.operator_id,
+        "Successfully re-enabled operator"
+    );
+
+    Ok(Json(WriteResponse {
+        success: true,
+        message: Some(response.message),
+        event_id: None,
+    }))
+}
+
+/// Handler for POST `/operators/delete` endpoint.
+///
+/// Deletes an operator (admin only, only if not referenced by audit events).
+async fn handle_delete_operator(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<DeleteOperatorApiRequest>,
+) -> Result<Json<WriteResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        target_operator_id = req.operator_id,
+        "Handling delete operator request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    let delete_request: zab_bid_api::DeleteOperatorRequest = zab_bid_api::DeleteOperatorRequest {
+        operator_id: req.operator_id,
+    };
+
+    let mut persistence = app_state.persistence.lock().await;
+    let response =
+        zab_bid_api::delete_operator(&mut persistence, delete_request, &actor, &operator, cause)?;
+    drop(persistence);
+
+    info!(
+        operator_id = req.operator_id,
+        "Successfully deleted operator"
+    );
+
+    Ok(Json(WriteResponse {
+        success: true,
+        message: Some(response.message),
+        event_id: None,
+    }))
+}
+
+/// Request body for create operator endpoint.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct CreateOperatorApiRequest {
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The operator login name.
+    login_name: String,
+    /// The operator display name.
+    display_name: String,
+    /// The operator role (Admin or Bidder).
+    role: String,
+}
+
+/// Request body for disable operator endpoint.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct DisableOperatorApiRequest {
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The operator ID to disable.
+    operator_id: i64,
+}
+
+/// Request body for enable operator endpoint.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct EnableOperatorApiRequest {
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The operator ID to enable.
+    operator_id: i64,
+}
+
+/// Request body for delete operator endpoint.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct DeleteOperatorApiRequest {
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The operator ID to delete.
+    operator_id: i64,
+}
+
+/// Request body for checkpoint endpoint.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct LogoutRequest {
     /// The session token to delete.
@@ -1348,6 +1568,12 @@ fn build_router(state: AppState) -> Router {
         // Authenticated read endpoints
         .route("/auth/logout", post(handle_logout))
         .route("/auth/me", get(handle_whoami))
+        // Operator management endpoints (admin only)
+        .route("/operators", get(handle_list_operators))
+        .route("/operators", post(handle_create_operator))
+        .route("/operators/disable", post(handle_disable_operator))
+        .route("/operators/enable", post(handle_enable_operator))
+        .route("/operators/delete", post(handle_delete_operator))
         // Read-only endpoints (no authentication required for now)
         .route("/bid_years", get(handle_list_bid_years))
         .route("/areas", get(handle_list_areas))

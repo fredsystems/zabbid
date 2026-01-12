@@ -351,6 +351,48 @@ pub struct ListOperatorsResponse {
     pub operators: Vec<OperatorInfo>,
 }
 
+/// API request for disabling an operator.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DisableOperatorRequest {
+    /// The operator ID to disable.
+    pub operator_id: i64,
+}
+
+/// API response for disabling an operator.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DisableOperatorResponse {
+    /// Confirmation message.
+    pub message: String,
+}
+
+/// API request for re-enabling an operator.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct EnableOperatorRequest {
+    /// The operator ID to re-enable.
+    pub operator_id: i64,
+}
+
+/// API response for re-enabling an operator.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct EnableOperatorResponse {
+    /// Confirmation message.
+    pub message: String,
+}
+
+/// API request for deleting an operator.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeleteOperatorRequest {
+    /// The operator ID to delete.
+    pub operator_id: i64,
+}
+
+/// API response for deleting an operator.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeleteOperatorResponse {
+    /// Confirmation message.
+    pub message: String,
+}
+
 /// API response for checking bootstrap status.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BootstrapAuthStatusResponse {

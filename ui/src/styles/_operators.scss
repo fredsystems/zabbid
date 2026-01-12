@@ -1,0 +1,282 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Operator Management styles.
+ * Mobile-first design for operator administration.
+ */
+
+@use "variables" as *;
+
+// ============================================================================
+// Operator Management Container
+// ============================================================================
+
+.operator-management {
+  padding: $spacing-md;
+  max-width: 1200px;
+  margin: 0 auto;
+
+  @media (min-width: 768px) {
+    padding: $spacing-lg;
+  }
+}
+
+// ============================================================================
+// Operator Header
+// ============================================================================
+
+.operator-header {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  margin-bottom: $spacing-lg;
+
+  @media (min-width: 640px) {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  h2 {
+    margin: 0;
+    font-size: $font-size-xl;
+    color: $color-text-primary;
+  }
+
+  button {
+    width: 100%;
+
+    @media (min-width: 640px) {
+      width: auto;
+    }
+  }
+}
+
+// ============================================================================
+// Operator Create Form
+// ============================================================================
+
+.operator-create-form {
+  background-color: $color-bg-surface;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  margin-bottom: $spacing-lg;
+  box-shadow: $shadow-md;
+  border: 2px solid $color-accent-primary;
+
+  @media (min-width: 768px) {
+    padding: $spacing-lg;
+  }
+
+  h3 {
+    margin: 0 0 $spacing-md 0;
+    font-size: $font-size-lg;
+    color: $color-text-primary;
+  }
+
+  .form-actions {
+    display: flex;
+    gap: $spacing-sm;
+    margin-top: $spacing-md;
+    flex-direction: column;
+
+    @media (min-width: 640px) {
+      flex-direction: row;
+    }
+
+    button {
+      flex: 1;
+
+      @media (max-width: 639px) {
+        width: 100%;
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Operator List
+// ============================================================================
+
+.operator-list {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.empty-state {
+  text-align: center;
+  padding: $spacing-xl;
+  color: $color-text-muted;
+  font-size: $font-size-lg;
+}
+
+// ============================================================================
+// Operator Card
+// ============================================================================
+
+.operator-card {
+  background-color: $color-bg-surface;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  box-shadow: $shadow-sm;
+  border-left: 4px solid $color-accent-primary;
+  transition: all $transition-base;
+
+  @media (min-width: 768px) {
+    padding: $spacing-lg;
+  }
+
+  &:hover {
+    box-shadow: $shadow-md;
+  }
+
+  &.disabled {
+    opacity: 0.7;
+    border-left-color: $color-text-muted;
+    background-color: $color-bg-surface-elevated;
+  }
+}
+
+// ============================================================================
+// Operator Card Header
+// ============================================================================
+
+.operator-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: $spacing-md;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+.operator-name {
+  font-size: $font-size-lg;
+  font-weight: 600;
+  color: $color-text-primary;
+  flex: 1;
+  min-width: 0; // Allow text truncation
+}
+
+.operator-status {
+  flex-shrink: 0;
+}
+
+// ============================================================================
+// Operator Card Body
+// ============================================================================
+
+.operator-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+}
+
+.operator-detail {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: $spacing-xs 0;
+  gap: $spacing-md;
+  border-bottom: 1px solid $color-border-subtle;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.detail-label {
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: $color-text-muted;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.detail-value {
+  font-size: $font-size-base;
+  color: $color-text-primary;
+  text-align: right;
+  word-break: break-word;
+}
+
+// ============================================================================
+// Operator Card Actions
+// ============================================================================
+
+.operator-card-actions {
+  display: flex;
+  gap: $spacing-sm;
+  flex-direction: column;
+  margin-top: $spacing-md;
+  padding-top: $spacing-md;
+  border-top: 1px solid $color-border-subtle;
+
+  @media (min-width: 640px) {
+    flex-direction: row;
+  }
+
+  button {
+    flex: 1;
+    min-height: 44px; // Touch-friendly target
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    @media (max-width: 639px) {
+      width: 100%;
+    }
+  }
+}
+
+// ============================================================================
+// Status Badges
+// ============================================================================
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: $spacing-xs $spacing-sm;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.status-active {
+  background-color: rgba($color-success, 0.15);
+  color: $color-success;
+}
+
+.status-disabled {
+  background-color: rgba($color-text-muted, 0.15);
+  color: $color-text-muted;
+}
+
+// ============================================================================
+// Loading and Error States
+// ============================================================================
+
+.operator-management .loading {
+  text-align: center;
+  padding: $spacing-xl;
+  color: $color-text-muted;
+  font-size: $font-size-lg;
+}
+
+.operator-management .error-message {
+  background-color: rgba($color-error, 0.1);
+  border: 1px solid $color-error;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  margin-bottom: $spacing-md;
+  color: $color-error;
+  text-align: center;
+}

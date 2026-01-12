@@ -10,7 +10,7 @@ use zab_bid::{
     BootstrapMetadata, BootstrapResult, Command, State, TransitionResult, apply, apply_bootstrap,
     validate_area_exists, validate_bid_year_exists,
 };
-use zab_bid_audit::{Actor, AuditEvent, Cause};
+use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
 use zab_bid_domain::{
     Area, BidYear, CanonicalBidYear, Crew, Initials, LeaveAccrualResult, LeaveAvailabilityResult,
     LeaveUsage, SeniorityData, UserType, calculate_leave_accrual, calculate_leave_availability,
@@ -21,10 +21,13 @@ use crate::auth::{AuthenticatedActor, AuthenticationService, AuthorizationServic
 use crate::error::{ApiError, AuthError, translate_core_error, translate_domain_error};
 use crate::request_response::{
     BidYearInfo, CreateAreaRequest, CreateBidYearRequest, CreateOperatorRequest,
-    CreateOperatorResponse, GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse,
-    ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse,
-    OperatorInfo, RegisterUserRequest, RegisterUserResponse, UserInfo, WhoAmIResponse,
+    CreateOperatorResponse, DeleteOperatorRequest, DeleteOperatorResponse, DisableOperatorRequest,
+    DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
+    GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
+    ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse, OperatorInfo,
+    RegisterUserRequest, RegisterUserResponse, UserInfo, WhoAmIResponse,
 };
+use zab_bid_persistence::PersistenceError;
 
 /// The result of an API operation that includes both the response and the audit event.
 ///
@@ -915,12 +918,15 @@ pub fn whoami(operator: &OperatorData) -> WhoAmIResponse {
 /// Creates a new operator.
 ///
 /// Only Admin actors may create operators.
+/// Emits an audit event on success.
 ///
 /// # Arguments
 ///
 /// * `persistence` - The persistence layer
 /// * `request` - The create operator request
 /// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data for audit attribution
+/// * `cause` - The cause for this action
 ///
 /// # Returns
 ///
@@ -938,6 +944,8 @@ pub fn create_operator(
     persistence: &mut SqlitePersistence,
     request: CreateOperatorRequest,
     authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
 ) -> Result<CreateOperatorResponse, ApiError> {
     // Enforce authorization before executing command
     if authenticated_actor.role != Role::Admin {
@@ -969,6 +977,50 @@ pub fn create_operator(
         )
         .map_err(|e| ApiError::Internal {
             message: format!("Failed to create operator: {e}"),
+        })?;
+
+    // Create audit event for operator lifecycle change
+    let actor: Actor = Actor::with_operator(
+        operator.operator_id.to_string(),
+        String::from("operator"),
+        operator.operator_id,
+        operator.login_name.clone(),
+        operator.display_name.clone(),
+    );
+
+    let action: Action = Action::new(
+        String::from("CreateOperator"),
+        Some(format!(
+            "Created operator {} ({}) with role {}",
+            request.login_name, request.display_name, request.role
+        )),
+    );
+
+    let before: StateSnapshot = StateSnapshot::new(String::from("operator_does_not_exist"));
+    let after: StateSnapshot = StateSnapshot::new(format!(
+        "operator_id={},login_name={},role={}",
+        operator_id, request.login_name, request.role
+    ));
+
+    // Use placeholder bid_year and area for operator management events
+    let placeholder_bid_year: BidYear = BidYear::new(0);
+    let placeholder_area: Area = Area::new("_operator_management");
+
+    let audit_event: AuditEvent = AuditEvent::new(
+        actor,
+        cause,
+        action,
+        before,
+        after,
+        placeholder_bid_year,
+        placeholder_area,
+    );
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
         })?;
 
     Ok(CreateOperatorResponse {
@@ -1032,6 +1084,346 @@ pub fn list_operators(
 
     Ok(ListOperatorsResponse {
         operators: operator_infos,
+    })
+}
+
+/// Disables an operator.
+///
+/// Only Admin actors may disable operators.
+/// Emits an audit event on success.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The disable operator request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data for audit attribution
+/// * `cause` - The cause for this action
+///
+/// # Returns
+///
+/// * `Ok(DisableOperatorResponse)` on success
+/// * `Err(ApiError)` if unauthorized or operation fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The operator does not exist
+/// - Database operations fail
+pub fn disable_operator(
+    persistence: &mut SqlitePersistence,
+    request: DisableOperatorRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<DisableOperatorResponse, ApiError> {
+    // Enforce authorization before executing command
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("disable_operator"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Get target operator to verify existence and get details for audit
+    let target_operator: OperatorData = persistence
+        .get_operator_by_id(request.operator_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get operator: {e}"),
+        })?
+        .ok_or_else(|| {
+            let operator_id = request.operator_id;
+            ApiError::ResourceNotFound {
+                resource_type: String::from("Operator"),
+                message: format!("Operator with ID {operator_id} not found"),
+            }
+        })?;
+
+    // Perform the disable operation
+    persistence
+        .disable_operator(request.operator_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to disable operator: {e}"),
+        })?;
+
+    // Create audit event for operator lifecycle change
+    let actor: Actor = Actor::with_operator(
+        operator.operator_id.to_string(),
+        String::from("operator"),
+        operator.operator_id,
+        operator.login_name.clone(),
+        operator.display_name.clone(),
+    );
+
+    let action: Action = Action::new(
+        String::from("DisableOperator"),
+        Some(format!(
+            "Disabled operator {} ({})",
+            target_operator.login_name, target_operator.display_name
+        )),
+    );
+
+    let operator_id = request.operator_id;
+    let before: StateSnapshot =
+        StateSnapshot::new(format!("operator_id={operator_id},is_disabled=false"));
+    let after: StateSnapshot =
+        StateSnapshot::new(format!("operator_id={operator_id},is_disabled=true"));
+
+    // Use placeholder bid_year and area for operator management events
+    let placeholder_bid_year: BidYear = BidYear::new(0);
+    let placeholder_area: Area = Area::new("_operator_management");
+
+    let audit_event: AuditEvent = AuditEvent::new(
+        actor,
+        cause,
+        action,
+        before,
+        after,
+        placeholder_bid_year,
+        placeholder_area,
+    );
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    let login_name = &target_operator.login_name;
+    Ok(DisableOperatorResponse {
+        message: format!("Operator {login_name} has been disabled"),
+    })
+}
+
+/// Re-enables a disabled operator.
+///
+/// Only Admin actors may re-enable operators.
+/// Emits an audit event on success.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The enable operator request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data for audit attribution
+/// * `cause` - The cause for this action
+///
+/// # Returns
+///
+/// * `Ok(EnableOperatorResponse)` on success
+/// * `Err(ApiError)` if unauthorized or operation fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The operator does not exist
+/// - Database operations fail
+pub fn enable_operator(
+    persistence: &mut SqlitePersistence,
+    request: EnableOperatorRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<EnableOperatorResponse, ApiError> {
+    // Enforce authorization before executing command
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("enable_operator"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Get target operator to verify existence and get details for audit
+    let target_operator: OperatorData = persistence
+        .get_operator_by_id(request.operator_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get operator: {e}"),
+        })?
+        .ok_or_else(|| {
+            let operator_id = request.operator_id;
+            ApiError::ResourceNotFound {
+                resource_type: String::from("Operator"),
+                message: format!("Operator with ID {operator_id} not found"),
+            }
+        })?;
+
+    // Perform the enable operation
+    persistence
+        .enable_operator(request.operator_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to enable operator: {e}"),
+        })?;
+
+    // Create audit event for operator lifecycle change
+    let actor: Actor = Actor::with_operator(
+        operator.operator_id.to_string(),
+        String::from("operator"),
+        operator.operator_id,
+        operator.login_name.clone(),
+        operator.display_name.clone(),
+    );
+
+    let action: Action = Action::new(
+        String::from("EnableOperator"),
+        Some(format!(
+            "Re-enabled operator {} ({})",
+            target_operator.login_name, target_operator.display_name
+        )),
+    );
+
+    let operator_id = request.operator_id;
+    let before: StateSnapshot =
+        StateSnapshot::new(format!("operator_id={operator_id},is_disabled=true"));
+    let after: StateSnapshot =
+        StateSnapshot::new(format!("operator_id={operator_id},is_disabled=false"));
+
+    // Use placeholder bid_year and area for operator management events
+    let placeholder_bid_year: BidYear = BidYear::new(0);
+    let placeholder_area: Area = Area::new("_operator_management");
+
+    let audit_event: AuditEvent = AuditEvent::new(
+        actor,
+        cause,
+        action,
+        before,
+        after,
+        placeholder_bid_year,
+        placeholder_area,
+    );
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    let login_name = &target_operator.login_name;
+    Ok(EnableOperatorResponse {
+        message: format!("Operator {login_name} has been re-enabled"),
+    })
+}
+
+/// Deletes an operator.
+///
+/// Only Admin actors may delete operators.
+/// Operators can only be deleted if they are not referenced by any audit events.
+/// Emits an audit event on success.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The delete operator request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data for audit attribution
+/// * `cause` - The cause for this action
+///
+/// # Returns
+///
+/// * `Ok(DeleteOperatorResponse)` on success
+/// * `Err(ApiError)` if unauthorized, operator is referenced, or operation fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The operator does not exist
+/// - The operator is referenced by audit events
+/// - Database operations fail
+pub fn delete_operator(
+    persistence: &mut SqlitePersistence,
+    request: DeleteOperatorRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<DeleteOperatorResponse, ApiError> {
+    // Enforce authorization before executing command
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("delete_operator"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Get target operator to verify existence and get details for audit
+    let target_operator: OperatorData = persistence
+        .get_operator_by_id(request.operator_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get operator: {e}"),
+        })?
+        .ok_or_else(|| {
+            let operator_id = request.operator_id;
+            ApiError::ResourceNotFound {
+                resource_type: String::from("Operator"),
+                message: format!("Operator with ID {operator_id} not found"),
+            }
+        })?;
+
+    // Perform the delete operation (will fail if operator is referenced)
+    persistence
+        .delete_operator(request.operator_id)
+        .map_err(|e| match e {
+            PersistenceError::OperatorReferenced { operator_id } => ApiError::DomainRuleViolation {
+                rule: String::from("operator_not_referenced"),
+                message: format!(
+                    "Cannot delete operator {operator_id}: referenced by audit events"
+                ),
+            },
+            _ => ApiError::Internal {
+                message: format!("Failed to delete operator: {e}"),
+            },
+        })?;
+
+    // Create audit event for operator lifecycle change
+    let actor: Actor = Actor::with_operator(
+        operator.operator_id.to_string(),
+        String::from("operator"),
+        operator.operator_id,
+        operator.login_name.clone(),
+        operator.display_name.clone(),
+    );
+
+    let action: Action = Action::new(
+        String::from("DeleteOperator"),
+        Some(format!(
+            "Deleted operator {} ({})",
+            target_operator.login_name, target_operator.display_name
+        )),
+    );
+
+    let operator_id = request.operator_id;
+    let login_name = &target_operator.login_name;
+    let before: StateSnapshot =
+        StateSnapshot::new(format!("operator_id={operator_id},login_name={login_name}"));
+    let after: StateSnapshot = StateSnapshot::new(String::from("operator_deleted"));
+
+    // Use placeholder bid_year and area for operator management events
+    let placeholder_bid_year: BidYear = BidYear::new(0);
+    let placeholder_area: Area = Area::new("_operator_management");
+
+    let audit_event: AuditEvent = AuditEvent::new(
+        actor,
+        cause,
+        action,
+        before,
+        after,
+        placeholder_bid_year,
+        placeholder_area,
+    );
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    let login_name = &target_operator.login_name;
+    Ok(DeleteOperatorResponse {
+        message: format!("Operator {login_name} has been deleted"),
     })
 }
 

@@ -33,7 +33,7 @@ pub fn persist_transition(
     should_snapshot: bool,
 ) -> Result<i64, PersistenceError> {
     // Persist the audit event
-    let event_id: i64 = persist_audit_event_tx(tx, &result.audit_event)?;
+    let event_id: i64 = persist_audit_event(tx, &result.audit_event)?;
     debug!(event_id, "Persisted audit event");
 
     // Sync canonical users table with the new state
@@ -74,8 +74,8 @@ pub fn persist_bootstrap(
     tx: &Transaction<'_>,
     result: &BootstrapResult,
 ) -> Result<i64, PersistenceError> {
-    // Persist the audit event first (needed for event_id)
-    let event_id: i64 = persist_audit_event_tx(tx, &result.audit_event)?;
+    // Persist the audit event
+    let event_id: i64 = persist_audit_event(tx, &result.audit_event)?;
     debug!(event_id, "Persisted bootstrap audit event");
 
     // Update canonical tables based on the action
@@ -151,7 +151,7 @@ pub fn persist_bootstrap(
 /// # Errors
 ///
 /// Returns an error if persistence or serialization fails.
-fn persist_audit_event_tx(
+pub fn persist_audit_event(
     tx: &Transaction<'_>,
     event: &AuditEvent,
 ) -> Result<i64, PersistenceError> {

@@ -245,3 +245,129 @@ export async function whoami(sessionToken: string): Promise<{
     },
   });
 }
+
+/**
+ * List all operators (admin only).
+ */
+export async function listOperators(sessionToken: string): Promise<{
+  operators: Array<{
+    operator_id: number;
+    login_name: string;
+    display_name: string;
+    role: string;
+    is_disabled: boolean;
+    created_at: string;
+    last_login_at: string | null;
+  }>;
+}> {
+  return fetchJson(`${API_BASE}/operators`, {
+    headers: {
+      Authorization: `Bearer ${sessionToken}`,
+    },
+  });
+}
+
+/**
+ * Create a new operator (admin only).
+ */
+export async function createOperator(
+  sessionToken: string,
+  loginName: string,
+  displayName: string,
+  role: string,
+): Promise<{
+  success: boolean;
+  message: string | null;
+  event_id: number | null;
+}> {
+  return fetchJson(`${API_BASE}/operators`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      cause_id: `create-operator-${Date.now()}`,
+      cause_description: `Create operator ${loginName}`,
+      login_name: loginName,
+      display_name: displayName,
+      role,
+    }),
+  });
+}
+
+/**
+ * Disable an operator (admin only).
+ */
+export async function disableOperator(
+  sessionToken: string,
+  operatorId: number,
+): Promise<{
+  success: boolean;
+  message: string | null;
+  event_id: number | null;
+}> {
+  return fetchJson(`${API_BASE}/operators/disable`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      cause_id: `disable-operator-${Date.now()}`,
+      cause_description: `Disable operator ${operatorId}`,
+      operator_id: operatorId,
+    }),
+  });
+}
+
+/**
+ * Re-enable an operator (admin only).
+ */
+export async function enableOperator(
+  sessionToken: string,
+  operatorId: number,
+): Promise<{
+  success: boolean;
+  message: string | null;
+  event_id: number | null;
+}> {
+  return fetchJson(`${API_BASE}/operators/enable`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      cause_id: `enable-operator-${Date.now()}`,
+      cause_description: `Enable operator ${operatorId}`,
+      operator_id: operatorId,
+    }),
+  });
+}
+
+/**
+ * Delete an operator (admin only).
+ * Only succeeds if the operator is not referenced by any audit events.
+ */
+export async function deleteOperator(
+  sessionToken: string,
+  operatorId: number,
+): Promise<{
+  success: boolean;
+  message: string | null;
+  event_id: number | null;
+}> {
+  return fetchJson(`${API_BASE}/operators/delete`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      cause_id: `delete-operator-${Date.now()}`,
+      cause_description: `Delete operator ${operatorId}`,
+      operator_id: operatorId,
+    }),
+  });
+}

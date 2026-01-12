@@ -25,6 +25,7 @@ import * as api from "./api";
 import { AreaView } from "./components/AreaView";
 import { BootstrapOverview } from "./components/BootstrapOverview";
 import { ConnectionStatus } from "./components/ConnectionStatus";
+import { OperatorManagement } from "./components/OperatorManagement";
 import { UserDetailView } from "./components/UserDetailView";
 import { UserListView } from "./components/UserListView";
 import type { LiveEvent } from "./types";
@@ -540,6 +541,16 @@ function AuthenticatedAdminApp({
           <ConnectionStatus state={connectionState} />
         </div>
         <div className="operator-info">
+          {authState.role === "Admin" && (
+            <button
+              type="button"
+              onClick={() => navigate("/admin/operators")}
+              className="button-secondary"
+              style={{ marginRight: "1rem" }}
+            >
+              Manage Operators
+            </button>
+          )}
           <div className="operator-details">
             <div className="operator-name">{authState.displayName}</div>
             <div className="operator-meta">
@@ -591,6 +602,16 @@ function AuthenticatedAdminApp({
                 connectionState={connectionState}
                 lastEvent={lastEvent}
               />
+            }
+          />
+          <Route
+            path="operators"
+            element={
+              authState.role === "Admin" && authState.sessionToken ? (
+                <OperatorManagement sessionToken={authState.sessionToken} />
+              ) : (
+                <Navigate to="/admin" replace />
+              )
             }
           />
           <Route path="*" element={<Navigate to="/admin" replace />} />
