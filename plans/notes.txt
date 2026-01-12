@@ -1,0 +1,40 @@
+Steps:
+
+* UI Refine Pass
+* Move area to use a unique ID
+* Move bid year to use a unique ID
+* During bootstrap of a NEW install (ie, with no bid years defined) the first area is automatically selected to be "active" after creation
+* Introduce the concept of "bid year start"
+    - This is going to be a toggle that will, in the next step, lock editing
+    - Requires bootstrap completion
+* Introduce the concept of a "no area" area
+    - This will be called "No Bid" to use our internal parlance, but that is NOT indicative of its actual function. They do bid.
+    - No bid is NOT going to be visible to any user that is unauthenticated. We have no interfaces for that class of interaction yet, but it needs to be codified
+    - This is going to be used for a handful of users that AREN'T in an area, and DONT compete for leave against others
+        - I don't believe we have any domain rules that touch how leave competes, but think about if we have other domain rules that may touch this concept
+    - Also a catch all area if, during a future editing phase, an area is deleted. Those users will be auto transferred to this area
+    - Bootstrap is not complete until a manual review (with a toggle on each user indicating that user is fine) in No Bid is done
+* Editing:
+    - All data for users, bid year and area
+    - If we exceed the configured "expected user count" set for an area, increment the count by the actual number of users
+        - For instance, if I say the area has 40 people, and then right before bidding starts I add a person, increment
+    - Domain Rule Changes:
+        - Editing is locked, EXCEPT for user name and initials, once bidding starts
+        - Users have to exist in an area. If during import, no area is given (this is now a valid domain state), auto add to the No Bid area.
+* Define Rounds
+    * Data:
+        * Number of available slots per day
+        * Group Identifier....object, I guess?
+            * Auto generated ID
+            * Canonical visible name
+            * associated editing enabled
+        * Number of Groups
+            * Groups are defined as up to 5 consecutive days off. This means that a users' RDOs are not counted in the group total. On crew 1, S/S off, you can do M-F as a group of 5 days, or F-Th. Both are valid, and any pattern like that is valid. If a user skips a day (previous crew example, they do M-Tu, and then Th-F in the same week, that's two groups)
+            * Groups do not matter for anything up to this point, but it's going to define the core logic for bidding
+        * Order number
+        * Canonical name
+        * Uses a unique ID to identify itself.
+        * Group Identifier. We have at least two different sets of rules that apply (if you care, it's negotiated between labor and management, and it's dependent on the number of people in the area)...the idea here is that I can create 6 rounds or whatever of rules with the same group ID, and those rules are considered when taking a bid. Other existing group IDs with their own rules are not counted. UI should use the canonical name of the group identifier object but store the ID for accessing rules
+    * No Bid area does not have rounds or limits
+    * Bootstrap is not considered complete UNTIL all areas (less no bid) have been assigned a group ID of rounds
+    * Holidays typically DO NOT have a different amount of available days, but they MAY, and we should have a toggle and associated data for holidays (holidays should be treated as all the same....xmas is not any different than thanksgiving or vets day for the purposes of determining the number of slots)
