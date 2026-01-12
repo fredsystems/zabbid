@@ -38,6 +38,38 @@ use crate::request_response::{
 };
 use zab_bid_persistence::PersistenceError;
 
+/// Resolves the active bid year from persistence.
+///
+/// This function ensures that exactly one bid year is active.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer to query
+///
+/// # Returns
+///
+/// * `Ok(BidYear)` - The active bid year
+/// * `Err(ApiError)` - If no active bid year exists
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - No active bid year is set
+/// - Database query fails
+fn resolve_active_bid_year(persistence: &SqlitePersistence) -> Result<BidYear, ApiError> {
+    let active_year: Option<u16> =
+        persistence
+            .get_active_bid_year()
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to query active bid year: {e}"),
+            })?;
+
+    let year: u16 = active_year
+        .ok_or_else(|| translate_domain_error(zab_bid_domain::DomainError::NoActiveBidYear))?;
+
+    Ok(BidYear::new(year))
+}
+
 /// The result of an API operation that includes both the response and the audit event.
 ///
 /// This ensures that successful API operations always produce an audit trail.
@@ -80,6 +112,7 @@ pub struct ApiResult<T> {
 /// - Any field validation fails
 /// - The initials are already in use within the bid year
 pub fn register_user(
+    persistence: &SqlitePersistence,
     metadata: &BootstrapMetadata,
     state: &State,
     request: RegisterUserRequest,
@@ -90,10 +123,12 @@ pub fn register_user(
     // Enforce authorization before executing command
     AuthorizationService::authorize_register_user(authenticated_actor)?;
 
+    // Resolve the active bid year from canonical state
+    let bid_year: BidYear = resolve_active_bid_year(persistence)?;
+
     // Convert authenticated actor to audit actor with operator information
     let actor: Actor = authenticated_actor.to_audit_actor(operator);
     // Translate API request into domain types
-    let bid_year: BidYear = BidYear::new(request.bid_year);
     let initials: Initials = Initials::new(&request.initials);
     let area: Area = Area::new(&request.area);
 
@@ -117,7 +152,6 @@ pub fn register_user(
 
     // Create core command
     let command: Command = Command::RegisterUser {
-        bid_year: bid_year.clone(),
         initials: initials.clone(),
         name: request.name.clone(),
         area,
@@ -128,7 +162,7 @@ pub fn register_user(
 
     // Apply command via core transition
     let transition_result: TransitionResult =
-        apply(metadata, state, command, actor, cause).map_err(translate_core_error)?;
+        apply(metadata, state, &bid_year, command, actor, cause).map_err(translate_core_error)?;
 
     // Translate to API response
     let response: RegisterUserResponse = RegisterUserResponse {
@@ -175,6 +209,7 @@ pub fn register_user(
 /// - The actor is not authorized (not an Admin)
 /// - The command execution fails
 pub fn checkpoint(
+    persistence: &SqlitePersistence,
     metadata: &BootstrapMetadata,
     state: &State,
     authenticated_actor: &AuthenticatedActor,
@@ -184,13 +219,17 @@ pub fn checkpoint(
     // Enforce authorization before executing command
     AuthorizationService::authorize_checkpoint(authenticated_actor)?;
 
+    // Resolve the active bid year from canonical state
+    let active_bid_year: BidYear = resolve_active_bid_year(persistence)?;
+
     // Convert authenticated actor to audit actor with operator information
     let actor: Actor = authenticated_actor.to_audit_actor(operator);
 
     // Create and apply checkpoint command
     let command: Command = Command::Checkpoint;
     let transition_result: TransitionResult =
-        apply(metadata, state, command, actor, cause).map_err(translate_core_error)?;
+        apply(metadata, state, &active_bid_year, command, actor, cause)
+            .map_err(translate_core_error)?;
 
     Ok(transition_result)
 }
@@ -221,6 +260,7 @@ pub fn checkpoint(
 /// - The actor is not authorized (not an Admin)
 /// - The command execution fails
 pub fn finalize(
+    persistence: &SqlitePersistence,
     metadata: &BootstrapMetadata,
     state: &State,
     authenticated_actor: &AuthenticatedActor,
@@ -230,13 +270,17 @@ pub fn finalize(
     // Enforce authorization before executing command
     AuthorizationService::authorize_finalize(authenticated_actor)?;
 
+    // Resolve the active bid year from canonical state
+    let active_bid_year: BidYear = resolve_active_bid_year(persistence)?;
+
     // Convert authenticated actor to audit actor with operator information
     let actor: Actor = authenticated_actor.to_audit_actor(operator);
 
     // Create and apply finalize command
     let command: Command = Command::Finalize;
     let transition_result: TransitionResult =
-        apply(metadata, state, command, actor, cause).map_err(translate_core_error)?;
+        apply(metadata, state, &active_bid_year, command, actor, cause)
+            .map_err(translate_core_error)?;
 
     Ok(transition_result)
 }
@@ -268,6 +312,7 @@ pub fn finalize(
 /// - The actor is not authorized (not an Admin)
 /// - The command execution fails
 pub fn rollback(
+    persistence: &SqlitePersistence,
     metadata: &BootstrapMetadata,
     state: &State,
     target_event_id: i64,
@@ -278,13 +323,17 @@ pub fn rollback(
     // Enforce authorization before executing command
     AuthorizationService::authorize_rollback(authenticated_actor)?;
 
+    // Resolve the active bid year from canonical state
+    let active_bid_year: BidYear = resolve_active_bid_year(persistence)?;
+
     // Convert authenticated actor to audit actor with operator information
     let actor: Actor = authenticated_actor.to_audit_actor(operator);
 
     // Create and apply rollback command
     let command: Command = Command::RollbackToEventId { target_event_id };
     let transition_result: TransitionResult =
-        apply(metadata, state, command, actor, cause).map_err(translate_core_error)?;
+        apply(metadata, state, &active_bid_year, command, actor, cause)
+            .map_err(translate_core_error)?;
 
     Ok(transition_result)
 }
@@ -341,8 +390,11 @@ pub fn create_bid_year(
     };
 
     // Apply command via core bootstrap
+    // Create a placeholder bid year for CreateBidYear command (it doesn't need an active bid year)
+    let placeholder_bid_year = BidYear::new(request.year);
     let bootstrap_result: BootstrapResult =
-        apply_bootstrap(metadata, command, actor, cause).map_err(translate_core_error)?;
+        apply_bootstrap(metadata, &placeholder_bid_year, command, actor, cause)
+            .map_err(translate_core_error)?;
 
     Ok(bootstrap_result)
 }
@@ -374,6 +426,7 @@ pub fn create_bid_year(
 /// - The bid year does not exist
 /// - The area already exists in the bid year
 pub fn create_area(
+    persistence: &SqlitePersistence,
     metadata: &BootstrapMetadata,
     request: &CreateAreaRequest,
     authenticated_actor: &AuthenticatedActor,
@@ -388,18 +441,21 @@ pub fn create_area(
         });
     }
 
+    // Resolve the active bid year from canonical state
+    let active_bid_year: BidYear = resolve_active_bid_year(persistence)?;
+
     // Convert authenticated actor to audit actor with operator information
     let actor: Actor = authenticated_actor.to_audit_actor(operator);
 
     // Create command
     let command: Command = Command::CreateArea {
-        bid_year: BidYear::new(request.bid_year),
         area_id: request.area_id.clone(),
     };
 
     // Apply command via core bootstrap
     let bootstrap_result: BootstrapResult =
-        apply_bootstrap(metadata, command, actor, cause).map_err(translate_core_error)?;
+        apply_bootstrap(metadata, &active_bid_year, command, actor, cause)
+            .map_err(translate_core_error)?;
 
     Ok(bootstrap_result)
 }
@@ -1914,8 +1970,11 @@ pub fn set_active_bid_year(
     // Apply the command
     let command = Command::SetActiveBidYear { year: request.year };
     let actor: Actor = authenticated_actor.to_audit_actor(operator);
+    // Use the requested year as placeholder since we're setting the active status
+    let placeholder_bid_year = BidYear::new(request.year);
     let result: BootstrapResult =
-        apply_bootstrap(metadata, command, actor, cause).map_err(translate_core_error)?;
+        apply_bootstrap(metadata, &placeholder_bid_year, command, actor, cause)
+            .map_err(translate_core_error)?;
 
     // Persist the active bid year setting
     persistence
@@ -1996,19 +2055,21 @@ pub fn set_expected_area_count(
         });
     }
 
-    let bid_year = BidYear::new(request.bid_year);
+    // Resolve the active bid year from canonical state
+    let active_bid_year: BidYear = resolve_active_bid_year(persistence)?;
+
     let command = Command::SetExpectedAreaCount {
-        bid_year,
         expected_count: request.expected_count,
     };
 
     let actor: Actor = authenticated_actor.to_audit_actor(operator);
     let result: BootstrapResult =
-        apply_bootstrap(metadata, command, actor, cause).map_err(translate_core_error)?;
+        apply_bootstrap(metadata, &active_bid_year, command, actor, cause)
+            .map_err(translate_core_error)?;
 
     // Persist the expected area count
     persistence
-        .set_expected_area_count(request.bid_year, request.expected_count)
+        .set_expected_area_count(active_bid_year.year(), request.expected_count)
         .map_err(|e| ApiError::Internal {
             message: format!("Failed to set expected area count: {e}"),
         })?;
@@ -2021,11 +2082,12 @@ pub fn set_expected_area_count(
         })?;
 
     Ok(SetExpectedAreaCountResponse {
-        bid_year: request.bid_year,
+        bid_year: active_bid_year.year(),
         expected_count: request.expected_count,
         message: format!(
             "Expected area count set to {} for bid year {}",
-            request.expected_count, request.bid_year
+            request.expected_count,
+            active_bid_year.year()
         ),
     })
 }
@@ -2067,26 +2129,23 @@ pub fn set_expected_user_count(
         });
     }
 
-    let bid_year = BidYear::new(request.bid_year);
+    // Resolve the active bid year from canonical state
+    let active_bid_year: BidYear = resolve_active_bid_year(persistence)?;
+
     let area = Area::new(&request.area);
     let command = Command::SetExpectedUserCount {
-        bid_year,
-        area,
+        area: area.clone(),
         expected_count: request.expected_count,
     };
 
     let actor: Actor = authenticated_actor.to_audit_actor(operator);
     let result: BootstrapResult =
-        apply_bootstrap(metadata, command, actor, cause).map_err(translate_core_error)?;
+        apply_bootstrap(metadata, &active_bid_year, command, actor, cause)
+            .map_err(translate_core_error)?;
 
     // Persist the expected user count
-    let area_ref = Area::new(&request.area);
     persistence
-        .set_expected_user_count(
-            &BidYear::new(request.bid_year),
-            &area_ref,
-            request.expected_count,
-        )
+        .set_expected_user_count(&active_bid_year, &area, request.expected_count)
         .map_err(|e| ApiError::Internal {
             message: format!("Failed to set expected user count: {e}"),
         })?;
@@ -2099,12 +2158,14 @@ pub fn set_expected_user_count(
         })?;
 
     Ok(SetExpectedUserCountResponse {
-        bid_year: request.bid_year,
+        bid_year: active_bid_year.year(),
         area: request.area.clone(),
         expected_count: request.expected_count,
         message: format!(
             "Expected user count set to {} for area '{}' in bid year {}",
-            request.expected_count, request.area, request.bid_year
+            request.expected_count,
+            request.area,
+            active_bid_year.year()
         ),
     })
 }
@@ -2143,8 +2204,10 @@ pub fn update_user(
     // Enforce authorization - only admins can update users
     AuthorizationService::authorize_register_user(authenticated_actor)?;
 
+    // Resolve the active bid year from canonical state
+    let active_bid_year: BidYear = resolve_active_bid_year(persistence)?;
+
     // Translate API request into domain types
-    let bid_year: BidYear = BidYear::new(request.bid_year);
     let initials: Initials = Initials::new(&request.initials);
     let area: Area = Area::new(&request.area);
     let user_type: UserType =
@@ -2163,7 +2226,6 @@ pub fn update_user(
 
     // Create command
     let command = Command::UpdateUser {
-        bid_year: bid_year.clone(),
         initials: initials.clone(),
         name: request.name.clone(),
         area: area.clone(),
@@ -2176,13 +2238,13 @@ pub fn update_user(
     let actor: Actor = authenticated_actor.to_audit_actor(operator);
 
     // Apply the command
-    let result: TransitionResult =
-        apply(metadata, state, command, actor, cause).map_err(translate_core_error)?;
+    let result: TransitionResult = apply(metadata, state, &active_bid_year, command, actor, cause)
+        .map_err(translate_core_error)?;
 
     // Persist the updated canonical user state
     persistence
         .update_user(
-            &bid_year,
+            &active_bid_year,
             &initials,
             &request.name,
             &area,
@@ -2207,7 +2269,7 @@ pub fn update_user(
 
     // Build response
     let response = UpdateUserResponse {
-        bid_year: request.bid_year,
+        bid_year: active_bid_year.year(),
         initials: request.initials.clone(),
         name: request.name.clone(),
         message: String::from("User updated successfully"),
@@ -2407,13 +2469,19 @@ pub fn preview_csv_users(
         });
     }
 
+    // Resolve the active bid year from canonical state
+    let active_bid_year: BidYear = resolve_active_bid_year(persistence)?;
+
     // Validate bid year exists
-    let bid_year: BidYear = BidYear::new(request.bid_year);
-    validate_bid_year_exists(metadata, &bid_year).map_err(translate_domain_error)?;
+    validate_bid_year_exists(metadata, &active_bid_year).map_err(translate_domain_error)?;
 
     // Perform CSV preview validation
-    let preview_result =
-        preview_csv_users_impl(&request.csv_content, &bid_year, metadata, persistence)?;
+    let preview_result = preview_csv_users_impl(
+        &request.csv_content,
+        &active_bid_year,
+        metadata,
+        persistence,
+    )?;
 
     // Convert internal result to API response
     let rows: Vec<CsvRowPreview> = preview_result
@@ -2435,7 +2503,7 @@ pub fn preview_csv_users(
         .collect();
 
     Ok(PreviewCsvUsersResponse {
-        bid_year: request.bid_year,
+        bid_year: active_bid_year.year(),
         rows,
         total_rows: preview_result.total_rows,
         valid_count: preview_result.valid_count,
@@ -2479,7 +2547,7 @@ pub fn preview_csv_users(
 pub fn import_csv_users(
     metadata: &BootstrapMetadata,
     state: &State,
-    _persistence: &SqlitePersistence,
+    persistence: &SqlitePersistence,
     request: &ImportCsvUsersRequest,
     authenticated_actor: &AuthenticatedActor,
     operator: &OperatorData,
@@ -2493,9 +2561,11 @@ pub fn import_csv_users(
         });
     }
 
+    // Resolve the active bid year from canonical state
+    let active_bid_year: BidYear = resolve_active_bid_year(persistence)?;
+
     // Validate bid year exists
-    let bid_year: BidYear = BidYear::new(request.bid_year);
-    validate_bid_year_exists(metadata, &bid_year).map_err(translate_domain_error)?;
+    validate_bid_year_exists(metadata, &active_bid_year).map_err(translate_domain_error)?;
 
     // Convert authenticated actor to audit actor
     let actor: Actor = authenticated_actor.to_audit_actor(operator);
@@ -2710,7 +2780,6 @@ pub fn import_csv_users(
 
         // Create the command
         let command = Command::RegisterUser {
-            bid_year: bid_year.clone(),
             initials: initials.clone(),
             name: name.clone(),
             area,
@@ -2723,6 +2792,7 @@ pub fn import_csv_users(
         match apply(
             metadata,
             &current_state,
+            &active_bid_year,
             command,
             actor.clone(),
             cause.clone(),
@@ -2757,7 +2827,7 @@ pub fn import_csv_users(
     }
 
     let response = ImportCsvUsersResponse {
-        bid_year: request.bid_year,
+        bid_year: active_bid_year.year(),
         total_selected,
         successful_count,
         failed_count,

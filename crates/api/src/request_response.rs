@@ -36,8 +36,6 @@ pub struct CreateBidYearResponse {
 /// API request to create a new area within a bid year.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateAreaRequest {
-    /// The bid year this area belongs to.
-    pub bid_year: u16,
     /// The area identifier.
     pub area_id: String,
 }
@@ -58,8 +56,6 @@ pub struct CreateAreaResponse {
 /// This DTO is distinct from domain types and represents the API contract.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegisterUserRequest {
-    /// The bid year (e.g., 2026).
-    pub bid_year: u16,
     /// The user's initials.
     pub initials: String,
     /// The user's name.
@@ -513,11 +509,9 @@ pub struct GetActiveBidYearResponse {
     pub year: Option<u16>,
 }
 
-/// API request to set the expected area count for a bid year.
+/// API request to set the expected area count for the active bid year.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SetExpectedAreaCountRequest {
-    /// The bid year.
-    pub bid_year: u16,
     /// The expected number of areas.
     pub expected_count: u32,
 }
@@ -533,11 +527,9 @@ pub struct SetExpectedAreaCountResponse {
     pub message: String,
 }
 
-/// API request to set the expected user count for an area.
+/// API request to set the expected user count for an area in the active bid year.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SetExpectedUserCountRequest {
-    /// The bid year.
-    pub bid_year: u16,
     /// The area identifier.
     pub area: String,
     /// The expected number of users.
@@ -557,11 +549,9 @@ pub struct SetExpectedUserCountResponse {
     pub message: String,
 }
 
-/// API request to update an existing user.
+/// API request to update an existing user in the active bid year.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UpdateUserRequest {
-    /// The bid year.
-    pub bid_year: u16,
     /// The user's initials (identifier, cannot be changed).
     pub initials: String,
     /// The user's name.
@@ -789,11 +779,9 @@ pub struct ImportSelectedUsersResponse {
 // CSV Preview Types
 // ========================================================================
 
-/// API request to preview CSV user data.
+/// API request to preview CSV user data for the active bid year.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewCsvUsersRequest {
-    /// The bid year to validate against.
-    pub bid_year: u16,
     /// The raw CSV content.
     pub csv_content: String,
 }
@@ -844,11 +832,9 @@ pub struct PreviewCsvUsersResponse {
     pub invalid_count: usize,
 }
 
-/// API request to import selected CSV rows.
+/// API request to import selected CSV rows into the active bid year.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportCsvUsersRequest {
-    /// The bid year to import into.
-    pub bid_year: u16,
     /// The raw CSV content (same as preview).
     pub csv_content: String,
     /// The row indices (0-based, excluding header) to import.

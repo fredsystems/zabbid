@@ -35,6 +35,7 @@ use zab_bid_domain::{
 #[allow(clippy::too_many_lines)]
 pub fn apply_bootstrap(
     metadata: &BootstrapMetadata,
+    active_bid_year: &BidYear,
     command: Command,
     actor: Actor,
     cause: Cause,
@@ -97,9 +98,12 @@ pub fn apply_bootstrap(
                 canonical_bid_year: Some(canonical_bid_year),
             })
         }
-        Command::CreateArea { bid_year, area_id } => {
+        Command::CreateArea { area_id } => {
+            // Use the active bid year
+            let bid_year = active_bid_year;
+
             // Check if bid year exists
-            if !metadata.has_bid_year(&bid_year) {
+            if !metadata.has_bid_year(bid_year) {
                 return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
                     bid_year.year(),
                 )));
@@ -108,7 +112,7 @@ pub fn apply_bootstrap(
             let area: Area = Area::new(&area_id);
 
             // Check for duplicate
-            if metadata.has_area(&bid_year, &area) {
+            if metadata.has_area(bid_year, &area) {
                 return Err(CoreError::DomainViolation(DomainError::DuplicateArea {
                     bid_year: bid_year.year(),
                     area: area_id,
@@ -135,7 +139,7 @@ pub fn apply_bootstrap(
             );
 
             let audit_event: AuditEvent =
-                AuditEvent::new(actor, cause, action, before, after, bid_year, area);
+                AuditEvent::new(actor, cause, action, before, after, bid_year.clone(), area);
 
             Ok(BootstrapResult {
                 new_metadata,
@@ -186,12 +190,12 @@ pub fn apply_bootstrap(
                 canonical_bid_year: None,
             })
         }
-        Command::SetExpectedAreaCount {
-            bid_year,
-            expected_count,
-        } => {
+        Command::SetExpectedAreaCount { expected_count } => {
+            // Use the active bid year
+            let bid_year = active_bid_year;
+
             // Validate bid year exists
-            if !metadata.has_bid_year(&bid_year) {
+            if !metadata.has_bid_year(bid_year) {
                 return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
                     bid_year.year(),
                 )));
@@ -231,7 +235,7 @@ pub fn apply_bootstrap(
                 action,
                 before,
                 after,
-                bid_year,
+                bid_year.clone(),
                 placeholder_area,
             );
 
@@ -242,19 +246,21 @@ pub fn apply_bootstrap(
             })
         }
         Command::SetExpectedUserCount {
-            bid_year,
             area,
             expected_count,
         } => {
+            // Use the active bid year
+            let bid_year = active_bid_year;
+
             // Validate bid year exists
-            if !metadata.has_bid_year(&bid_year) {
+            if !metadata.has_bid_year(bid_year) {
                 return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
                     bid_year.year(),
                 )));
             }
 
             // Validate area exists in bid year
-            if !metadata.has_area(&bid_year, &area) {
+            if !metadata.has_area(bid_year, &area) {
                 return Err(CoreError::DomainViolation(DomainError::AreaNotFound {
                     bid_year: bid_year.year(),
                     area: area.id().to_string(),
@@ -289,7 +295,7 @@ pub fn apply_bootstrap(
             );
 
             let audit_event: AuditEvent =
-                AuditEvent::new(actor, cause, action, before, after, bid_year, area);
+                AuditEvent::new(actor, cause, action, before, after, bid_year.clone(), area);
 
             Ok(BootstrapResult {
                 new_metadata,
@@ -304,14 +310,16 @@ pub fn apply_bootstrap(
     }
 }
 
-/// Applies a command to the current state, producing a new state and audit event.
+/// Applies a command to the state, producing a new state and audit event.
 ///
-/// This function handles user-scoped commands within a (`bid_year`, `area`) scope.
+/// Commands are validated and applied atomically. Either they succeed completely
+/// or they fail without side effects.
 ///
 /// # Arguments
 ///
-/// * `metadata` - The bootstrap metadata (for validation)
+/// * `metadata` - The bootstrap metadata (immutable)
 /// * `state` - The current state (immutable)
+/// * `active_bid_year` - The active bid year (must be validated by caller)
 /// * `command` - The command to apply
 /// * `actor` - The actor performing this action
 /// * `cause` - The cause or reason for this action
@@ -325,18 +333,18 @@ pub fn apply_bootstrap(
 ///
 /// Returns an error if:
 /// - The command violates domain rules
-/// - The bid year or area does not exist
+/// - The user already exists (for `RegisterUser`)
 #[allow(clippy::too_many_lines)]
 pub fn apply(
     metadata: &BootstrapMetadata,
     state: &State,
+    active_bid_year: &BidYear,
     command: Command,
     actor: Actor,
     cause: Cause,
 ) -> Result<TransitionResult, CoreError> {
     match command {
         Command::RegisterUser {
-            bid_year,
             initials,
             name,
             area,
@@ -344,15 +352,18 @@ pub fn apply(
             crew,
             seniority_data,
         } => {
+            // Use the active bid year
+            let bid_year = active_bid_year;
+
             // Validate bid year exists
-            if !metadata.has_bid_year(&bid_year) {
+            if !metadata.has_bid_year(bid_year) {
                 return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
                     bid_year.year(),
                 )));
             }
 
             // Validate area exists in bid year
-            if !metadata.has_area(&bid_year, &area) {
+            if !metadata.has_area(bid_year, &area) {
                 return Err(CoreError::DomainViolation(DomainError::AreaNotFound {
                     bid_year: bid_year.year(),
                     area: area.id().to_string(),
@@ -374,7 +385,7 @@ pub fn apply(
             validate_user_fields(&user)?;
 
             // Validate initials are unique within the bid year
-            validate_initials_unique(&bid_year, &initials, &state.users)?;
+            validate_initials_unique(bid_year, &initials, &state.users)?;
 
             // Capture state before transition
             let before: StateSnapshot = state.to_snapshot();
@@ -494,7 +505,6 @@ pub fn apply(
             })
         }
         Command::UpdateUser {
-            bid_year,
             initials,
             name,
             area,
@@ -502,15 +512,18 @@ pub fn apply(
             crew,
             seniority_data,
         } => {
+            // Use the active bid year
+            let bid_year = active_bid_year;
+
             // Validate bid year exists
-            if !metadata.has_bid_year(&bid_year) {
+            if !metadata.has_bid_year(bid_year) {
                 return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
                     bid_year.year(),
                 )));
             }
 
             // Validate area exists in bid year
-            if !metadata.has_area(&bid_year, &area) {
+            if !metadata.has_area(bid_year, &area) {
                 return Err(CoreError::DomainViolation(DomainError::AreaNotFound {
                     bid_year: bid_year.year(),
                     area: area.id().to_string(),
@@ -521,7 +534,7 @@ pub fn apply(
             let user_index: Option<usize> = state
                 .users
                 .iter()
-                .position(|u| u.initials == initials && u.bid_year == bid_year);
+                .position(|u| u.initials == initials && &u.bid_year == bid_year);
 
             let user_index: usize = user_index.ok_or_else(|| {
                 CoreError::DomainViolation(DomainError::UserNotFound {

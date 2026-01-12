@@ -90,6 +90,7 @@ fn test_auth_error_display_authentication_failed() {
 
 #[test]
 fn test_bidder_cannot_register_user() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request: RegisterUserRequest = create_valid_request();
@@ -97,8 +98,15 @@ fn test_bidder_cannot_register_user() {
     let operator = create_test_bidder_operator();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &bidder, &operator, cause);
+    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
+        &metadata,
+        &state,
+        request,
+        &bidder,
+        &operator,
+        cause,
+    );
 
     assert!(result.is_err());
     let err: ApiError = result.unwrap_err();
@@ -115,6 +123,7 @@ fn test_bidder_cannot_register_user() {
 
 #[test]
 fn test_unauthorized_action_does_not_mutate_state() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request: RegisterUserRequest = create_valid_request();
@@ -122,8 +131,15 @@ fn test_unauthorized_action_does_not_mutate_state() {
     let operator = create_test_bidder_operator();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> =
-        register_user(&metadata, &state, request, &bidder, &operator, cause);
+    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
+        &metadata,
+        &state,
+        request,
+        &bidder,
+        &operator,
+        cause,
+    );
 
     assert!(result.is_err());
     // Original state is unchanged

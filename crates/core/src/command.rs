@@ -4,7 +4,7 @@
 // https://opensource.org/licenses/MIT.
 
 use time::Date;
-use zab_bid_domain::{Area, BidYear, Crew, Initials, SeniorityData, UserType};
+use zab_bid_domain::{Area, Crew, Initials, SeniorityData, UserType};
 
 /// A command represents user or system intent as data only.
 ///
@@ -20,17 +20,13 @@ pub enum Command {
         /// The number of pay periods (must be 26 or 27).
         num_pay_periods: u8,
     },
-    /// Create a new area within a bid year.
+    /// Create a new area within the active bid year.
     CreateArea {
-        /// The bid year this area belongs to.
-        bid_year: BidYear,
         /// The area identifier.
         area_id: String,
     },
-    /// Register a new user for a bid year.
+    /// Register a new user for the active bid year.
     RegisterUser {
-        /// The bid year.
-        bid_year: BidYear,
         /// The user's initials.
         initials: Initials,
         /// The user's name.
@@ -60,26 +56,20 @@ pub enum Command {
         /// The year to mark as active.
         year: u16,
     },
-    /// Set the expected number of areas for a bid year.
+    /// Set the expected number of areas for the active bid year.
     SetExpectedAreaCount {
-        /// The bid year.
-        bid_year: BidYear,
         /// The expected number of areas.
         expected_count: u32,
     },
-    /// Set the expected number of users for an area.
+    /// Set the expected number of users for an area in the active bid year.
     SetExpectedUserCount {
-        /// The bid year.
-        bid_year: BidYear,
         /// The area.
         area: Area,
         /// The expected number of users.
         expected_count: u32,
     },
-    /// Update an existing user's information.
+    /// Update an existing user's information in the active bid year.
     UpdateUser {
-        /// The bid year.
-        bid_year: BidYear,
         /// The user's initials (identifier, cannot be changed).
         initials: Initials,
         /// The user's name.
