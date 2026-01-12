@@ -151,6 +151,21 @@ ENDPOINTS: Sequence[Endpoint] = (
     Endpoint("19", "Login", "POST", "/api/auth/login"),
     Endpoint("20", "Logout", "POST", "/api/auth/logout"),
     Endpoint("21", "Who Am I", "GET", "/api/auth/me"),
+    #
+    # Bootstrap completeness endpoints
+    Endpoint("22", "Set Active Bid Year", "POST", "/api/bootstrap/bid-years/active"),
+    Endpoint("23", "Get Active Bid Year", "GET", "/api/bootstrap/bid-years/active"),
+    Endpoint(
+        "24",
+        "Set Expected Area Count",
+        "POST",
+        "/api/bootstrap/bid-years/expected-areas",
+    ),
+    Endpoint(
+        "25", "Set Expected User Count", "POST", "/api/bootstrap/areas/expected-users"
+    ),
+    Endpoint("26", "Update User", "POST", "/api/users/update"),
+    Endpoint("27", "Bootstrap Completeness", "GET", "/api/bootstrap/completeness"),
 )
 
 
@@ -216,6 +231,35 @@ class LoginRequest(TypedDict):
 
 class LogoutRequest(TypedDict):
     session_token: str
+
+
+class SetActiveBidYearRequest(ActorEnvelope):
+    year: int
+
+
+class SetExpectedAreaCountRequest(ActorEnvelope):
+    bid_year: int
+    expected_count: int
+
+
+class SetExpectedUserCountRequest(ActorEnvelope):
+    bid_year: int
+    area: str
+    expected_count: int
+
+
+class UpdateUserRequest(ActorEnvelope):
+    bid_year: int
+    initials: str
+    name: str
+    area: str
+    crew: Optional[int]
+    user_type: UserType
+    cumulative_natca_bu_date: str
+    natca_bu_date: str
+    eod_faa_date: str
+    service_computation_date: str
+    lottery_value: Optional[int]
 
 
 # -----------------------------
@@ -372,6 +416,82 @@ def build_post_payload(path: str) -> JSONObject:
         SESSION["area"] = req_rollback["area"]
         return req_rollback
 
+    if path == "/api/bootstrap/bid-years/active":
+        env: ActorEnvelope = prompt_actor_envelope()
+        year: int = prompt_int("Bid year to activate")
+        req_set_active: SetActiveBidYearRequest = SetActiveBidYearRequest(
+            **env,
+            year=year,
+        )
+        return cast(JSONObject, req_set_active)
+
+    if path == "/api/bootstrap/bid-years/expected-areas":
+        env: ActorEnvelope = prompt_actor_envelope()
+        bid_year: int = prompt_int("Bid year", default=SESSION.get("bid_year"))
+        expected_count: int = prompt_int("Expected area count")
+        req_set_area_count: SetExpectedAreaCountRequest = SetExpectedAreaCountRequest(
+            **env,
+            bid_year=bid_year,
+            expected_count=expected_count,
+        )
+        SESSION["bid_year"] = bid_year
+        return cast(JSONObject, req_set_area_count)
+
+    if path == "/api/bootstrap/areas/expected-users":
+        env: ActorEnvelope = prompt_actor_envelope()
+        bid_year: int = prompt_int("Bid year", default=SESSION.get("bid_year"))
+        area: str = prompt_str("Area", default=SESSION.get("area"))
+        expected_count: int = prompt_int("Expected user count")
+        req_set_user_count: SetExpectedUserCountRequest = SetExpectedUserCountRequest(
+            **env,
+            bid_year=bid_year,
+            area=area,
+            expected_count=expected_count,
+        )
+        SESSION["bid_year"] = bid_year
+        SESSION["area"] = area
+        return cast(JSONObject, req_set_user_count)
+
+    if path == "/api/users/update":
+        env: ActorEnvelope = prompt_actor_envelope()
+        bid_year: int = prompt_int("Bid year", default=SESSION.get("bid_year"))
+        initials: str = prompt_str("User initials")
+        name: str = prompt_str("User name")
+        area: str = prompt_str("Area", default=SESSION.get("area"))
+        user_type_str: str = prompt_str(
+            "User type (CPC, CPC-IT, Dev-D, Dev-R)", default="CPC"
+        )
+        user_type: UserType = cast(UserType, user_type_str)
+        has_crew: bool = prompt_yes_no("Has crew assignment?", default=True)
+        crew: Optional[int] = prompt_int("Crew (1-7)") if has_crew else None
+        print("Enter seniority dates (format: YYYY-MM-DD)")
+        cumulative_natca_bu_date: str = prompt_str("Cumulative NATCA BU date")
+        natca_bu_date: str = prompt_str("NATCA BU date")
+        eod_faa_date: str = prompt_str("EOD/FAA date")
+        service_computation_date: str = prompt_str("Service Computation Date")
+        has_lottery: bool = prompt_yes_no("Has lottery value?", default=False)
+        lottery_value: Optional[int] = (
+            prompt_int("Lottery value") if has_lottery else None
+        )
+
+        req_update: UpdateUserRequest = UpdateUserRequest(
+            **env,
+            bid_year=bid_year,
+            initials=initials,
+            name=name,
+            area=area,
+            crew=crew,
+            user_type=user_type,
+            cumulative_natca_bu_date=cumulative_natca_bu_date,
+            natca_bu_date=natca_bu_date,
+            eod_faa_date=eod_faa_date,
+            service_computation_date=service_computation_date,
+            lottery_value=lottery_value,
+        )
+        SESSION["bid_year"] = bid_year
+        SESSION["area"] = area
+        return cast(JSONObject, req_update)
+
     # For now, we don't implement other POST bodies until you provide schemas.
     raise NotImplementedError(f"POST body schema not implemented for {path}")
 
@@ -462,6 +582,18 @@ def build_get_params(path: str) -> Mapping[str, str]:
         return {"__event_id_path__": str(event_id)}
 
     if path == "/api/bootstrap/status":
+        return {}
+
+    if path == "/api/bootstrap/bid-years/active":
+        return {}
+
+    if path == "/api/bootstrap/completeness":
+        return {}
+
+    if path == "/api/auth/bootstrap/status":
+        return {}
+
+    if path == "/api/auth/me":
         return {}
 
     return {}
