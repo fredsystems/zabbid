@@ -1,0 +1,673 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * CSV User Import styles.
+ * Mobile-first design with card-based layouts for preview and results.
+ */
+
+@use "sass:color";
+@use "variables" as *;
+
+.csv-user-import {
+  padding: $spacing-md;
+  max-width: 1200px;
+  margin: 0 auto;
+
+  @media (min-width: 768px) {
+    padding: $spacing-xl;
+  }
+
+  // ============================================================================
+  // Header & Workflow Indicator
+  // ============================================================================
+
+  .csv-import-header {
+    margin-bottom: $spacing-xl;
+
+    h2 {
+      font-size: $font-size-2xl;
+      margin-bottom: $spacing-md;
+      color: $color-text-primary;
+    }
+
+    .workflow-indicator {
+      display: flex;
+      align-items: center;
+      gap: $spacing-xs;
+      flex-wrap: wrap;
+      padding: $spacing-md;
+      background: $color-bg-surface;
+      border-radius: $radius-md;
+      border: 2px solid $color-border;
+
+      @media (min-width: 600px) {
+        gap: $spacing-sm;
+      }
+
+      span {
+        font-size: $font-size-sm;
+        color: $color-text-muted;
+        font-weight: 600;
+        transition: color $transition-base;
+
+        @media (min-width: 600px) {
+          font-size: $font-size-base;
+        }
+
+        &.active {
+          color: $color-accent-primary;
+          font-weight: 700;
+        }
+
+        &.separator {
+          color: $color-border;
+          font-weight: normal;
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // Step Container
+  // ============================================================================
+
+  .csv-import-body {
+    background: $color-bg-surface;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+
+    @media (min-width: 768px) {
+      padding: $spacing-xl;
+    }
+  }
+
+  .csv-import-step {
+    h3 {
+      font-size: $font-size-xl;
+      margin-bottom: $spacing-md;
+      color: $color-text-primary;
+    }
+
+    .step-description {
+      color: $color-text-secondary;
+      margin-bottom: $spacing-lg;
+      line-height: 1.5;
+    }
+  }
+
+  // ============================================================================
+  // Upload Step
+  // ============================================================================
+
+  .upload-step {
+    .csv-textarea-container {
+      margin-bottom: $spacing-lg;
+
+      label {
+        display: block;
+        font-weight: 600;
+        color: $color-text-primary;
+        margin-bottom: $spacing-sm;
+      }
+
+      .csv-textarea {
+        width: 100%;
+        min-height: 300px;
+        padding: $spacing-md;
+        border: 2px solid $color-border;
+        border-radius: $radius-sm;
+        background: $color-bg-base;
+        color: $color-text-primary;
+        font-family: $font-family-mono;
+        font-size: $font-size-sm;
+        resize: vertical;
+        transition: border-color $transition-base;
+
+        &:focus {
+          outline: none;
+          border-color: $color-accent-primary;
+        }
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        &::placeholder {
+          color: $color-text-muted;
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // Preview Step
+  // ============================================================================
+
+  .preview-step {
+    .preview-summary {
+      background: $color-bg-surface-elevated;
+      border: 1px solid $color-border;
+      border-radius: $radius-sm;
+      padding: $spacing-md;
+      margin-bottom: $spacing-lg;
+
+      p {
+        margin: $spacing-xs 0;
+        color: $color-text-primary;
+
+        &:first-child {
+          margin-top: 0;
+        }
+
+        &:last-child {
+          margin-bottom: 0;
+        }
+      }
+
+      .valid-count {
+        color: $color-success;
+        font-weight: 700;
+      }
+
+      .invalid-count {
+        color: $color-error;
+        font-weight: 700;
+      }
+    }
+
+    .preview-rows {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-md;
+      margin-bottom: $spacing-lg;
+      max-height: 600px;
+      overflow-y: auto;
+      padding-right: $spacing-xs;
+
+      // Custom scrollbar styling
+      &::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      &::-webkit-scrollbar-track {
+        background: $color-bg-base;
+        border-radius: $radius-sm;
+      }
+
+      &::-webkit-scrollbar-thumb {
+        background: $color-border;
+        border-radius: $radius-sm;
+
+        &:hover {
+          background: $color-text-muted;
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // Preview Row Cards
+  // ============================================================================
+
+  .preview-row-card {
+    background: $color-bg-surface-elevated;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+    transition: all $transition-base;
+
+    &.valid {
+      border-color: $color-success;
+
+      &.selected {
+        background: color.adjust($color-success, $alpha: -0.95);
+        box-shadow: 0 0 0 2px rgba($color-success, 0.3);
+      }
+    }
+
+    &.invalid {
+      border-color: $color-error;
+      opacity: 0.7;
+    }
+
+    .row-card-header {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-sm;
+      margin-bottom: $spacing-md;
+      padding-bottom: $spacing-sm;
+      border-bottom: 1px solid $color-border;
+
+      @media (min-width: 600px) {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .row-info {
+        display: flex;
+        align-items: center;
+        gap: $spacing-sm;
+        flex-wrap: wrap;
+
+        .row-number {
+          font-weight: 600;
+          color: $color-text-primary;
+          font-size: $font-size-base;
+        }
+
+        .status-badge {
+          display: inline-block;
+          padding: $spacing-xs $spacing-sm;
+          border-radius: $radius-sm;
+          font-size: $font-size-xs;
+          font-weight: 700;
+
+          &.valid {
+            background: $color-success;
+            color: $color-bg-base;
+          }
+
+          &.invalid {
+            background: $color-error;
+            color: $color-bg-base;
+          }
+        }
+      }
+
+      .row-checkbox {
+        display: flex;
+        align-items: center;
+        gap: $spacing-sm;
+        cursor: pointer;
+        user-select: none;
+
+        input[type="checkbox"] {
+          width: 20px;
+          height: 20px;
+          cursor: pointer;
+          accent-color: $color-accent-primary;
+
+          &:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+          }
+        }
+
+        span {
+          font-weight: 600;
+          color: $color-text-primary;
+          font-size: $font-size-sm;
+        }
+      }
+    }
+
+    .row-card-body {
+      .row-details {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: $spacing-sm $spacing-md;
+        margin: 0 0 $spacing-md 0;
+
+        dt {
+          font-weight: 600;
+          color: $color-text-muted;
+          font-size: $font-size-sm;
+        }
+
+        dd {
+          margin: 0;
+          color: $color-text-primary;
+          font-size: $font-size-sm;
+
+          em.missing {
+            color: $color-text-muted;
+            font-style: italic;
+          }
+        }
+      }
+
+      .row-errors {
+        padding: $spacing-md;
+        background: rgba($color-error, 0.1);
+        border-left: 3px solid $color-error;
+        border-radius: $radius-sm;
+
+        strong {
+          display: block;
+          margin-bottom: $spacing-sm;
+          color: $color-error;
+          font-size: $font-size-sm;
+        }
+
+        ul {
+          margin: 0;
+          padding-left: $spacing-lg;
+
+          li {
+            margin-bottom: $spacing-xs;
+            color: $color-text-primary;
+            font-size: $font-size-sm;
+
+            &:last-child {
+              margin-bottom: 0;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // Confirmation Step
+  // ============================================================================
+
+  .confirm-step {
+    .confirmation-warning {
+      background: rgba($color-warning, 0.1);
+      border: 2px solid $color-warning;
+      border-radius: $radius-md;
+      padding: $spacing-lg;
+      margin-bottom: $spacing-lg;
+
+      h4 {
+        margin: 0 0 $spacing-md 0;
+        color: $color-warning;
+        font-size: $font-size-lg;
+      }
+
+      p {
+        margin: $spacing-sm 0;
+        color: $color-text-primary;
+        font-size: $font-size-base;
+        line-height: 1.5;
+      }
+
+      ul {
+        margin: $spacing-md 0 0 0;
+        padding-left: $spacing-xl;
+
+        li {
+          margin-bottom: $spacing-sm;
+          color: $color-text-primary;
+
+          &:last-child {
+            margin-bottom: 0;
+          }
+
+          strong {
+            color: $color-warning;
+          }
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // Importing Step
+  // ============================================================================
+
+  .importing-step {
+    text-align: center;
+    padding: $spacing-2xl 0;
+
+    h3 {
+      color: $color-accent-primary;
+      margin-bottom: $spacing-lg;
+    }
+
+    .loading-message {
+      color: $color-text-secondary;
+      font-size: $font-size-base;
+      line-height: 1.5;
+    }
+  }
+
+  // ============================================================================
+  // Results Step
+  // ============================================================================
+
+  .results-step {
+    .results-summary {
+      background: $color-bg-surface-elevated;
+      border: 2px solid $color-border;
+      border-radius: $radius-md;
+      padding: $spacing-lg;
+      margin-bottom: $spacing-lg;
+
+      &.all-success {
+        border-color: $color-success;
+        background: linear-gradient(
+          135deg,
+          $color-bg-surface-elevated 0%,
+          rgba($color-success, 0.05) 100%
+        );
+      }
+
+      &.has-failures {
+        border-color: $color-warning;
+        background: linear-gradient(
+          135deg,
+          $color-bg-surface-elevated 0%,
+          rgba($color-warning, 0.05) 100%
+        );
+      }
+
+      p {
+        margin: $spacing-sm 0;
+        font-size: $font-size-base;
+        color: $color-text-primary;
+
+        &:first-child {
+          margin-top: 0;
+        }
+
+        &:last-child {
+          margin-bottom: 0;
+        }
+
+        strong {
+          color: $color-success;
+          font-size: $font-size-lg;
+        }
+      }
+
+      .failure-notice {
+        strong {
+          color: $color-error;
+        }
+      }
+    }
+
+    .results-list {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-sm;
+      margin-bottom: $spacing-lg;
+      max-height: 500px;
+      overflow-y: auto;
+      padding-right: $spacing-xs;
+
+      &::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      &::-webkit-scrollbar-track {
+        background: $color-bg-base;
+        border-radius: $radius-sm;
+      }
+
+      &::-webkit-scrollbar-thumb {
+        background: $color-border;
+        border-radius: $radius-sm;
+
+        &:hover {
+          background: $color-text-muted;
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // Result Row Cards
+  // ============================================================================
+
+  .result-row-card {
+    background: $color-bg-surface-elevated;
+    border: 2px solid $color-border;
+    border-radius: $radius-sm;
+    padding: $spacing-md;
+
+    &.success {
+      border-color: $color-success;
+    }
+
+    &.failed {
+      border-color: $color-error;
+      background: rgba($color-error, 0.05);
+    }
+
+    .result-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: $spacing-sm;
+
+      .row-number {
+        font-weight: 600;
+        color: $color-text-primary;
+        font-size: $font-size-sm;
+      }
+
+      .status-badge {
+        display: inline-block;
+        padding: $spacing-xs $spacing-sm;
+        border-radius: $radius-sm;
+        font-size: $font-size-xs;
+        font-weight: 700;
+
+        &.success {
+          background: $color-success;
+          color: $color-bg-base;
+        }
+
+        &.failed {
+          background: $color-error;
+          color: $color-bg-base;
+        }
+      }
+    }
+
+    .result-card-body {
+      .user-initials {
+        margin: 0;
+        color: $color-text-primary;
+        font-size: $font-size-base;
+        font-weight: 600;
+
+        em {
+          color: $color-text-muted;
+          font-weight: normal;
+        }
+      }
+
+      .result-error {
+        margin-top: $spacing-sm;
+        padding: $spacing-sm;
+        background: rgba($color-error, 0.1);
+        border-left: 3px solid $color-error;
+        border-radius: $radius-sm;
+        font-size: $font-size-sm;
+
+        strong {
+          color: $color-error;
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // Error Messages
+  // ============================================================================
+
+  .error-message {
+    background: rgba($color-error, 0.1);
+    border: 2px solid $color-error;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+    margin-bottom: $spacing-lg;
+    color: $color-text-primary;
+    font-size: $font-size-base;
+    line-height: 1.5;
+  }
+
+  // ============================================================================
+  // Step Actions (Buttons)
+  // ============================================================================
+
+  .step-actions {
+    display: flex;
+    gap: $spacing-md;
+    margin-top: $spacing-lg;
+    flex-wrap: wrap;
+
+    button {
+      flex: 1;
+      min-width: 140px;
+      padding: $spacing-md $spacing-lg;
+      border-radius: $radius-md;
+      font-size: $font-size-base;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all $transition-base;
+      box-shadow: $shadow-sm;
+
+      @media (min-width: 600px) {
+        flex: 0 0 auto;
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+
+    .btn-primary {
+      background: $color-accent-primary;
+      color: $color-bg-base;
+      border: none;
+
+      &:hover:not(:disabled) {
+        background: color.adjust($color-accent-primary, $lightness: -10%);
+        box-shadow: $shadow-md;
+      }
+    }
+
+    .btn-secondary {
+      background: $color-bg-surface-elevated;
+      color: $color-text-primary;
+      border: 2px solid $color-border;
+
+      &:hover:not(:disabled) {
+        background: $color-bg-surface-overlay;
+        border-color: $color-accent-primary;
+      }
+    }
+
+    .btn-danger {
+      background: $color-warning;
+      color: $color-bg-base;
+      border: none;
+
+      &:hover:not(:disabled) {
+        background: color.adjust($color-warning, $lightness: -10%);
+        box-shadow: $shadow-md;
+      }
+    }
+  }
+}

@@ -167,6 +167,7 @@ ENDPOINTS: Sequence[Endpoint] = (
     Endpoint("26", "Update User", "POST", "/api/users/update"),
     Endpoint("27", "Bootstrap Completeness", "GET", "/api/bootstrap/completeness"),
     Endpoint("28", "Preview CSV Users", "POST", "/api/bootstrap/users/csv/preview"),
+    Endpoint("29", "Import CSV Users", "POST", "/api/bootstrap/users/csv/import"),
 )
 
 
@@ -622,6 +623,54 @@ def build_get_params(path: str) -> Mapping[str, str]:
 
     if path == "/api/bootstrap/completeness":
         return {}
+
+    if path == "/api/bootstrap/users/csv/preview":
+        bid_year: int = prompt_int(
+            "Bid year",
+            default=SESSION.get("bid_year"),
+        )
+        print("Paste CSV content (end with a line containing only '---'):")
+        csv_lines: list[str] = []
+        while True:
+            line: str = input()
+            if line.strip() == "---":
+                break
+            csv_lines.append(line)
+        csv_content: str = "\n".join(csv_lines)
+        SESSION.update(bid_year=bid_year)
+        return {
+            "bid_year": bid_year,
+            "csv_content": csv_content,
+        }
+
+    if path == "/api/bootstrap/users/csv/import":
+        bid_year: int = prompt_int(
+            "Bid year",
+            default=SESSION.get("bid_year"),
+        )
+        print("Paste CSV content (end with a line containing only '---'):")
+        csv_lines: list[str] = []
+        while True:
+            line: str = input()
+            if line.strip() == "---":
+                break
+            csv_lines.append(line)
+        csv_content: str = "\n".join(csv_lines)
+
+        print(
+            "Enter row indices to import (comma-separated, 0-based excluding header):"
+        )
+        indices_str: str = input().strip()
+        selected_row_indices: list[int] = []
+        if indices_str:
+            selected_row_indices = [int(idx.strip()) for idx in indices_str.split(",")]
+
+        SESSION.update(bid_year=bid_year)
+        return {
+            "bid_year": bid_year,
+            "csv_content": csv_content,
+            "selected_row_indices": selected_row_indices,
+        }
 
     if path == "/api/auth/bootstrap/status":
         return {}

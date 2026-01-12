@@ -325,3 +325,83 @@ export interface UpdateUserResponse {
   /** Success message */
   message: string;
 }
+
+/**
+ * Status of a single CSV row validation.
+ */
+export type CsvRowStatus = "valid" | "invalid";
+
+/**
+ * Result for a single CSV row preview.
+ */
+export interface CsvRowPreview {
+  /** The row number (1-based, excluding header) */
+  row_number: number;
+  /** The parsed initials (if valid) */
+  initials: string | null;
+  /** The parsed name (if valid) */
+  name: string | null;
+  /** The parsed area ID (if valid) */
+  area_id: string | null;
+  /** The parsed user type (if valid) */
+  user_type: string | null;
+  /** The parsed crew (if valid) */
+  crew: number | null;
+  /** The row validation status */
+  status: CsvRowStatus;
+  /** Zero or more validation error messages */
+  errors: string[];
+}
+
+/**
+ * Response for CSV preview.
+ */
+export interface PreviewCsvUsersResponse {
+  /** The bid year being validated against */
+  bid_year: number;
+  /** Per-row validation results */
+  rows: CsvRowPreview[];
+  /** Total number of rows */
+  total_rows: number;
+  /** Number of valid rows */
+  valid_count: number;
+  /** Number of invalid rows */
+  invalid_count: number;
+}
+
+/**
+ * Status of a single CSV row import.
+ */
+export type CsvImportRowStatus = "success" | "failed";
+
+/**
+ * Result of a single row import attempt.
+ */
+export interface CsvImportRowResult {
+  /** The row index (0-based, excluding header) */
+  row_index: number;
+  /** The row number (1-based, for human display) */
+  row_number: number;
+  /** The initials from this row (if parsed) */
+  initials: string | null;
+  /** The status of this import attempt */
+  status: CsvImportRowStatus;
+  /** Error message if the import failed */
+  error: string | null;
+}
+
+/**
+ * Response for CSV import.
+ */
+export interface ImportCsvUsersResponse {
+  /** The bid year imported into */
+  bid_year: number;
+  /** Total number of rows selected for import */
+  total_selected: number;
+  /** Number of rows successfully imported */
+  successful_count: number;
+  /** Number of rows that failed to import */
+  failed_count: number;
+  /** Per-row import results */
+  results: CsvImportRowResult[];
+}
