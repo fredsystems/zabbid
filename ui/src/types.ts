@@ -57,6 +57,8 @@ export interface ListAreasResponse {
  * User information for listing with leave availability.
  */
 export interface UserInfo {
+  /** The user's canonical internal identifier */
+  user_id: number;
   /** The user's initials */
   initials: string;
   /** The user's name */
@@ -97,6 +99,8 @@ export interface ListUsersResponse {
 export interface LeaveAvailabilityResponse {
   /** The bid year */
   bid_year: number;
+  /** The user's canonical internal identifier */
+  user_id: number;
   /** The user's initials */
   initials: string;
   /** Total hours earned (from Phase 9, post-rounding) */
@@ -318,6 +322,8 @@ export interface SetExpectedUserCountResponse {
 export interface UpdateUserResponse {
   /** The bid year */
   bid_year: number;
+  /** The user's canonical internal identifier */
+  user_id: number;
   /** The user's initials */
   initials: string;
   /** The user's name */

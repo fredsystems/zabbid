@@ -218,6 +218,8 @@ struct ListUsersApiResponse {
 /// User information for listing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct UserInfoResponse {
+    /// Canonical internal identifier.
+    user_id: i64,
     /// The user's initials.
     initials: String,
     /// The user's name.
@@ -763,6 +765,7 @@ async fn handle_list_users(
         .users
         .into_iter()
         .map(|u| UserInfoResponse {
+            user_id: u.user_id,
             initials: u.initials,
             name: u.name,
             crew: u.crew,
@@ -1975,7 +1978,7 @@ async fn handle_import_csv_users(
     let state: State = if let Some((_, first_area)) = metadata.areas.first() {
         persistence
             .get_current_state(&bid_year, first_area)
-            .unwrap_or_else(|_| State::new(bid_year, first_area.clone()))
+            .unwrap_or_else(|_| State::new(bid_year.clone(), first_area.clone()))
     } else {
         State::new(bid_year, Area::new("DUMMY"))
     };
@@ -1987,32 +1990,22 @@ async fn handle_import_csv_users(
     };
 
     // Execute import via API (persistence already locked)
-    let (response, audit_events, final_state) = import_csv_users(
+    let response = import_csv_users(
         &metadata,
         &state,
-        &persistence,
+        &mut persistence,
         &import_request,
         &actor,
         &operator,
         &cause,
     )?;
-    // Persist all transitions (persistence already locked)
-    let mut event_ids: Vec<i64> = Vec::new();
-    for audit_event in &audit_events {
-        let transition_result = TransitionResult {
-            audit_event: audit_event.clone(),
-            new_state: final_state.clone(),
-        };
-        let event_id: i64 = persistence.persist_transition(&transition_result, false)?;
-        event_ids.push(event_id);
-    }
+
     drop(persistence);
 
     info!(
         total_selected = response.total_selected,
         successful_count = response.successful_count,
         failed_count = response.failed_count,
-        event_count = event_ids.len(),
         "Successfully completed CSV import"
     );
 

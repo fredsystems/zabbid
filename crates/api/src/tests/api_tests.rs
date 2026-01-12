@@ -11,10 +11,11 @@ use zab_bid_domain::{Area, BidYear};
 
 use crate::{
     ApiError, ApiResult, AuthError, AuthenticatedActor, CreateAreaRequest, CreateBidYearRequest,
-    GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
-    ListUsersResponse, RegisterUserRequest, RegisterUserResponse, Role, checkpoint, create_area,
-    create_bid_year, finalize, get_current_state, get_historical_state, get_leave_availability,
-    list_areas, list_bid_years, list_users, register_user, rollback,
+    GetLeaveAvailabilityResponse, ImportCsvUsersRequest, ListAreasRequest, ListAreasResponse,
+    ListBidYearsResponse, ListUsersResponse, RegisterUserRequest, RegisterUserResponse, Role,
+    checkpoint, create_area, create_bid_year, finalize, get_current_state, get_historical_state,
+    get_leave_availability, import_csv_users, list_areas, list_bid_years, list_users,
+    register_user, rollback,
 };
 
 use super::helpers::{
@@ -1866,4 +1867,248 @@ fn test_get_leave_availability_different_service_tiers() {
     // 26 PPs * 8 hours = 208 hours = 26 days
     assert_eq!(response2.earned_hours, 208);
     assert_eq!(response2.earned_days, 26);
+}
+
+// ============================================================================
+// CSV Import Tests
+// ============================================================================
+
+/// This test validates Phase 21 CSV import fix: multiple users in same area
+/// are all persisted correctly, not just the last one.
+#[test]
+fn test_csv_import_multiple_users_same_area() {
+    use crate::{ImportCsvUsersRequest, import_csv_users};
+    use zab_bid::{Command, apply_bootstrap};
+    use zab_bid_audit::Actor;
+    use zab_bid_persistence::SqlitePersistence;
+
+    let mut persistence =
+        SqlitePersistence::new_in_memory().expect("Failed to create in-memory persistence");
+
+    // Create operator for auth
+    persistence
+        .create_operator("test_admin", "Test Admin", "password", "Admin")
+        .expect("Failed to create operator");
+
+    let mut metadata = BootstrapMetadata::new();
+
+    // Bootstrap bid year and area
+    let actor = Actor::with_operator(
+        String::from("test"),
+        String::from("admin"),
+        1,
+        String::from("test_admin"),
+        String::from("Test Admin"),
+    );
+    let cause = create_test_cause();
+
+    let bid_year_cmd = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: 26,
+    };
+    let placeholder = BidYear::new(2026);
+    let bid_year_result = apply_bootstrap(&metadata, &placeholder, bid_year_cmd, actor, cause)
+        .expect("Failed to create bid year");
+    persistence
+        .persist_bootstrap(&bid_year_result)
+        .expect("Failed to persist bid year");
+    metadata.bid_years.push(BidYear::new(2026));
+
+    // Create EAST area
+    let actor = Actor::with_operator(
+        String::from("test"),
+        String::from("admin"),
+        1,
+        String::from("test_admin"),
+        String::from("Test Admin"),
+    );
+    let cause = create_test_cause();
+    let area_cmd = Command::CreateArea {
+        area_id: String::from("EAST"),
+    };
+    let area_result = apply_bootstrap(&metadata, &BidYear::new(2026), area_cmd, actor, cause)
+        .expect("Failed to create area");
+    persistence
+        .persist_bootstrap(&area_result)
+        .expect("Failed to persist area");
+    metadata.areas.push((BidYear::new(2026), Area::new("EAST")));
+
+    // Set active bid year
+    persistence
+        .set_active_bid_year(2026)
+        .expect("Failed to set active bid year");
+
+    // CSV with 2 users in EAST area - this tests the bug fix where only the last user was persisted
+    let csv_content = "initials,name,area_id,crew,user_type,service_computation_date,eod_faa_date,natca_bu_date,cumulative_natca_bu_date,lottery_value
+CS,Fred Clausen,EAST,3,CPC,2008-04-01,2008-04-01,2008-08-05,2008-08-05,
+SB,Steve Barnes,EAST,3,CPC,2010-04-01,2010-04-01,2010-08-05,2010-08-05,";
+
+    let request = ImportCsvUsersRequest {
+        csv_content: csv_content.to_string(),
+        selected_row_indices: vec![0, 1],
+    };
+
+    let admin = create_test_admin();
+    let operator = create_test_admin_operator();
+    let cause = create_test_cause();
+    let state = State::new(BidYear::new(2026), Area::new("EAST"));
+
+    let response = import_csv_users(
+        &metadata,
+        &state,
+        &mut persistence,
+        &request,
+        &admin,
+        &operator,
+        &cause,
+    )
+    .expect("CSV import should succeed");
+
+    assert_eq!(response.total_selected, 2, "Should select 2 rows");
+    assert_eq!(
+        response.successful_count, 2,
+        "Both users should import successfully"
+    );
+    assert_eq!(response.failed_count, 0, "No failures expected");
+
+    // Verify both users exist in database - this is the key test for Phase 21 fix
+    let east_state = persistence
+        .get_current_state(&BidYear::new(2026), &Area::new("EAST"))
+        .expect("Should load EAST state");
+    assert_eq!(
+        east_state.users.len(),
+        2,
+        "EAST should have 2 users (not just the last one!)"
+    );
+
+    // Verify user_ids are assigned
+    for user in &east_state.users {
+        assert!(user.user_id.is_some(), "User should have user_id assigned");
+        assert!(user.user_id.unwrap() > 0, "User ID should be positive");
+    }
+
+    // Verify correct initials
+    let initials_set: std::collections::HashSet<String> = east_state
+        .users
+        .iter()
+        .map(|u| u.initials.value().to_string())
+        .collect();
+    assert!(initials_set.contains("CS"), "Should contain CS user");
+    assert!(initials_set.contains("SB"), "Should contain SB user");
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn test_csv_import_is_additive_not_destructive() {
+    use zab_bid::Command;
+    use zab_bid::apply_bootstrap;
+    use zab_bid_audit::Actor;
+    use zab_bid_persistence::SqlitePersistence;
+
+    let mut persistence =
+        SqlitePersistence::new_in_memory().expect("Failed to create in-memory persistence");
+
+    // Create operator for auth
+    persistence
+        .create_operator("test_admin", "Test Admin", "password", "Admin")
+        .expect("Failed to create operator");
+
+    let mut metadata = BootstrapMetadata::new();
+
+    // Bootstrap bid year and area
+    let actor = Actor::with_operator(
+        String::from("test"),
+        String::from("admin"),
+        1,
+        String::from("test_admin"),
+        String::from("Test Admin"),
+    );
+    let cause = create_test_cause();
+
+    let bid_year_cmd = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: 26,
+    };
+    let placeholder = BidYear::new(2026);
+    let bid_year_result = apply_bootstrap(&metadata, &placeholder, bid_year_cmd, actor, cause)
+        .expect("Failed to create bid year");
+    persistence
+        .persist_bootstrap(&bid_year_result)
+        .expect("Failed to persist bid year");
+    metadata.bid_years.push(BidYear::new(2026));
+
+    // Create EAST area
+    let actor = Actor::with_operator(
+        String::from("test"),
+        String::from("admin"),
+        1,
+        String::from("test_admin"),
+        String::from("Test Admin"),
+    );
+    let cause = create_test_cause();
+    let area_cmd = Command::CreateArea {
+        area_id: String::from("EAST"),
+    };
+    let area_result = apply_bootstrap(&metadata, &BidYear::new(2026), area_cmd, actor, cause)
+        .expect("Failed to create area");
+    persistence
+        .persist_bootstrap(&area_result)
+        .expect("Failed to persist area");
+    metadata.areas.push((BidYear::new(2026), Area::new("EAST")));
+
+    // Set active bid year
+    persistence
+        .set_active_bid_year(2026)
+        .expect("Failed to set active bid year");
+
+    // Test importing 3 users in a single CSV file
+    let csv_content = "initials,name,area_id,crew,user_type,service_computation_date,eod_faa_date,natca_bu_date,cumulative_natca_bu_date,lottery_value
+CS,Fred Clausen,EAST,3,CPC,2008-04-01,2008-04-01,2008-08-05,2008-08-05,
+SB,Steve Barnes,EAST,3,CPC,2010-04-01,2010-04-01,2010-08-05,2010-08-05,
+PU,Pam User,EAST,3,CPC,2012-04-01,2012-04-01,2012-08-05,2012-08-05,";
+
+    let request = ImportCsvUsersRequest {
+        csv_content: csv_content.to_string(),
+        selected_row_indices: vec![0, 1, 2], // Import all 3 rows
+    };
+
+    let admin = create_test_admin();
+    let operator = create_test_admin_operator();
+    let cause = create_test_cause();
+    let state = State::new(BidYear::new(2026), Area::new("EAST"));
+
+    let response = import_csv_users(
+        &metadata,
+        &state,
+        &mut persistence,
+        &request,
+        &admin,
+        &operator,
+        &cause,
+    )
+    .expect("CSV import should succeed");
+
+    assert_eq!(response.successful_count, 3, "All 3 users should import");
+
+    // CRITICAL TEST: Verify all 3 users are in the database
+    let east_state_final = persistence
+        .get_current_state(&BidYear::new(2026), &Area::new("EAST"))
+        .expect("Should load EAST state");
+    assert_eq!(
+        east_state_final.users.len(),
+        3,
+        "Should have all 3 users - CSV import should be additive!"
+    );
+
+    // Verify all three users exist
+    let initials_set: std::collections::HashSet<String> = east_state_final
+        .users
+        .iter()
+        .map(|u| u.initials.value().to_string())
+        .collect();
+    assert!(initials_set.contains("CS"), "CS should exist");
+    assert!(initials_set.contains("SB"), "SB should exist");
+    assert!(initials_set.contains("PU"), "PU should exist");
 }

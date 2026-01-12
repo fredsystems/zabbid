@@ -961,7 +961,7 @@ function UserManagementForArea({
         <div className="users-list">
           {users.map((user) => (
             <UserItem
-              key={user.initials}
+              key={user.user_id}
               user={user}
               areaId={areaId}
               isAdmin={isAdmin}
@@ -1321,6 +1321,7 @@ function EditUserForm({
       // In a full implementation, we'd need to fetch the full user data first
       await updateUser(
         sessionToken,
+        user.user_id,
         user.initials,
         name,
         areaId,

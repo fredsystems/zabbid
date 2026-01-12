@@ -36,14 +36,26 @@ pub fn persist_transition(
     let event_id: i64 = persist_audit_event(tx, &result.audit_event)?;
     debug!(event_id, "Persisted audit event");
 
-    // Sync canonical users table with the new state
-    sync_canonical_users_tx(tx, &result.new_state)?;
-    debug!(
-        bid_year = result.new_state.bid_year.year(),
-        area = result.new_state.area.id(),
-        user_count = result.new_state.users.len(),
-        "Synced canonical users table"
-    );
+    // Update canonical state based on action type
+    // RegisterUser is incremental (insert one user), others are full state replacement
+    if result.audit_event.action.name.as_str() == "RegisterUser" {
+        // Insert just the new user incrementally
+        insert_new_user_tx(tx, &result.new_state)?;
+        debug!(
+            bid_year = result.new_state.bid_year.year(),
+            area = result.new_state.area.id(),
+            "Inserted new user"
+        );
+    } else {
+        // For all other operations, do full state sync
+        sync_canonical_users_tx(tx, &result.new_state)?;
+        debug!(
+            bid_year = result.new_state.bid_year.year(),
+            area = result.new_state.area.id(),
+            user_count = result.new_state.users.len(),
+            "Synced canonical users table"
+        );
+    }
 
     // Persist full snapshot if required
     if should_snapshot {
@@ -246,6 +258,57 @@ fn persist_state_snapshot_tx(
             state.area.id(),
             event_id,
             serde_json::to_string(&state_data)?,
+        ],
+    )?;
+
+    Ok(())
+}
+
+/// Inserts a single new user (the last user in the state) into the canonical users table.
+///
+/// This is used for incremental `RegisterUser` operations, inserting only the newly added user
+/// rather than replacing the entire table. Expects the new user to not have a `user_id` yet.
+///
+/// # Arguments
+///
+/// * `tx` - The active database transaction
+/// * `state` - The state containing all users, where the last one is the new user
+///
+/// # Errors
+///
+/// Returns an error if the state has no users or if the database operation fails.
+fn insert_new_user_tx(tx: &Transaction<'_>, state: &State) -> Result<(), PersistenceError> {
+    let user = state
+        .users
+        .last()
+        .ok_or_else(|| PersistenceError::ReconstructionError("No users in state".to_string()))?;
+
+    // User should not have user_id for a new insertion
+    if user.user_id.is_some() {
+        return Err(PersistenceError::ReconstructionError(
+            "New user should not have user_id".to_string(),
+        ));
+    }
+
+    // Insert new user and let SQLite assign user_id
+    tx.execute(
+        "INSERT INTO users (
+            bid_year, area_id, initials, name, user_type, crew,
+            cumulative_natca_bu_date, natca_bu_date,
+            eod_faa_date, service_computation_date, lottery_value
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![
+            user.bid_year.year(),
+            user.area.id(),
+            user.initials.value(),
+            user.name,
+            user.user_type.as_str(),
+            user.crew.as_ref().map(Crew::number),
+            user.seniority_data.cumulative_natca_bu_date,
+            user.seniority_data.natca_bu_date,
+            user.seniority_data.eod_faa_date,
+            user.seniority_data.service_computation_date,
+            user.seniority_data.lottery_value,
         ],
     )?;
 
