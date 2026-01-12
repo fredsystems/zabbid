@@ -175,44 +175,48 @@ export function BootstrapOverview({
       )}
 
       {bidYears.length > 0 && (
-        <table className="bid-years-table">
-          <thead>
-            <tr>
-              <th>Year</th>
-              <th>Start Date</th>
-              <th>End Date</th>
-              <th>Pay Periods</th>
-              <th>Areas</th>
-              <th>Total Users</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bidYears.map((year) => {
-              const isActive = activeBidYear?.year === year.year;
-              return (
-                <tr key={year.year} className={isActive ? "active-row" : ""}>
-                  <td>{year.year}</td>
-                  <td>{year.start_date}</td>
-                  <td>{year.end_date}</td>
-                  <td>{year.num_pay_periods}</td>
-                  <td>{year.area_count}</td>
-                  <td>{year.total_user_count}</td>
-                  <td>
-                    {isActive && <span className="badge active">Active</span>}
-                    {!isActive && (
-                      <span className="badge inactive">Inactive</span>
-                    )}
-                  </td>
-                  <td>
-                    <Link to={`/bid-year/${year.year}/areas`}>View Areas</Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="responsive-table-wrapper">
+          <table className="bid-years-table">
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th>Start Date</th>
+                <th>End Date</th>
+                <th>Pay Periods</th>
+                <th>Areas</th>
+                <th>Total Users</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bidYears.map((year) => {
+                const isActive = activeBidYear?.year === year.year;
+                return (
+                  <tr key={year.year} className={isActive ? "active-row" : ""}>
+                    <td>{year.year}</td>
+                    <td>{year.start_date}</td>
+                    <td>{year.end_date}</td>
+                    <td>{year.num_pay_periods}</td>
+                    <td>{year.area_count}</td>
+                    <td>{year.total_user_count}</td>
+                    <td>
+                      {isActive && <span className="badge active">Active</span>}
+                      {!isActive && (
+                        <span className="badge inactive">Inactive</span>
+                      )}
+                    </td>
+                    <td>
+                      <Link to={`/bid-year/${year.year}/areas`}>
+                        View Areas
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <div className="bootstrap-summary">

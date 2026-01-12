@@ -200,57 +200,64 @@ export function UserListView({
       )}
 
       {users.length > 0 && (
-        <table className="users-table">
-          <thead>
-            <tr>
-              <th>Initials</th>
-              <th>Name</th>
-              <th>Type</th>
-              <th>Crew</th>
-              <th>Earned Leave</th>
-              <th>Remaining Leave</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((user) => (
-              <tr
-                key={user.initials}
-                className={
-                  user.is_overdrawn
-                    ? "user-overdrawn"
-                    : user.is_exhausted
-                      ? "user-exhausted"
-                      : ""
-                }
-              >
-                <td>{user.initials}</td>
-                <td>{user.name}</td>
-                <td>{user.user_type}</td>
-                <td>{user.crew ?? "N/A"}</td>
-                <td>{formatLeave(user.earned_days, user.earned_hours)}</td>
-                <td
-                  className={
-                    user.remaining_days < 0 || user.remaining_hours < 0
-                      ? "negative-balance"
-                      : ""
-                  }
-                >
-                  {formatLeave(user.remaining_days, user.remaining_hours)}
-                </td>
-                <td>
-                  {user.is_overdrawn && (
-                    <span className="badge error">Overdrawn</span>
-                  )}
-                  {!user.is_overdrawn && user.is_exhausted && (
-                    <span className="badge warning">Exhausted</span>
-                  )}
-                  {!user.is_overdrawn && !user.is_exhausted && (
-                    <span className="badge success">Available</span>
-                  )}
-                </td>
-                <td>
+        <div className="card-list">
+          {users.map((user) => {
+            const cardClassName = user.is_overdrawn
+              ? "data-card card-overdrawn"
+              : user.is_exhausted
+                ? "data-card card-exhausted"
+                : "data-card";
+
+            return (
+              <div key={user.initials} className={cardClassName}>
+                <div className="card-header">
+                  <div>
+                    <h3 className="card-title">
+                      {user.initials} - {user.name}
+                    </h3>
+                    <p className="card-subtitle">{user.user_type}</p>
+                  </div>
+                  <div className="card-badges">
+                    {user.is_overdrawn && (
+                      <span className="badge error">Overdrawn</span>
+                    )}
+                    {!user.is_overdrawn && user.is_exhausted && (
+                      <span className="badge warning">Exhausted</span>
+                    )}
+                    {!user.is_overdrawn && !user.is_exhausted && (
+                      <span className="badge success">Available</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="card-body">
+                  <div className="card-field">
+                    <span className="card-field-label">Crew</span>
+                    <span className="card-field-value">
+                      {user.crew ?? "N/A"}
+                    </span>
+                  </div>
+                  <div className="card-field">
+                    <span className="card-field-label">Earned Leave</span>
+                    <span className="card-field-value">
+                      {formatLeave(user.earned_days, user.earned_hours)}
+                    </span>
+                  </div>
+                  <div className="card-field">
+                    <span className="card-field-label">Remaining Leave</span>
+                    <span
+                      className={
+                        user.remaining_days < 0 || user.remaining_hours < 0
+                          ? "card-field-value negative"
+                          : "card-field-value"
+                      }
+                    >
+                      {formatLeave(user.remaining_days, user.remaining_hours)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="card-footer">
                   <Link
                     to={`/bid-year/${bidYear}/area/${encodeURIComponent(
                       areaId,
@@ -258,11 +265,11 @@ export function UserListView({
                   >
                     View Details
                   </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
 
       <div className="user-summary">
