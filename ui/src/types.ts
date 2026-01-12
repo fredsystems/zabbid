@@ -191,3 +191,137 @@ export type ConnectionState =
   | "connected"
   | "disconnected"
   | "error";
+
+/**
+ * Blocking reason for bootstrap incompleteness.
+ * Matches Rust serde's default externally-tagged enum serialization.
+ */
+export type BlockingReason =
+  | "NoActiveBidYear"
+  | { ExpectedAreaCountNotSet: { bid_year: number } }
+  | {
+      AreaCountMismatch: {
+        bid_year: number;
+        expected: number;
+        actual: number;
+      };
+    }
+  | { ExpectedUserCountNotSet: { bid_year: number; area: string } }
+  | {
+      UserCountMismatch: {
+        bid_year: number;
+        area: string;
+        expected: number;
+        actual: number;
+      };
+    };
+
+/**
+ * Completeness status for a bid year.
+ */
+export interface BidYearCompletenessInfo {
+  /** The bid year */
+  year: number;
+  /** Whether this bid year is active */
+  is_active: boolean;
+  /** Expected area count, if set */
+  expected_area_count: number | null;
+  /** Actual area count */
+  actual_area_count: number;
+  /** Whether the bid year is complete */
+  is_complete: boolean;
+  /** Blocking reasons preventing completeness */
+  blocking_reasons: BlockingReason[];
+}
+
+/**
+ * Completeness status for an area.
+ */
+export interface AreaCompletenessInfo {
+  /** The bid year */
+  bid_year: number;
+  /** The area identifier */
+  area: string;
+  /** Expected user count, if set */
+  expected_user_count: number | null;
+  /** Actual user count */
+  actual_user_count: number;
+  /** Whether the area is complete */
+  is_complete: boolean;
+  /** Blocking reasons preventing completeness */
+  blocking_reasons: BlockingReason[];
+}
+
+/**
+ * Bootstrap completeness response.
+ */
+export interface GetBootstrapCompletenessResponse {
+  /** The currently active bid year, if any */
+  active_bid_year: number | null;
+  /** Completeness information for all bid years */
+  bid_years: BidYearCompletenessInfo[];
+  /** Completeness information for all areas */
+  areas: AreaCompletenessInfo[];
+  /** Whether the system is ready for bidding */
+  is_ready_for_bidding: boolean;
+  /** Top-level blocking reasons */
+  blocking_reasons: BlockingReason[];
+}
+
+/**
+ * Response for getting the active bid year.
+ */
+export interface GetActiveBidYearResponse {
+  /** The currently active bid year, if any */
+  active_bid_year: number | null;
+}
+
+/**
+ * Response for setting the active bid year.
+ */
+export interface SetActiveBidYearResponse {
+  /** The year that was set as active */
+  year: number;
+  /** Success message */
+  message: string;
+}
+
+/**
+ * Response for setting expected area count.
+ */
+export interface SetExpectedAreaCountResponse {
+  /** The bid year */
+  bid_year: number;
+  /** The expected area count that was set */
+  expected_count: number;
+  /** Success message */
+  message: string;
+}
+
+/**
+ * Response for setting expected user count.
+ */
+export interface SetExpectedUserCountResponse {
+  /** The bid year */
+  bid_year: number;
+  /** The area identifier */
+  area: string;
+  /** The expected user count that was set */
+  expected_count: number;
+  /** Success message */
+  message: string;
+}
+
+/**
+ * Response for updating a user.
+ */
+export interface UpdateUserResponse {
+  /** The bid year */
+  bid_year: number;
+  /** The user's initials */
+  initials: string;
+  /** The user's name */
+  name: string;
+  /** Success message */
+  message: string;
+}

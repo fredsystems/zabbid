@@ -12,10 +12,16 @@ import type {
   BidYearInfo,
   BootstrapStatusResponse,
   ErrorResponse,
+  GetActiveBidYearResponse,
+  GetBootstrapCompletenessResponse,
   LeaveAvailabilityResponse,
   ListAreasResponse,
   ListBidYearsResponse,
   ListUsersResponse,
+  SetActiveBidYearResponse,
+  SetExpectedAreaCountResponse,
+  SetExpectedUserCountResponse,
+  UpdateUserResponse,
 } from "./types";
 
 const API_BASE = "/api";
@@ -176,6 +182,7 @@ export async function createFirstAdmin(
   loginName: string,
   displayName: string,
   password: string,
+  passwordConfirmation: string,
 ): Promise<{
   operator_id: number;
   login_name: string;
@@ -189,6 +196,7 @@ export async function createFirstAdmin(
       login_name: loginName,
       display_name: displayName,
       password,
+      password_confirmation: passwordConfirmation,
     }),
   });
 }
@@ -368,6 +376,244 @@ export async function deleteOperator(
       cause_id: `delete-operator-${Date.now()}`,
       cause_description: `Delete operator ${operatorId}`,
       operator_id: operatorId,
+    }),
+  });
+}
+
+/**
+ * Get bootstrap completeness status for all bid years and areas.
+ */
+export async function getBootstrapCompleteness(): Promise<GetBootstrapCompletenessResponse> {
+  return fetchJson<GetBootstrapCompletenessResponse>(
+    `${API_BASE}/bootstrap/completeness`,
+  );
+}
+
+/**
+ * Get the currently active bid year.
+ */
+export async function getActiveBidYear(): Promise<GetActiveBidYearResponse> {
+  return fetchJson<GetActiveBidYearResponse>(
+    `${API_BASE}/bootstrap/bid-years/active`,
+  );
+}
+
+/**
+ * Set the active bid year (admin only).
+ */
+export async function setActiveBidYear(
+  sessionToken: string,
+  year: number,
+): Promise<SetActiveBidYearResponse> {
+  return fetchJson<SetActiveBidYearResponse>(
+    `${API_BASE}/bootstrap/bid-years/active`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        cause_id: `set-active-bid-year-${Date.now()}`,
+        cause_description: `Set active bid year to ${year}`,
+        year,
+      }),
+    },
+  );
+}
+
+/**
+ * Set expected area count for a bid year (admin only).
+ */
+export async function setExpectedAreaCount(
+  sessionToken: string,
+  bidYear: number,
+  expectedCount: number,
+): Promise<SetExpectedAreaCountResponse> {
+  return fetchJson<SetExpectedAreaCountResponse>(
+    `${API_BASE}/bootstrap/bid-years/expected-areas`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        cause_id: `set-expected-area-count-${Date.now()}`,
+        cause_description: `Set expected area count for ${bidYear} to ${expectedCount}`,
+        bid_year: bidYear,
+        expected_count: expectedCount,
+      }),
+    },
+  );
+}
+
+/**
+ * Set expected user count for an area (admin only).
+ */
+export async function setExpectedUserCount(
+  sessionToken: string,
+  bidYear: number,
+  area: string,
+  expectedCount: number,
+): Promise<SetExpectedUserCountResponse> {
+  return fetchJson<SetExpectedUserCountResponse>(
+    `${API_BASE}/bootstrap/areas/expected-users`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        cause_id: `set-expected-user-count-${Date.now()}`,
+        cause_description: `Set expected user count for ${area} in ${bidYear} to ${expectedCount}`,
+        bid_year: bidYear,
+        area,
+        expected_count: expectedCount,
+      }),
+    },
+  );
+}
+
+/**
+ * Update an existing user (admin only).
+ */
+export async function updateUser(
+  sessionToken: string,
+  bidYear: number,
+  initials: string,
+  name: string,
+  area: string,
+  userType: string,
+  crew: number | null,
+  cumulativeNatcaBuDate: string,
+  natcaBuDate: string,
+  eodFaaDate: string,
+  serviceComputationDate: string,
+  lotteryValue: number | null,
+): Promise<UpdateUserResponse> {
+  return fetchJson<UpdateUserResponse>(`${API_BASE}/users/update`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      cause_id: `update-user-${Date.now()}`,
+      cause_description: `Update user ${initials} in ${area}`,
+      bid_year: bidYear,
+      initials,
+      name,
+      area,
+      user_type: userType,
+      crew,
+      cumulative_natca_bu_date: cumulativeNatcaBuDate,
+      natca_bu_date: natcaBuDate,
+      eod_faa_date: eodFaaDate,
+      service_computation_date: serviceComputationDate,
+      lottery_value: lotteryValue,
+    }),
+  });
+}
+
+/**
+ * Create a new bid year (admin only).
+ */
+export async function createBidYear(
+  sessionToken: string,
+  year: number,
+  startDate: string,
+  numPayPeriods: number,
+): Promise<{
+  success: boolean;
+  message: string | null;
+  event_id: number | null;
+}> {
+  return fetchJson(`${API_BASE}/bid_years`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      cause_id: `create-bid-year-${Date.now()}`,
+      cause_description: `Create bid year ${year}`,
+      year,
+      start_date: startDate,
+      num_pay_periods: numPayPeriods,
+    }),
+  });
+}
+
+/**
+ * Create a new area (admin only).
+ */
+export async function createArea(
+  sessionToken: string,
+  bidYear: number,
+  areaId: string,
+): Promise<{
+  success: boolean;
+  message: string | null;
+  event_id: number | null;
+}> {
+  return fetchJson(`${API_BASE}/areas`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      cause_id: `create-area-${Date.now()}`,
+      cause_description: `Create area ${areaId} in bid year ${bidYear}`,
+      bid_year: bidYear,
+      area_id: areaId,
+    }),
+  });
+}
+
+/**
+ * Register a new user (admin only).
+ */
+export async function registerUser(
+  sessionToken: string,
+  bidYear: number,
+  initials: string,
+  name: string,
+  area: string,
+  userType: string,
+  crew: number | null,
+  cumulativeNatcaBuDate: string,
+  natcaBuDate: string,
+  eodFaaDate: string,
+  serviceComputationDate: string,
+  lotteryValue: number | null,
+): Promise<{
+  success: boolean;
+  message: string | null;
+  event_id: number | null;
+}> {
+  return fetchJson(`${API_BASE}/users`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      cause_id: `register-user-${Date.now()}`,
+      cause_description: `Register user ${initials} in ${area}`,
+      bid_year: bidYear,
+      initials,
+      name,
+      area,
+      user_type: userType,
+      crew,
+      cumulative_natca_bu_date: cumulativeNatcaBuDate,
+      natca_bu_date: natcaBuDate,
+      eod_faa_date: eodFaaDate,
+      service_computation_date: serviceComputationDate,
+      lottery_value: lotteryValue,
     }),
   });
 }

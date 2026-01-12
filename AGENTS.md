@@ -434,8 +434,126 @@ Unacceptable refactors include:
 
 - Changing API contracts
 - Reworking backend logic to suit the UI
-- Introducing new state models or abstractions “for convenience”
+- Introducing new state models or abstractions "for convenience"
 - Rewriting the entire UI when targeted refactors suffice
+
+---
+
+### UI Styling Guidelines
+
+UI styling should follow these proven patterns from the Bootstrap Completeness implementation:
+
+#### Component Organization
+
+- **Logical sections** with clear headings (`<section className="bootstrap-section">`)
+- **Item-based layouts** using cards for lists (not tables)
+- **Inline editing** - toggle between view and edit modes within the same component
+- **Progressive disclosure** - create forms collapsed by default, expand when needed
+
+#### Visual Hierarchy
+
+- **Status overview** at top with large, prominent badges
+- **Section titles** with bottom borders to separate concerns
+- **Item cards** with clear headers and bodies
+- **Actions** positioned consistently (e.g., "Set Active" in header, "Edit" in body)
+
+#### Form Controls
+
+All form inputs must be readable with proper contrast:
+
+```scss
+input[type="text"],
+input[type="number"],
+input[type="date"],
+select {
+  background: $color-bg-base; // Dark background, NOT white
+  color: $color-text-primary;
+  border: 2px solid $color-border;
+  padding: $spacing-sm $spacing-md;
+
+  &:focus {
+    border-color: $color-accent-primary;
+  }
+}
+```
+
+#### Button Styling
+
+Buttons must be visually distinct and readable:
+
+- **Primary/Create buttons**: Colored background (`$color-accent-primary`) with dark text
+- **Save buttons**: Teal background (`$color-accent-teal`) with **dark text** for readability
+- **Edit buttons**: Subtle, bordered style for secondary actions
+- **Cancel buttons**: Border-only style, clearly different from primary
+- **Toggle/Set Active buttons**: Prominent, clearly clickable
+
+All buttons must have:
+
+- Clear hover states
+- Box shadows for depth
+- Proper disabled states (opacity: 0.5)
+- Adequate padding for touch targets
+
+#### Color Usage
+
+- **Complete/Success**: Green borders and badges
+- **Incomplete/Warning**: Yellow borders and badges
+- **Active**: Blue badges
+- **Errors**: Red with semi-transparent backgrounds
+- **Text on colored backgrounds**: Always use dark (`$color-bg-base`) for readability
+
+#### Layout Patterns
+
+**Item cards** (bid years, areas, users):
+
+```scss
+.item {
+  background: $color-bg-surface;
+  border: 2px solid $color-border;
+  border-radius: $radius-md;
+
+  .item-header {
+    display: flex;
+    justify-content: space-between;
+    padding-bottom: $spacing-md;
+    border-bottom: 1px solid $color-border;
+  }
+
+  .item-body {
+    // View mode: dl with inline edit button
+    // Edit mode: form fields with save/cancel
+  }
+}
+```
+
+**Create forms**:
+
+```scss
+.create-form {
+  background: $color-bg-surface-elevated;
+  border: 2px solid $color-accent-primary;
+  border-radius: $radius-md;
+  margin-top: $spacing-md;
+}
+```
+
+#### Responsive Behavior
+
+- Mobile: Stack all elements vertically
+- Tablet (600px+): Side-by-side labels and inputs
+- Desktop (768px+): More generous padding, wider max-widths
+
+#### Empty States
+
+Guide users with clear empty state messages:
+
+```tsx
+<p className="empty-state">
+  No items configured. Create one below to get started.
+</p>
+```
+
+These patterns create a consistent, readable, and usable interface across all admin workflows.
 
 ## When to Stop
 
