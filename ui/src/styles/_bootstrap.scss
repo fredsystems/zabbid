@@ -1,0 +1,685 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Bootstrap completeness styles.
+ * Mobile-first design with clear visual hierarchy and readable forms.
+ */
+
+@use "sass:color";
+@use "variables" as *;
+
+.bootstrap-completeness {
+  padding: $spacing-md;
+  max-width: 1200px;
+  margin: 0 auto;
+
+  @media (min-width: 768px) {
+    padding: $spacing-xl;
+  }
+
+  h2 {
+    font-size: $font-size-2xl;
+    margin-bottom: $spacing-lg;
+    color: $color-text-primary;
+  }
+
+  h3.section-title {
+    font-size: $font-size-xl;
+    margin-bottom: $spacing-md;
+    color: $color-text-primary;
+    padding-bottom: $spacing-sm;
+    border-bottom: 2px solid $color-border;
+  }
+
+  h4 {
+    font-size: $font-size-lg;
+    margin: 0;
+    color: $color-text-primary;
+  }
+
+  // ============================================================================
+  // Overall Status Section
+  // ============================================================================
+
+  .status-overview {
+    background: $color-bg-surface;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-lg;
+    margin-bottom: $spacing-xl;
+    box-shadow: $shadow-md;
+
+    &.complete {
+      border-color: $color-success;
+      background: linear-gradient(
+        135deg,
+        $color-bg-surface 0%,
+        rgba($color-success, 0.05) 100%
+      );
+    }
+
+    &.incomplete {
+      border-color: $color-warning;
+      background: linear-gradient(
+        135deg,
+        $color-bg-surface 0%,
+        rgba($color-warning, 0.05) 100%
+      );
+    }
+
+    .status-header {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-sm;
+      margin-bottom: $spacing-md;
+
+      @media (min-width: 600px) {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      h3 {
+        margin: 0;
+        font-size: $font-size-xl;
+      }
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: $spacing-sm $spacing-md;
+      border-radius: $radius-md;
+      font-size: $font-size-base;
+      font-weight: 700;
+      white-space: nowrap;
+
+      &.complete {
+        background: $color-success;
+        color: $color-bg-base;
+      }
+
+      &.incomplete {
+        background: $color-warning;
+        color: $color-bg-base;
+      }
+    }
+
+    .active-year-notice {
+      margin: $spacing-sm 0 0 0;
+      font-size: $font-size-base;
+      color: $color-text-secondary;
+
+      strong {
+        color: $color-text-primary;
+      }
+    }
+
+    .blocking-issues {
+      margin-top: $spacing-md;
+      padding: $spacing-md;
+      background: rgba($color-error, 0.1);
+      border: 1px solid $color-error;
+      border-radius: $radius-sm;
+
+      h4 {
+        margin: 0 0 $spacing-sm 0;
+        color: $color-error;
+        font-size: $font-size-base;
+      }
+
+      ul {
+        margin: 0;
+        padding-left: $spacing-lg;
+        color: $color-text-primary;
+
+        li {
+          margin-bottom: $spacing-xs;
+
+          &:last-child {
+            margin-bottom: 0;
+          }
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // Sections
+  // ============================================================================
+
+  .bootstrap-section {
+    margin-bottom: $spacing-2xl;
+
+    .empty-state {
+      padding: $spacing-lg;
+      text-align: center;
+      color: $color-text-muted;
+      background: $color-bg-surface;
+      border: 1px dashed $color-border;
+      border-radius: $radius-md;
+      margin-bottom: $spacing-md;
+    }
+  }
+
+  // ============================================================================
+  // Bid Year & Area Items
+  // ============================================================================
+
+  .bid-years-list,
+  .areas-list {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-md;
+    margin-bottom: $spacing-lg;
+  }
+
+  .bid-year-item,
+  .area-item {
+    background: $color-bg-surface;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+    transition: border-color $transition-base;
+
+    &.complete {
+      border-color: $color-success;
+    }
+
+    &.incomplete {
+      border-color: $color-warning;
+    }
+
+    @media (min-width: 768px) {
+      padding: $spacing-lg;
+    }
+
+    .item-header {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-md;
+      margin-bottom: $spacing-md;
+      padding-bottom: $spacing-md;
+      border-bottom: 1px solid $color-border;
+
+      @media (min-width: 600px) {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+
+      .item-title-group {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-sm;
+
+        h4 {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: $spacing-sm;
+
+          .area-year {
+            font-size: $font-size-sm;
+            color: $color-text-muted;
+            font-weight: normal;
+          }
+        }
+
+        .badges {
+          display: flex;
+          gap: $spacing-sm;
+          flex-wrap: wrap;
+        }
+      }
+    }
+
+    .item-body {
+      .item-details {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-md;
+
+        @media (min-width: 600px) {
+          flex-direction: row;
+          justify-content: space-between;
+          align-items: flex-start;
+        }
+
+        dl {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: $spacing-sm $spacing-md;
+          margin: 0;
+
+          dt {
+            font-weight: 600;
+            color: $color-text-muted;
+          }
+
+          dd {
+            margin: 0;
+            color: $color-text-primary;
+          }
+        }
+      }
+
+      .item-edit-form {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-md;
+      }
+
+      .item-issues {
+        margin-top: $spacing-md;
+        padding: $spacing-md;
+        background: rgba($color-error, 0.08);
+        border-left: 3px solid $color-error;
+        border-radius: $radius-sm;
+
+        strong {
+          display: block;
+          margin-bottom: $spacing-sm;
+          color: $color-error;
+        }
+
+        ul {
+          margin: 0;
+          padding-left: $spacing-lg;
+
+          li {
+            margin-bottom: $spacing-xs;
+            color: $color-text-primary;
+
+            &:last-child {
+              margin-bottom: 0;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // Badges
+  // ============================================================================
+
+  .badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: $radius-sm;
+    font-size: $font-size-sm;
+    font-weight: 600;
+    white-space: nowrap;
+
+    &.complete {
+      background: $color-success;
+      color: $color-bg-base;
+    }
+
+    &.incomplete {
+      background: $color-warning;
+      color: $color-bg-base;
+    }
+
+    &.active {
+      background: $color-accent-primary;
+      color: $color-bg-base;
+    }
+  }
+
+  // ============================================================================
+  // Forms
+  // ============================================================================
+
+  .create-form {
+    background: $color-bg-surface-elevated;
+    border: 2px solid $color-accent-primary;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+    margin-top: $spacing-md;
+
+    @media (min-width: 768px) {
+      padding: $spacing-lg;
+    }
+
+    h4 {
+      margin: 0 0 $spacing-md 0;
+      color: $color-accent-primary;
+    }
+  }
+
+  .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-sm;
+    margin-bottom: $spacing-md;
+
+    @media (min-width: 600px) {
+      flex-direction: row;
+      align-items: center;
+
+      label {
+        min-width: 140px;
+        flex-shrink: 0;
+      }
+    }
+
+    label {
+      font-weight: 600;
+      color: $color-text-primary;
+      font-size: $font-size-base;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="date"],
+    select {
+      flex: 1;
+      padding: $spacing-sm $spacing-md;
+      border: 2px solid $color-border;
+      border-radius: $radius-sm;
+      background: $color-bg-base;
+      color: $color-text-primary;
+      font-size: $font-size-base;
+      font-family: $font-family-base;
+      transition: border-color $transition-base;
+
+      &:focus {
+        outline: none;
+        border-color: $color-accent-primary;
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      &::placeholder {
+        color: $color-text-muted;
+      }
+    }
+
+    select {
+      cursor: pointer;
+
+      &:disabled {
+        cursor: not-allowed;
+      }
+    }
+  }
+
+  .form-actions {
+    display: flex;
+    gap: $spacing-sm;
+    margin-top: $spacing-md;
+    flex-wrap: wrap;
+
+    button {
+      flex: 1;
+      min-width: 120px;
+
+      @media (min-width: 600px) {
+        flex: 0 0 auto;
+      }
+    }
+  }
+
+  // ============================================================================
+  // Buttons
+  // ============================================================================
+
+  .btn-create {
+    width: 100%;
+    padding: $spacing-md;
+    background: $color-accent-primary;
+    color: $color-bg-base;
+    border: none;
+    border-radius: $radius-md;
+    font-size: $font-size-base;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background $transition-base;
+    box-shadow: $shadow-sm;
+
+    @media (min-width: 600px) {
+      width: auto;
+      padding: $spacing-sm $spacing-lg;
+    }
+
+    &:hover:not(:disabled) {
+      background: $color-accent-secondary;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .btn-edit {
+    padding: $spacing-xs $spacing-md;
+    background: $color-bg-surface-elevated;
+    color: $color-text-primary;
+    border: 2px solid $color-border;
+    border-radius: $radius-sm;
+    font-size: $font-size-sm;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all $transition-base;
+
+    &:hover:not(:disabled) {
+      background: $color-bg-surface-overlay;
+      border-color: $color-accent-primary;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .btn-save {
+    padding: $spacing-sm $spacing-lg;
+    background: $color-accent-teal;
+    color: $color-bg-base;
+    border: none;
+    border-radius: $radius-sm;
+    font-size: $font-size-base;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background $transition-base;
+    box-shadow: $shadow-sm;
+
+    &:hover:not(:disabled) {
+      background: color.adjust($color-accent-teal, $lightness: -10%);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .btn-cancel {
+    padding: $spacing-sm $spacing-lg;
+    background: $color-bg-surface-elevated;
+    color: $color-text-primary;
+    border: 2px solid $color-border;
+    border-radius: $radius-sm;
+    font-size: $font-size-base;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all $transition-base;
+
+    &:hover:not(:disabled) {
+      background: $color-bg-surface-overlay;
+      border-color: $color-text-muted;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .btn-toggle-active {
+    padding: $spacing-sm $spacing-md;
+    background: $color-accent-primary;
+    color: $color-bg-base;
+    border: none;
+    border-radius: $radius-sm;
+    font-size: $font-size-sm;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background $transition-base;
+    white-space: nowrap;
+
+    @media (min-width: 600px) {
+      font-size: $font-size-base;
+    }
+
+    &:hover:not(:disabled) {
+      background: $color-accent-secondary;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  // ============================================================================
+  // Error Banner
+  // ============================================================================
+
+  .error-banner {
+    position: fixed;
+    bottom: $spacing-lg;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 90%;
+    padding: $spacing-md $spacing-lg;
+    background: $color-error;
+    color: $color-bg-base;
+    border-radius: $radius-md;
+    box-shadow: $shadow-lg;
+    font-size: $font-size-base;
+    z-index: 1000;
+
+    @media (min-width: 768px) {
+      max-width: 600px;
+    }
+
+    strong {
+      font-weight: 700;
+    }
+  }
+
+  // ============================================================================
+  // User Management
+  // ============================================================================
+
+  .area-user-management {
+    background: $color-bg-surface;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+    margin-bottom: $spacing-lg;
+
+    @media (min-width: 768px) {
+      padding: $spacing-lg;
+    }
+
+    .area-user-header {
+      margin-bottom: $spacing-md;
+      padding-bottom: $spacing-sm;
+      border-bottom: 1px solid $color-border;
+
+      h4 {
+        margin: 0;
+        color: $color-text-primary;
+        font-size: $font-size-lg;
+      }
+    }
+
+    .loading-text {
+      color: $color-text-muted;
+      font-style: italic;
+    }
+
+    .users-list {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-sm;
+      margin-bottom: $spacing-md;
+    }
+  }
+
+  .user-item {
+    background: $color-bg-surface-elevated;
+    border: 1px solid $color-border;
+    border-radius: $radius-sm;
+    padding: $spacing-sm $spacing-md;
+    transition: border-color $transition-base;
+
+    &:hover {
+      border-color: $color-border-subtle;
+    }
+
+    &.editing {
+      border-color: $color-accent-primary;
+      background: $color-bg-surface;
+    }
+
+    .user-item-header {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-sm;
+
+      @media (min-width: 600px) {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+
+      .user-title-group {
+        flex: 1;
+
+        h5 {
+          margin: 0 0 $spacing-xs 0;
+          color: $color-text-primary;
+          font-size: $font-size-base;
+        }
+
+        .user-meta {
+          display: flex;
+          gap: $spacing-sm;
+          flex-wrap: wrap;
+
+          .user-type,
+          .user-crew {
+            display: inline-block;
+            padding: $spacing-xs $spacing-sm;
+            background: $color-bg-surface-overlay;
+            border-radius: $radius-sm;
+            font-size: $font-size-xs;
+            color: $color-text-secondary;
+          }
+        }
+      }
+    }
+  }
+
+  .user-form {
+    .form-row {
+      margin-bottom: $spacing-sm;
+
+      @media (min-width: 768px) {
+        margin-bottom: $spacing-md;
+      }
+    }
+  }
+}
