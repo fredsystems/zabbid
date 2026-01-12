@@ -25,19 +25,6 @@ interface ConnectionStatusProps {
  * - Error: Red indicator with "Connection Error" message
  */
 export function ConnectionStatus({ state }: ConnectionStatusProps) {
-  const getStatusColor = (): string => {
-    switch (state) {
-      case "connected":
-        return "#10b981"; // green
-      case "connecting":
-        return "#f59e0b"; // amber
-      case "disconnected":
-        return "#f97316"; // orange
-      case "error":
-        return "#ef4444"; // red
-    }
-  };
-
   const getStatusText = (): string => {
     switch (state) {
       case "connected":
@@ -64,52 +51,21 @@ export function ConnectionStatus({ state }: ConnectionStatusProps) {
     }
   };
 
-  const color = getStatusColor();
   const text = getStatusText();
   const description = getStatusDescription();
 
+  const statusClass = `connection-status ${state}`;
+  const indicatorClass = `connection-indicator ${state === "connecting" ? "pulse" : ""}`;
+
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "0.5rem",
-        padding: "0.5rem 1rem",
-        borderRadius: "0.375rem",
-        backgroundColor:
-          state === "connected" ? "transparent" : "rgba(0, 0, 0, 0.05)",
-        fontSize: "0.875rem",
-      }}
-    >
-      <div
-        style={{
-          width: "0.5rem",
-          height: "0.5rem",
-          borderRadius: "50%",
-          backgroundColor: color,
-          animation: state === "connecting" ? "pulse 2s infinite" : undefined,
-        }}
-      />
+    <div className={statusClass}>
+      <div className={indicatorClass} />
       <div>
-        <div style={{ fontWeight: 500 }}>{text}</div>
+        <div className="connection-text">{text}</div>
         {description && (
-          <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
-            {description}
-          </div>
+          <div className="connection-description">{description}</div>
         )}
       </div>
-      <style>
-        {`
-          @keyframes pulse {
-            0%, 100% {
-              opacity: 1;
-            }
-            50% {
-              opacity: 0.5;
-            }
-          }
-        `}
-      </style>
     </div>
   );
 }
