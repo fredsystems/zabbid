@@ -82,8 +82,6 @@ struct RegisterUserApiRequest {
     cause_id: String,
     /// The cause description.
     cause_description: String,
-    /// The bid year (e.g., 2026).
-    bid_year: u16,
     /// The user's initials.
     initials: String,
     /// The user's name.
@@ -144,8 +142,6 @@ struct CreateAreaApiRequest {
     cause_id: String,
     /// The cause description.
     cause_description: String,
-    /// The bid year.
-    bid_year: u16,
     /// The area identifier.
     area_id: String,
 }
@@ -592,43 +588,44 @@ async fn handle_create_area(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        bid_year = req.bid_year,
         area_id = %req.area_id,
         "Handling create_area request"
     );
 
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
-    // Get current bootstrap metadata
-    let persistence = app_state.persistence.lock().await;
+    // Get current bootstrap metadata and persistence
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    drop(persistence);
 
     // Build API request
     let create_request: CreateAreaRequest = CreateAreaRequest {
-        bid_year: req.bid_year,
         area_id: req.area_id.clone(),
     };
 
     // Execute command via API
-    let bootstrap_result: BootstrapResult =
-        create_area(&metadata, &create_request, &actor, &operator, cause)?;
+    let bootstrap_result: BootstrapResult = create_area(
+        &persistence,
+        &metadata,
+        &create_request,
+        &actor,
+        &operator,
+        cause,
+    )?;
 
     // Persist the bootstrap result
-    let mut persistence = app_state.persistence.lock().await;
     let event_id: i64 = persistence.persist_bootstrap(&bootstrap_result)?;
     drop(persistence);
 
     info!(
         event_id = event_id,
-        bid_year = req.bid_year,
         area_id = %req.area_id,
         "Successfully created area"
     );
 
     // Broadcast live event
     app_state.live_events.broadcast(&LiveEvent::AreaCreated {
-        bid_year: req.bid_year,
+        bid_year: bootstrap_result.audit_event.bid_year.year(),
         area: req.area_id.clone(),
     });
 
@@ -636,7 +633,8 @@ async fn handle_create_area(
         success: true,
         message: Some(format!(
             "Created area '{}' in bid year {}",
-            req.area_id, req.bid_year
+            req.area_id,
+            bootstrap_result.audit_event.bid_year.year()
         )),
         event_id: Some(event_id),
     }))
@@ -855,18 +853,23 @@ async fn handle_register_user(
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
     // Get bootstrap metadata and current state
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    let bid_year: BidYear = BidYear::new(req.bid_year);
+
+    // Resolve active bid year from persistence
+    let active_year_opt: Option<u16> = persistence.get_active_bid_year()?;
+    let active_year: u16 = active_year_opt.ok_or_else(|| HttpError {
+        status: StatusCode::BAD_REQUEST,
+        message: String::from("No active bid year is set"),
+    })?;
+    let bid_year: BidYear = BidYear::new(active_year);
     let area: Area = Area::new(&req.area);
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
-    drop(persistence);
 
-    // Build API request
+    // Build API request (bid_year no longer needed in request)
     let register_request: RegisterUserRequest = RegisterUserRequest {
-        bid_year: req.bid_year,
         initials: req.initials,
         name: req.name,
         area: req.area.clone(),
@@ -881,6 +884,7 @@ async fn handle_register_user(
 
     // Execute command via API
     let result: ApiResult<RegisterUserResponse> = register_user(
+        &persistence,
         &metadata,
         &state,
         register_request,
@@ -889,8 +893,7 @@ async fn handle_register_user(
         cause,
     )?;
 
-    // Persist the transition
-    let mut persistence = app_state.persistence.lock().await;
+    // Persist the transition (persistence already locked)
     let transition_result: TransitionResult = TransitionResult {
         audit_event: result.audit_event.clone(),
         new_state: result.new_state.clone(),
@@ -940,20 +943,19 @@ async fn handle_checkpoint(
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
     // Get bootstrap metadata and current state
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let bid_year: BidYear = BidYear::new(req.bid_year);
     let area: Area = Area::new(&req.area);
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
-    drop(persistence);
 
-    // Execute command via API
-    let result: TransitionResult = checkpoint(&metadata, &state, &actor, &operator, cause)?;
+    // Execute command via API (persistence passed for active bid year resolution)
+    let result: TransitionResult =
+        checkpoint(&persistence, &metadata, &state, &actor, &operator, cause)?;
 
     // Persist the transition
-    let mut persistence = app_state.persistence.lock().await;
     let event_id: i64 = persistence.persist_transition(
         &result,
         SqlitePersistence::should_snapshot(&result.audit_event.action.name),
@@ -996,20 +998,19 @@ async fn handle_finalize(
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
     // Get bootstrap metadata and current state
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let bid_year: BidYear = BidYear::new(req.bid_year);
     let area: Area = Area::new(&req.area);
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
-    drop(persistence);
 
-    // Execute command via API
-    let result: TransitionResult = finalize(&metadata, &state, &actor, &operator, cause)?;
+    // Execute command via API (persistence passed for active bid year resolution)
+    let result: TransitionResult =
+        finalize(&persistence, &metadata, &state, &actor, &operator, cause)?;
 
     // Persist the transition
-    let mut persistence = app_state.persistence.lock().await;
     let event_id: i64 = persistence.persist_transition(
         &result,
         SqlitePersistence::should_snapshot(&result.audit_event.action.name),
@@ -1056,21 +1057,26 @@ async fn handle_rollback(
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
     // Get bootstrap metadata and current state
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let bid_year: BidYear = BidYear::new(req.bid_year);
     let area: Area = Area::new(&req.area);
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
-    drop(persistence);
 
-    // Execute command via API
-    let result: TransitionResult =
-        rollback(&metadata, &state, target_event_id, &actor, &operator, cause)?;
+    // Execute command via API (persistence passed for active bid year resolution)
+    let result: TransitionResult = rollback(
+        &persistence,
+        &metadata,
+        &state,
+        target_event_id,
+        &actor,
+        &operator,
+        cause,
+    )?;
 
     // Persist the transition
-    let mut persistence = app_state.persistence.lock().await;
     let event_id: i64 = persistence.persist_transition(
         &result,
         SqlitePersistence::should_snapshot(&result.audit_event.action.name),
@@ -1521,8 +1527,6 @@ struct SetExpectedAreaCountApiRequest {
     cause_id: String,
     /// The cause description.
     cause_description: String,
-    /// The bid year to set expected count for.
-    bid_year: u16,
     /// The expected number of areas.
     expected_count: u32,
 }
@@ -1534,8 +1538,6 @@ struct SetExpectedUserCountApiRequest {
     cause_id: String,
     /// The cause description.
     cause_description: String,
-    /// The bid year.
-    bid_year: u16,
     /// The area identifier.
     area: String,
     /// The expected number of users.
@@ -1549,8 +1551,6 @@ struct UpdateUserApiRequest {
     cause_id: String,
     /// The cause description.
     cause_description: String,
-    /// The bid year.
-    bid_year: u16,
     /// The user's initials.
     initials: String,
     /// The user's name.
@@ -1576,8 +1576,6 @@ struct UpdateUserApiRequest {
 /// API request to preview CSV user data.
 #[derive(Debug, serde::Deserialize)]
 struct PreviewCsvUsersApiRequest {
-    /// The bid year to validate against.
-    bid_year: u16,
     /// The raw CSV content.
     csv_content: String,
 }
@@ -1585,8 +1583,6 @@ struct PreviewCsvUsersApiRequest {
 /// API request to import selected CSV rows.
 #[derive(Debug, serde::Deserialize)]
 struct ImportCsvUsersApiRequest {
-    /// The bid year to import into.
-    bid_year: u16,
     /// The raw CSV content.
     csv_content: String,
     /// The row indices (0-based, excluding header) to import.
@@ -1722,7 +1718,6 @@ async fn handle_set_expected_area_count(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        bid_year = req.bid_year,
         expected_count = req.expected_count,
         "Handling set_expected_area_count request"
     );
@@ -1736,7 +1731,6 @@ async fn handle_set_expected_area_count(
 
     // Build API request
     let set_request: SetExpectedAreaCountRequest = SetExpectedAreaCountRequest {
-        bid_year: req.bid_year,
         expected_count: req.expected_count,
     };
 
@@ -1753,7 +1747,6 @@ async fn handle_set_expected_area_count(
     drop(persistence);
 
     info!(
-        bid_year = req.bid_year,
         expected_count = req.expected_count,
         "Successfully set expected area count"
     );
@@ -1772,7 +1765,6 @@ async fn handle_set_expected_user_count(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        bid_year = req.bid_year,
         area = %req.area,
         expected_count = req.expected_count,
         "Handling set_expected_user_count request"
@@ -1787,7 +1779,6 @@ async fn handle_set_expected_user_count(
 
     // Build API request
     let set_request: SetExpectedUserCountRequest = SetExpectedUserCountRequest {
-        bid_year: req.bid_year,
         area: req.area.clone(),
         expected_count: req.expected_count,
     };
@@ -1805,7 +1796,6 @@ async fn handle_set_expected_user_count(
     drop(persistence);
 
     info!(
-        bid_year = req.bid_year,
         area = %req.area,
         expected_count = req.expected_count,
         "Successfully set expected user count"
@@ -1832,16 +1822,21 @@ async fn handle_update_user(
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
     // Get bootstrap metadata and current state
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    let bid_year_ref = BidYear::new(req.bid_year);
+
+    // Resolve active bid year from persistence
+    let active_year_opt: Option<u16> = persistence.get_active_bid_year()?;
+    let active_year: u16 = active_year_opt.ok_or_else(|| HttpError {
+        status: StatusCode::BAD_REQUEST,
+        message: String::from("No active bid year is set"),
+    })?;
+    let bid_year_ref = BidYear::new(active_year);
     let area_ref = Area::new(&req.area);
     let state: State = persistence.get_current_state(&bid_year_ref, &area_ref)?;
-    drop(persistence);
 
-    // Build API request
+    // Build API request (bid_year no longer needed in request)
     let update_request: UpdateUserRequest = UpdateUserRequest {
-        bid_year: req.bid_year,
         initials: req.initials.clone(),
         name: req.name.clone(),
         area: req.area.clone(),
@@ -1854,8 +1849,7 @@ async fn handle_update_user(
         lottery_value: req.lottery_value,
     };
 
-    // Execute command via API
-    let mut persistence = app_state.persistence.lock().await;
+    // Execute command via API (persistence already locked)
     let result: ApiResult<UpdateUserResponse> = update_user(
         &mut persistence,
         &metadata,
@@ -1875,7 +1869,7 @@ async fn handle_update_user(
 
     // Broadcast live event
     app_state.live_events.broadcast(&LiveEvent::UserUpdated {
-        bid_year: req.bid_year,
+        bid_year: result.audit_event.bid_year.year(),
         area: req.area.clone(),
         initials: req.initials.clone(),
     });
@@ -1911,7 +1905,6 @@ async fn handle_preview_csv_users(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        bid_year = req.bid_year,
         "Handling preview_csv_users request"
     );
 
@@ -1921,7 +1914,6 @@ async fn handle_preview_csv_users(
 
     // Build API request
     let preview_request: PreviewCsvUsersRequest = PreviewCsvUsersRequest {
-        bid_year: req.bid_year,
         csv_content: req.csv_content,
     };
 
@@ -1952,7 +1944,6 @@ async fn handle_import_csv_users(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        bid_year = req.bid_year,
         selected_count = req.selected_row_indices.len(),
         "Handling import_csv_users request"
     );
@@ -1965,9 +1956,16 @@ async fn handle_import_csv_users(
     // Get bootstrap metadata and current state
     // Note: CSV import may span multiple areas, so we use a dummy state
     // The actual state will be loaded per-user during import
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    let bid_year: BidYear = BidYear::new(req.bid_year);
+
+    // Resolve active bid year from persistence
+    let active_year_opt: Option<u16> = persistence.get_active_bid_year()?;
+    let active_year: u16 = active_year_opt.ok_or_else(|| HttpError {
+        status: StatusCode::BAD_REQUEST,
+        message: String::from("No active bid year is set"),
+    })?;
+    let bid_year: BidYear = BidYear::new(active_year);
 
     // We need a state instance for the import handler signature
     // Use the first area if available, or create a dummy one
@@ -1978,17 +1976,14 @@ async fn handle_import_csv_users(
     } else {
         State::new(bid_year.clone(), Area::new("DUMMY"))
     };
-    drop(persistence);
 
-    // Build API request
+    // Build API request (bid_year no longer needed in request)
     let import_request = ImportCsvUsersRequest {
-        bid_year: req.bid_year,
         csv_content: req.csv_content,
         selected_row_indices: req.selected_row_indices,
     };
 
-    // Execute import via API
-    let persistence = app_state.persistence.lock().await;
+    // Execute import via API (persistence already locked)
     let (response, audit_events, final_state) = import_csv_users(
         &metadata,
         &state,
@@ -1998,10 +1993,7 @@ async fn handle_import_csv_users(
         &operator,
         &cause,
     )?;
-    drop(persistence);
-
-    // Persist all transitions
-    let mut persistence = app_state.persistence.lock().await;
+    // Persist all transitions (persistence already locked)
     let mut event_ids: Vec<i64> = Vec::new();
     for audit_event in &audit_events {
         let transition_result = TransitionResult {

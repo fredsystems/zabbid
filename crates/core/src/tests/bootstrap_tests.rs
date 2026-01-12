@@ -22,8 +22,9 @@ fn test_create_bid_year_succeeds() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let placeholder_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &placeholder_bid_year, command, actor, cause);
 
     assert!(result.is_ok());
     let bootstrap_result: BootstrapResult = result.unwrap();
@@ -42,8 +43,9 @@ fn test_create_bid_year_emits_audit_event() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let placeholder_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &placeholder_bid_year, command, actor, cause);
 
     assert!(result.is_ok());
     let bootstrap_result: BootstrapResult = result.unwrap();
@@ -72,8 +74,9 @@ fn test_create_duplicate_bid_year_fails() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let placeholder_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &placeholder_bid_year, command, actor, cause);
 
     assert!(result.is_err());
     assert!(matches!(
@@ -93,8 +96,9 @@ fn test_create_invalid_bid_year_fails() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let placeholder_bid_year = BidYear::new(1800);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &placeholder_bid_year, command, actor, cause);
 
     assert!(result.is_err());
     assert!(matches!(
@@ -109,14 +113,14 @@ fn test_create_area_succeeds() {
     metadata.add_bid_year(BidYear::new(2026));
 
     let command: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let active_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &active_bid_year, command, actor, cause);
 
     assert!(result.is_ok());
     let bootstrap_result: BootstrapResult = result.unwrap();
@@ -131,14 +135,14 @@ fn test_create_area_emits_audit_event() {
     metadata.add_bid_year(BidYear::new(2026));
 
     let command: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let active_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &active_bid_year, command, actor, cause);
 
     assert!(result.is_ok());
     let bootstrap_result: BootstrapResult = result.unwrap();
@@ -160,14 +164,14 @@ fn test_create_area_emits_audit_event() {
 fn test_create_area_without_bid_year_fails() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
     let command: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let active_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &active_bid_year, command, actor, cause);
 
     assert!(result.is_err());
     assert!(matches!(
@@ -183,14 +187,14 @@ fn test_create_duplicate_area_fails() {
     metadata.add_area(BidYear::new(2026), Area::new("North"));
 
     let command: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let active_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &active_bid_year, command, actor, cause);
 
     assert!(result.is_err());
     assert!(matches!(
@@ -212,8 +216,9 @@ fn test_bootstrap_does_not_mutate_on_failure() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let active_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &active_bid_year, command, actor, cause);
 
     assert!(result.is_err());
     // Metadata should remain unchanged
@@ -231,8 +236,10 @@ fn test_multiple_bid_years_and_areas() {
         start_date: create_test_start_date(),
         num_pay_periods: create_test_pay_periods(),
     };
+    let placeholder_bid_year_2026 = BidYear::new(2026);
     let result1: Result<BootstrapResult, CoreError> = apply_bootstrap(
         &metadata,
+        &placeholder_bid_year_2026,
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -246,8 +253,10 @@ fn test_multiple_bid_years_and_areas() {
         start_date: create_test_start_date_for_year(2027),
         num_pay_periods: create_test_pay_periods(),
     };
+    let placeholder_bid_year_2027 = BidYear::new(2027);
     let result2: Result<BootstrapResult, CoreError> = apply_bootstrap(
         &metadata,
+        &placeholder_bid_year_2027,
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -259,11 +268,12 @@ fn test_multiple_bid_years_and_areas() {
 
     // Create areas in different bid years
     let command3: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
+    let active_bid_year_2026 = BidYear::new(2026);
     let result3: Result<BootstrapResult, CoreError> = apply_bootstrap(
         &metadata,
+        &active_bid_year_2026,
         command3,
         create_test_actor(),
         create_test_cause(),
@@ -272,11 +282,12 @@ fn test_multiple_bid_years_and_areas() {
     metadata = result3.unwrap().new_metadata;
 
     let command4: Command = Command::CreateArea {
-        bid_year: BidYear::new(2027),
         area_id: String::from("North"),
     };
+    let active_bid_year_2027 = BidYear::new(2027);
     let result4: Result<BootstrapResult, CoreError> = apply_bootstrap(
         &metadata,
+        &active_bid_year_2027,
         command4,
         create_test_actor(),
         create_test_cause(),
@@ -302,8 +313,9 @@ fn test_canonical_validation_runs_for_valid_year() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let placeholder_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &placeholder_bid_year, command, actor, cause);
 
     // Should succeed - canonical validation passed
     assert!(result.is_ok());
@@ -324,8 +336,9 @@ fn test_canonical_validation_does_not_persist_canonical_model() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let placeholder_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &placeholder_bid_year, command, actor, cause);
 
     assert!(result.is_ok());
     let bootstrap_result: BootstrapResult = result.unwrap();
@@ -374,8 +387,9 @@ fn test_canonical_validation_no_audit_event_on_failure() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let placeholder_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &placeholder_bid_year, command, actor, cause);
 
     // Should fail before reaching audit event creation
     assert!(result.is_err());
@@ -438,8 +452,9 @@ fn test_create_bid_year_with_26_pay_periods_succeeds() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let placeholder_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &placeholder_bid_year, command, actor, cause);
 
     assert!(result.is_ok());
     let bootstrap_result: BootstrapResult = result.unwrap();
@@ -466,8 +481,9 @@ fn test_create_bid_year_with_27_pay_periods_succeeds() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let placeholder_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &placeholder_bid_year, command, actor, cause);
 
     assert!(result.is_ok());
     let bootstrap_result: BootstrapResult = result.unwrap();
@@ -497,8 +513,9 @@ fn test_create_bid_year_with_invalid_pay_periods_fails() {
         let actor: Actor = create_test_actor();
         let cause: Cause = create_test_cause();
 
+        let placeholder_bid_year = BidYear::new(2026);
         let result: Result<BootstrapResult, CoreError> =
-            apply_bootstrap(&metadata, command, actor, cause);
+            apply_bootstrap(&metadata, &placeholder_bid_year, command, actor, cause);
 
         assert!(
             result.is_err(),
@@ -524,8 +541,9 @@ fn test_canonical_metadata_persisted_on_success() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let placeholder_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &placeholder_bid_year, command, actor, cause);
 
     assert!(result.is_ok());
     let bootstrap_result: BootstrapResult = result.unwrap();
@@ -545,14 +563,14 @@ fn test_canonical_metadata_not_included_for_non_bid_year_operations() {
     metadata.add_bid_year(BidYear::new(2026));
 
     let command: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let active_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &active_bid_year, command, actor, cause);
 
     assert!(result.is_ok());
     let bootstrap_result: BootstrapResult = result.unwrap();
@@ -573,8 +591,9 @@ fn test_no_audit_event_on_canonical_validation_failure() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
+    let placeholder_bid_year = BidYear::new(2026);
     let result: Result<BootstrapResult, CoreError> =
-        apply_bootstrap(&metadata, command, actor, cause);
+        apply_bootstrap(&metadata, &placeholder_bid_year, command, actor, cause);
 
     // Should fail validation
     assert!(result.is_err());

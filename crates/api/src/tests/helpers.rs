@@ -71,7 +71,6 @@ pub fn create_test_metadata() -> BootstrapMetadata {
 /// Creates a valid user registration request.
 pub fn create_valid_request() -> RegisterUserRequest {
     RegisterUserRequest {
-        bid_year: 2026,
         initials: String::from("AB"),
         name: String::from("John Doe"),
         area: String::from("North"),
@@ -242,4 +241,31 @@ pub fn create_custom_session(
         login_name: login_name.to_string(),
         role: role.to_string(),
     })
+}
+
+/// Creates a test persistence instance with an active bid year and area set up.
+///
+/// This helper creates an in-memory SQLite database, initializes it, creates a bid year,
+/// creates an area, and sets the bid year as active.
+///
+/// # Errors
+///
+/// Returns an error if database initialization fails.
+pub fn setup_test_persistence() -> Result<SqlitePersistence, zab_bid_persistence::PersistenceError>
+{
+    let mut persistence = SqlitePersistence::new_in_memory()?;
+
+    // Create a canonical bid year
+    let canonical_bid_year = create_test_canonical_bid_year();
+    persistence.create_bid_year(&canonical_bid_year)?;
+
+    // Create an area
+    let bid_year = BidYear::new(2026);
+    let area = Area::new("North");
+    persistence.create_area(&bid_year, &area)?;
+
+    // Set the bid year as active
+    persistence.set_active_bid_year(2026)?;
+
+    Ok(persistence)
 }
