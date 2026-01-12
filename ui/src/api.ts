@@ -425,11 +425,10 @@ export async function setActiveBidYear(
 }
 
 /**
- * Set expected area count for a bid year (admin only).
+ * Set expected area count for the active bid year (admin only).
  */
 export async function setExpectedAreaCount(
   sessionToken: string,
-  bidYear: number,
   expectedCount: number,
 ): Promise<SetExpectedAreaCountResponse> {
   return fetchJson<SetExpectedAreaCountResponse>(
@@ -442,8 +441,7 @@ export async function setExpectedAreaCount(
       },
       body: JSON.stringify({
         cause_id: `set-expected-area-count-${Date.now()}`,
-        cause_description: `Set expected area count for ${bidYear} to ${expectedCount}`,
-        bid_year: bidYear,
+        cause_description: `Set expected area count to ${expectedCount}`,
         expected_count: expectedCount,
       }),
     },
@@ -451,11 +449,10 @@ export async function setExpectedAreaCount(
 }
 
 /**
- * Set expected user count for an area (admin only).
+ * Set expected user count for an area in the active bid year (admin only).
  */
 export async function setExpectedUserCount(
   sessionToken: string,
-  bidYear: number,
   area: string,
   expectedCount: number,
 ): Promise<SetExpectedUserCountResponse> {
@@ -469,8 +466,7 @@ export async function setExpectedUserCount(
       },
       body: JSON.stringify({
         cause_id: `set-expected-user-count-${Date.now()}`,
-        cause_description: `Set expected user count for ${area} in ${bidYear} to ${expectedCount}`,
-        bid_year: bidYear,
+        cause_description: `Set expected user count for ${area} to ${expectedCount}`,
         area,
         expected_count: expectedCount,
       }),
@@ -479,11 +475,10 @@ export async function setExpectedUserCount(
 }
 
 /**
- * Update an existing user (admin only).
+ * Update an existing user in the active bid year (admin only).
  */
 export async function updateUser(
   sessionToken: string,
-  bidYear: number,
   initials: string,
   name: string,
   area: string,
@@ -504,7 +499,6 @@ export async function updateUser(
     body: JSON.stringify({
       cause_id: `update-user-${Date.now()}`,
       cause_description: `Update user ${initials} in ${area}`,
-      bid_year: bidYear,
       initials,
       name,
       area,
@@ -549,11 +543,10 @@ export async function createBidYear(
 }
 
 /**
- * Create a new area (admin only).
+ * Create a new area in the active bid year (admin only).
  */
 export async function createArea(
   sessionToken: string,
-  bidYear: number,
   areaId: string,
 ): Promise<{
   success: boolean;
@@ -568,19 +561,17 @@ export async function createArea(
     },
     body: JSON.stringify({
       cause_id: `create-area-${Date.now()}`,
-      cause_description: `Create area ${areaId} in bid year ${bidYear}`,
-      bid_year: bidYear,
+      cause_description: `Create area ${areaId}`,
       area_id: areaId,
     }),
   });
 }
 
 /**
- * Register a new user (admin only).
+ * Register a new user in the active bid year (admin only).
  */
 export async function registerUser(
   sessionToken: string,
-  bidYear: number,
   initials: string,
   name: string,
   area: string,
@@ -605,7 +596,6 @@ export async function registerUser(
     body: JSON.stringify({
       cause_id: `register-user-${Date.now()}`,
       cause_description: `Register user ${initials} in ${area}`,
-      bid_year: bidYear,
       initials,
       name,
       area,
@@ -621,11 +611,10 @@ export async function registerUser(
 }
 
 /**
- * Preview CSV user data for import validation (admin only).
+ * Preview CSV user data for import validation in the active bid year (admin only).
  */
 export async function previewCsvUsers(
   sessionToken: string,
-  bidYear: number,
   csvContent: string,
 ): Promise<PreviewCsvUsersResponse> {
   return fetchJson<PreviewCsvUsersResponse>(
@@ -637,7 +626,6 @@ export async function previewCsvUsers(
         Authorization: `Bearer ${sessionToken}`,
       },
       body: JSON.stringify({
-        bid_year: bidYear,
         csv_content: csvContent,
       }),
     },
@@ -645,11 +633,10 @@ export async function previewCsvUsers(
 }
 
 /**
- * Import selected CSV rows as users (admin only).
+ * Import selected CSV rows as users in the active bid year (admin only).
  */
 export async function importCsvUsers(
   sessionToken: string,
-  bidYear: number,
   csvContent: string,
   selectedRowIndices: number[],
 ): Promise<ImportCsvUsersResponse> {
@@ -662,7 +649,6 @@ export async function importCsvUsers(
         Authorization: `Bearer ${sessionToken}`,
       },
       body: JSON.stringify({
-        bid_year: bidYear,
         csv_content: csvContent,
         selected_row_indices: selectedRowIndices,
       }),

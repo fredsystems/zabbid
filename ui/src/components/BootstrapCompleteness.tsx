@@ -154,6 +154,15 @@ export function BootstrapCompleteness({
             <strong>Active Bid Year:</strong> {completeness.active_bid_year}
           </p>
         )}
+        {completeness.active_bid_year === null && (
+          <div className="error-banner" style={{ marginTop: "1rem" }}>
+            <strong>No Active Bid Year</strong>
+            <p>
+              All mutations require an active bid year. Create a bid year below
+              and set it as active before creating areas or users.
+            </p>
+          </div>
+        )}
         {completeness.blocking_reasons.length > 0 && (
           <div className="blocking-issues">
             <h4>Issues Preventing Readiness:</h4>
@@ -276,7 +285,6 @@ export function BootstrapCompleteness({
             </p>
             <CsvUserImport
               sessionToken={sessionToken}
-              bidYear={completeness.active_bid_year}
               onImportComplete={() => void loadCompleteness()}
             />
           </section>
@@ -331,7 +339,7 @@ function BidYearItem({
     try {
       setSaving(true);
       onError("");
-      await setExpectedAreaCountApi(sessionToken, bidYear.year, count);
+      await setExpectedAreaCountApi(sessionToken, count);
       await onRefresh();
       setIsEditing(false);
     } catch (err) {
@@ -650,12 +658,7 @@ function AreaItem({
     try {
       setSaving(true);
       onError("");
-      await setExpectedUserCountApi(
-        sessionToken,
-        area.bid_year,
-        area.area,
-        count,
-      );
+      await setExpectedUserCountApi(sessionToken, area.area, count);
       await onRefresh();
       setIsEditing(false);
     } catch (err) {
@@ -796,18 +799,13 @@ function CreateAreaForm({
     try {
       setCreating(true);
       onError("");
-      await createArea(sessionToken, activeBidYear, areaId);
+      await createArea(sessionToken, areaId);
 
       // If expected user count is provided, set it immediately
       if (expectedUserCount) {
         const count = Number.parseInt(expectedUserCount, 10);
         if (!Number.isNaN(count) && count >= 0) {
-          await setExpectedUserCountApi(
-            sessionToken,
-            activeBidYear,
-            areaId,
-            count,
-          );
+          await setExpectedUserCountApi(sessionToken, areaId, count);
         }
       }
 
@@ -965,7 +963,6 @@ function UserManagementForArea({
             <UserItem
               key={user.initials}
               user={user}
-              bidYear={bidYear}
               areaId={areaId}
               isAdmin={isAdmin}
               sessionToken={sessionToken}
@@ -988,7 +985,6 @@ function UserManagementForArea({
 
       {isAdmin && showCreateForm && (
         <CreateUserForm
-          bidYear={bidYear}
           areaId={areaId}
           sessionToken={sessionToken}
           onSuccess={() => {
@@ -1009,7 +1005,6 @@ function UserManagementForArea({
 
 interface UserItemProps {
   user: UserInfo;
-  bidYear: number;
   areaId: string;
   isAdmin: boolean;
   sessionToken: string | null;
@@ -1019,7 +1014,6 @@ interface UserItemProps {
 
 function UserItem({
   user,
-  bidYear,
   areaId,
   isAdmin,
   sessionToken,
@@ -1032,7 +1026,6 @@ function UserItem({
     return (
       <EditUserForm
         user={user}
-        bidYear={bidYear}
         areaId={areaId}
         sessionToken={sessionToken}
         onSuccess={() => {
@@ -1078,7 +1071,6 @@ function UserItem({
 // ============================================================================
 
 interface CreateUserFormProps {
-  bidYear: number;
   areaId: string;
   sessionToken: string | null;
   onSuccess: () => void;
@@ -1087,7 +1079,6 @@ interface CreateUserFormProps {
 }
 
 function CreateUserForm({
-  bidYear,
   areaId,
   sessionToken,
   onSuccess,
@@ -1124,7 +1115,6 @@ function CreateUserForm({
       onError("");
       await registerUser(
         sessionToken,
-        bidYear,
         initials,
         name,
         areaId,
@@ -1289,7 +1279,6 @@ function CreateUserForm({
 
 interface EditUserFormProps {
   user: UserInfo;
-  bidYear: number;
   areaId: string;
   sessionToken: string | null;
   onSuccess: () => void;
@@ -1299,7 +1288,6 @@ interface EditUserFormProps {
 
 function EditUserForm({
   user,
-  bidYear,
   areaId,
   sessionToken,
   onSuccess,
@@ -1333,7 +1321,6 @@ function EditUserForm({
       // In a full implementation, we'd need to fetch the full user data first
       await updateUser(
         sessionToken,
-        bidYear,
         user.initials,
         name,
         areaId,
