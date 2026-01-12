@@ -5,6 +5,7 @@
 
 //! Error types for the API layer.
 
+use crate::password_policy::PasswordPolicyError;
 use zab_bid::CoreError;
 #[allow(unused_imports)] // False positive: BidYear is used in pattern matching
 use zab_bid_domain::{BidYear, DomainError};
@@ -87,6 +88,11 @@ pub enum ApiError {
         /// A description of the internal error.
         message: String,
     },
+    /// Password policy violation.
+    PasswordPolicyViolation {
+        /// A human-readable description of the policy violation.
+        message: String,
+    },
 }
 
 impl std::fmt::Display for ApiError {
@@ -116,6 +122,9 @@ impl std::fmt::Display for ApiError {
             Self::Internal { message } => {
                 write!(f, "Internal error: {message}")
             }
+            Self::PasswordPolicyViolation { message } => {
+                write!(f, "Password policy violation: {message}")
+            }
         }
     }
 }
@@ -133,6 +142,14 @@ impl From<AuthError> for ApiError {
                 action,
                 required_role,
             },
+        }
+    }
+}
+
+impl From<PasswordPolicyError> for ApiError {
+    fn from(err: PasswordPolicyError) -> Self {
+        Self::PasswordPolicyViolation {
+            message: err.to_string(),
         }
     }
 }

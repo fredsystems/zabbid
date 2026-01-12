@@ -437,7 +437,7 @@ impl From<ApiError> for HttpError {
                 status: StatusCode::UNPROCESSABLE_ENTITY,
                 message: err.to_string(),
             },
-            ApiError::InvalidInput { .. } => Self {
+            ApiError::InvalidInput { .. } | ApiError::PasswordPolicyViolation { .. } => Self {
                 status: StatusCode::BAD_REQUEST,
                 message: err.to_string(),
             },
@@ -1305,6 +1305,8 @@ async fn handle_create_operator(
         login_name: req.login_name.clone(),
         display_name: req.display_name.clone(),
         role: req.role.clone(),
+        password: req.password.clone(),
+        password_confirmation: req.password_confirmation.clone(),
     };
 
     let mut persistence = app_state.persistence.lock().await;
@@ -1453,6 +1455,10 @@ struct CreateOperatorApiRequest {
     display_name: String,
     /// The operator role (Admin or Bidder).
     role: String,
+    /// The operator password.
+    password: String,
+    /// The password confirmation.
+    password_confirmation: String,
 }
 
 /// Request body for disable operator endpoint.

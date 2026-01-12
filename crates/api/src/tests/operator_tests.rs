@@ -370,6 +370,8 @@ fn test_create_operator_emits_audit_event() {
         login_name: String::from("newop"),
         display_name: String::from("New Operator"),
         role: String::from("Bidder"),
+        password: String::from("ValidPassword123!"),
+        password_confirmation: String::from("ValidPassword123!"),
     };
 
     let cause = create_test_cause();

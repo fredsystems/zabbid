@@ -310,6 +310,10 @@ pub struct CreateOperatorRequest {
     pub display_name: String,
     /// The operator role (Admin or Bidder).
     pub role: String,
+    /// The operator password.
+    pub password: String,
+    /// The password confirmation.
+    pub password_confirmation: String,
 }
 
 /// API response for successful operator creation.
@@ -342,6 +346,44 @@ pub struct OperatorInfo {
     pub created_at: String,
     /// Last login timestamp (ISO 8601, optional).
     pub last_login_at: Option<String>,
+}
+
+/// API request to change an operator's own password.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ChangePasswordRequest {
+    /// The current password.
+    pub current_password: String,
+    /// The new password.
+    pub new_password: String,
+    /// The new password confirmation.
+    pub new_password_confirmation: String,
+}
+
+/// API response for successful password change.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ChangePasswordResponse {
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to reset another operator's password (admin only).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResetPasswordRequest {
+    /// The operator ID whose password should be reset.
+    pub operator_id: i64,
+    /// The new password.
+    pub new_password: String,
+    /// The new password confirmation.
+    pub new_password_confirmation: String,
+}
+
+/// API response for successful password reset.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResetPasswordResponse {
+    /// Success message.
+    pub message: String,
+    /// The operator ID whose password was reset.
+    pub operator_id: i64,
 }
 
 /// API response for listing operators.
@@ -427,6 +469,8 @@ pub struct CreateFirstAdminRequest {
     pub display_name: String,
     /// The password for the new admin.
     pub password: String,
+    /// The password confirmation.
+    pub password_confirmation: String,
 }
 
 /// API response for successful first admin creation.

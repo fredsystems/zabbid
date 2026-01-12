@@ -16,6 +16,7 @@
 mod auth;
 mod error;
 mod handlers;
+mod password_policy;
 mod request_response;
 
 #[cfg(test)]
@@ -29,24 +30,28 @@ pub use auth::{
 // Re-export public types from error module
 pub use error::{ApiError, AuthError, translate_core_error, translate_domain_error};
 
+// Re-export public types from password_policy module
+pub use password_policy::{PasswordPolicy, PasswordPolicyError};
+
 // Re-export public types from request_response module
 pub use request_response::{
     AreaInfo, AreaStatusInfo, BidYearInfo, BidYearStatusInfo, BootstrapAuthStatusResponse,
-    BootstrapLoginRequest, BootstrapLoginResponse, BootstrapStatusResponse, CreateAreaRequest,
-    CreateAreaResponse, CreateBidYearRequest, CreateBidYearResponse, CreateFirstAdminRequest,
-    CreateFirstAdminResponse, CreateOperatorRequest, CreateOperatorResponse, DeleteOperatorRequest,
-    DeleteOperatorResponse, DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest,
-    EnableOperatorResponse, GetLeaveAvailabilityRequest, GetLeaveAvailabilityResponse,
-    ListAreasRequest, ListAreasResponse, ListBidYearsResponse, ListOperatorsResponse,
-    ListUsersRequest, ListUsersResponse, LoginRequest, LoginResponse, OperatorInfo,
-    RegisterUserRequest, RegisterUserResponse, UserInfo, WhoAmIResponse,
+    BootstrapLoginRequest, BootstrapLoginResponse, BootstrapStatusResponse, ChangePasswordRequest,
+    ChangePasswordResponse, CreateAreaRequest, CreateAreaResponse, CreateBidYearRequest,
+    CreateBidYearResponse, CreateFirstAdminRequest, CreateFirstAdminResponse,
+    CreateOperatorRequest, CreateOperatorResponse, DeleteOperatorRequest, DeleteOperatorResponse,
+    DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
+    GetLeaveAvailabilityRequest, GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse,
+    ListBidYearsResponse, ListOperatorsResponse, ListUsersRequest, ListUsersResponse, LoginRequest,
+    LoginResponse, OperatorInfo, RegisterUserRequest, RegisterUserResponse, ResetPasswordRequest,
+    ResetPasswordResponse, UserInfo, WhoAmIResponse,
 };
 
 // Re-export public functions from handlers module
 pub use handlers::{
-    ApiResult, bootstrap_login, check_bootstrap_status, checkpoint, create_area, create_bid_year,
-    create_first_admin, create_operator, delete_operator, disable_operator, enable_operator,
-    finalize, get_bootstrap_status, get_current_state, get_historical_state,
+    ApiResult, bootstrap_login, change_password, check_bootstrap_status, checkpoint, create_area,
+    create_bid_year, create_first_admin, create_operator, delete_operator, disable_operator,
+    enable_operator, finalize, get_bootstrap_status, get_current_state, get_historical_state,
     get_leave_availability, list_areas, list_bid_years, list_operators, list_users, login, logout,
-    register_user, rollback, whoami,
+    register_user, reset_password, rollback, whoami,
 };
