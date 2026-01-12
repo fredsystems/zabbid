@@ -248,13 +248,17 @@ impl SeniorityData {
 
 /// Represents a user within a bid year.
 ///
-/// Users are scoped to a single bid year and are uniquely identified
-/// by their initials within that bid year.
+/// Users are scoped to a single bid year.
+/// `user_id` is the canonical internal identifier.
+/// Initials remain unique per bid year but are no longer the primary identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct User {
+    /// Canonical internal identifier (opaque, stable, immutable).
+    /// Optional to support creation before persistence.
+    pub user_id: Option<i64>,
     /// The bid year this user belongs to.
     pub bid_year: BidYear,
-    /// The user's initials (sole identifier within the bid year).
+    /// The user's initials (unique per bid year, but not the canonical identifier).
     pub initials: Initials,
     /// The user's name (informational, not unique).
     pub name: String,
@@ -269,7 +273,9 @@ pub struct User {
 }
 
 impl User {
-    /// Creates a new `User`.
+    /// Creates a new `User` without a persisted `user_id`.
+    ///
+    /// The `user_id` will be assigned by the persistence layer upon first save.
     ///
     /// # Arguments
     ///
@@ -292,6 +298,43 @@ impl User {
         seniority_data: SeniorityData,
     ) -> Self {
         Self {
+            user_id: None,
+            bid_year,
+            initials,
+            name,
+            area,
+            user_type,
+            crew,
+            seniority_data,
+        }
+    }
+
+    /// Creates a `User` with an existing `user_id` (from persistence).
+    ///
+    /// # Arguments
+    ///
+    /// * `user_id` - The canonical internal identifier
+    /// * `bid_year` - The bid year
+    /// * `initials` - The user's initials
+    /// * `name` - The user's name
+    /// * `area` - The user's area
+    /// * `user_type` - The user's type classification
+    /// * `crew` - The user's crew (optional)
+    /// * `seniority_data` - The user's seniority data
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    pub const fn with_id(
+        user_id: i64,
+        bid_year: BidYear,
+        initials: Initials,
+        name: String,
+        area: Area,
+        user_type: UserType,
+        crew: Option<Crew>,
+        seniority_data: SeniorityData,
+    ) -> Self {
+        Self {
+            user_id: Some(user_id),
             bid_year,
             initials,
             name,

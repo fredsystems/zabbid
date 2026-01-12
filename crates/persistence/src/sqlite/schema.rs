@@ -72,6 +72,7 @@ pub fn initialize_schema(conn: &Connection) -> Result<(), PersistenceError> {
         );
 
         CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY AUTOINCREMENT,
             bid_year INTEGER NOT NULL,
             area_id TEXT NOT NULL,
             initials TEXT NOT NULL,
@@ -83,12 +84,15 @@ pub fn initialize_schema(conn: &Connection) -> Result<(), PersistenceError> {
             eod_faa_date TEXT NOT NULL,
             service_computation_date TEXT NOT NULL,
             lottery_value INTEGER,
-            PRIMARY KEY (bid_year, area_id, initials),
+            UNIQUE (bid_year, area_id, initials),
             FOREIGN KEY(bid_year, area_id) REFERENCES areas(bid_year, area_id)
         );
 
         CREATE INDEX IF NOT EXISTS idx_users_by_area
             ON users(bid_year, area_id);
+
+        CREATE INDEX IF NOT EXISTS idx_users_by_initials
+            ON users(bid_year, area_id, initials);
 
         -- Audit log and derived historical state tables
         CREATE TABLE IF NOT EXISTS audit_events (

@@ -203,7 +203,7 @@ pub fn list_users(
     area: &Area,
 ) -> Result<Vec<User>, PersistenceError> {
     let mut stmt = conn.prepare(
-        "SELECT initials, name, user_type, crew,
+        "SELECT user_id, initials, name, user_type, crew,
                 cumulative_natca_bu_date, natca_bu_date, eod_faa_date,
                 service_computation_date, lottery_value
          FROM users
@@ -213,21 +213,23 @@ pub fn list_users(
 
     let rows = stmt.query_map(params![bid_year.year(), area.id()], |row| {
         Ok((
-            row.get::<_, String>(0)?,      // initials
-            row.get::<_, String>(1)?,      // name
-            row.get::<_, String>(2)?,      // user_type
-            row.get::<_, Option<i32>>(3)?, // crew
-            row.get::<_, String>(4)?,      // cumulative_natca_bu_date
-            row.get::<_, String>(5)?,      // natca_bu_date
-            row.get::<_, String>(6)?,      // eod_faa_date
-            row.get::<_, String>(7)?,      // service_computation_date
-            row.get::<_, Option<i32>>(8)?, // lottery_value
+            row.get::<_, i64>(0)?,         // user_id
+            row.get::<_, String>(1)?,      // initials
+            row.get::<_, String>(2)?,      // name
+            row.get::<_, String>(3)?,      // user_type
+            row.get::<_, Option<i32>>(4)?, // crew
+            row.get::<_, String>(5)?,      // cumulative_natca_bu_date
+            row.get::<_, String>(6)?,      // natca_bu_date
+            row.get::<_, String>(7)?,      // eod_faa_date
+            row.get::<_, String>(8)?,      // service_computation_date
+            row.get::<_, Option<i32>>(9)?, // lottery_value
         ))
     })?;
 
     let mut users: Vec<User> = Vec::new();
     for row_result in rows {
         let (
+            user_id,
             initials_str,
             name,
             user_type_str,
@@ -252,7 +254,8 @@ pub fn list_users(
             lottery_value.and_then(|v| u32::try_from(v).ok()),
         );
 
-        let user: User = User::new(
+        let user: User = User::with_id(
+            user_id,
             bid_year.clone(),
             initials,
             name,
