@@ -14,9 +14,9 @@ pub use bootstrap::{
 };
 pub use operators::{
     count_operators, create_operator, create_session, delete_expired_sessions, delete_operator,
-    delete_session, disable_operator, enable_operator, get_operator_by_id, get_operator_by_login,
-    get_session_by_token, is_operator_referenced, list_operators, update_last_login,
-    update_session_activity, verify_password,
+    delete_session, delete_sessions_for_operator, disable_operator, enable_operator,
+    get_operator_by_id, get_operator_by_login, get_session_by_token, is_operator_referenced,
+    list_operators, update_last_login, update_password, update_session_activity, verify_password,
 };
 pub use persistence::{persist_audit_event, persist_bootstrap, persist_transition};
 pub use queries::{

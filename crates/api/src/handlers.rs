@@ -19,13 +19,15 @@ use zab_bid_persistence::{OperatorData, SqlitePersistence};
 
 use crate::auth::{AuthenticatedActor, AuthenticationService, AuthorizationService, Role};
 use crate::error::{ApiError, AuthError, translate_core_error, translate_domain_error};
+use crate::password_policy::PasswordPolicy;
 use crate::request_response::{
-    BidYearInfo, CreateAreaRequest, CreateBidYearRequest, CreateOperatorRequest,
-    CreateOperatorResponse, DeleteOperatorRequest, DeleteOperatorResponse, DisableOperatorRequest,
-    DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
-    GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
-    ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse, OperatorInfo,
-    RegisterUserRequest, RegisterUserResponse, UserInfo, WhoAmIResponse,
+    BidYearInfo, ChangePasswordRequest, ChangePasswordResponse, CreateAreaRequest,
+    CreateBidYearRequest, CreateOperatorRequest, CreateOperatorResponse, DeleteOperatorRequest,
+    DeleteOperatorResponse, DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest,
+    EnableOperatorResponse, GetLeaveAvailabilityResponse, ListAreasRequest, ListAreasResponse,
+    ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse,
+    OperatorInfo, RegisterUserRequest, RegisterUserResponse, ResetPasswordRequest,
+    ResetPasswordResponse, UserInfo, WhoAmIResponse,
 };
 use zab_bid_persistence::PersistenceError;
 
@@ -966,13 +968,21 @@ pub fn create_operator(
         });
     }
 
-    // Create operator with a default password (should be changed immediately)
-    // TODO: This endpoint should require a password in the request
+    // Validate password policy
+    let policy: PasswordPolicy = PasswordPolicy::default();
+    policy.validate(
+        &request.password,
+        &request.password_confirmation,
+        &request.login_name,
+        &request.display_name,
+    )?;
+
+    // Create operator with validated password
     let operator_id: i64 = persistence
         .create_operator(
             &request.login_name,
             &request.display_name,
-            "changeme",
+            &request.password,
             &request.role,
         )
         .map_err(|e| ApiError::Internal {
@@ -1427,6 +1437,258 @@ pub fn delete_operator(
     })
 }
 
+/// Changes an operator's own password.
+///
+/// Any authenticated operator may change their own password.
+/// Validates the current password, enforces password policy, and invalidates all sessions.
+/// Emits an audit event on success.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The change password request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data for audit attribution
+/// * `cause` - The cause for this action
+///
+/// # Returns
+///
+/// * `Ok(ChangePasswordResponse)` on success
+/// * `Err(ApiError)` if validation fails or operation fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Current password is incorrect
+/// - New password does not meet policy requirements
+/// - Password confirmation does not match
+/// - Database operations fail
+pub fn change_password(
+    persistence: &mut SqlitePersistence,
+    request: &ChangePasswordRequest,
+    _authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<ChangePasswordResponse, ApiError> {
+    // Verify current password
+    let password_valid: bool =
+        SqlitePersistence::verify_password(&request.current_password, &operator.password_hash)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Password verification failed: {e}"),
+            })?;
+
+    if !password_valid {
+        return Err(ApiError::AuthenticationFailed {
+            reason: String::from("Current password is incorrect"),
+        });
+    }
+
+    // Validate new password policy
+    let policy: PasswordPolicy = PasswordPolicy::default();
+    policy.validate(
+        &request.new_password,
+        &request.new_password_confirmation,
+        &operator.login_name,
+        &operator.display_name,
+    )?;
+
+    // Update password
+    persistence
+        .update_password(operator.operator_id, &request.new_password)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to update password: {e}"),
+        })?;
+
+    // Invalidate all sessions for this operator
+    persistence
+        .delete_sessions_for_operator(operator.operator_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to invalidate sessions: {e}"),
+        })?;
+
+    // Create audit event for password change
+    let actor: Actor = Actor::with_operator(
+        operator.operator_id.to_string(),
+        String::from("operator"),
+        operator.operator_id,
+        operator.login_name.clone(),
+        operator.display_name.clone(),
+    );
+
+    let action: Action = Action::new(
+        String::from("ChangePassword"),
+        Some(format!(
+            "Operator {} changed their own password",
+            operator.login_name
+        )),
+    );
+
+    let operator_id = operator.operator_id;
+    let before: StateSnapshot = StateSnapshot::new(format!("operator_id={operator_id}"));
+    let after: StateSnapshot =
+        StateSnapshot::new(format!("operator_id={operator_id},password_changed"));
+
+    // Use placeholder bid_year and area for operator management events
+    let placeholder_bid_year: BidYear = BidYear::new(0);
+    let placeholder_area: Area = Area::new("_operator_management");
+
+    let audit_event: AuditEvent = AuditEvent::new(
+        actor,
+        cause,
+        action,
+        before,
+        after,
+        placeholder_bid_year,
+        placeholder_area,
+    );
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    Ok(ChangePasswordResponse {
+        message: String::from("Password changed successfully. All sessions have been invalidated."),
+    })
+}
+
+/// Resets another operator's password (admin only).
+///
+/// Only Admin actors may reset other operators' passwords.
+/// Does not require the old password, enforces password policy, and invalidates all sessions.
+/// Emits an audit event on success.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The reset password request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data for audit attribution (the admin)
+/// * `cause` - The cause for this action
+///
+/// # Returns
+///
+/// * `Ok(ResetPasswordResponse)` on success
+/// * `Err(ApiError)` if unauthorized or operation fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The target operator does not exist
+/// - New password does not meet policy requirements
+/// - Password confirmation does not match
+/// - Database operations fail
+pub fn reset_password(
+    persistence: &mut SqlitePersistence,
+    request: &ResetPasswordRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<ResetPasswordResponse, ApiError> {
+    // Enforce authorization before executing command
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("reset_password"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Get target operator to verify existence and get details for validation and audit
+    let target_operator: OperatorData = persistence
+        .get_operator_by_id(request.operator_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get operator: {e}"),
+        })?
+        .ok_or_else(|| {
+            let operator_id = request.operator_id;
+            ApiError::ResourceNotFound {
+                resource_type: String::from("Operator"),
+                message: format!("Operator with ID {operator_id} not found"),
+            }
+        })?;
+
+    // Validate new password policy
+    let policy: PasswordPolicy = PasswordPolicy::default();
+    policy.validate(
+        &request.new_password,
+        &request.new_password_confirmation,
+        &target_operator.login_name,
+        &target_operator.display_name,
+    )?;
+
+    // Update password
+    persistence
+        .update_password(request.operator_id, &request.new_password)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to update password: {e}"),
+        })?;
+
+    // Invalidate all sessions for the target operator
+    persistence
+        .delete_sessions_for_operator(request.operator_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to invalidate sessions: {e}"),
+        })?;
+
+    // Create audit event for password reset
+    let actor: Actor = Actor::with_operator(
+        operator.operator_id.to_string(),
+        String::from("operator"),
+        operator.operator_id,
+        operator.login_name.clone(),
+        operator.display_name.clone(),
+    );
+
+    let action: Action = Action::new(
+        String::from("ResetPassword"),
+        Some(format!(
+            "Admin {} reset password for operator {}",
+            operator.login_name, target_operator.login_name
+        )),
+    );
+
+    let operator_id = request.operator_id;
+    let target_login = &target_operator.login_name;
+    let before: StateSnapshot = StateSnapshot::new(format!(
+        "operator_id={operator_id},login_name={target_login}"
+    ));
+    let after: StateSnapshot = StateSnapshot::new(format!(
+        "operator_id={operator_id},login_name={target_login},password_reset"
+    ));
+
+    // Use placeholder bid_year and area for operator management events
+    let placeholder_bid_year: BidYear = BidYear::new(0);
+    let placeholder_area: Area = Area::new("_operator_management");
+
+    let audit_event: AuditEvent = AuditEvent::new(
+        actor,
+        cause,
+        action,
+        before,
+        after,
+        placeholder_bid_year,
+        placeholder_area,
+    );
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    Ok(ResetPasswordResponse {
+        message: format!(
+            "Password reset successfully for operator {}. All sessions have been invalidated.",
+            target_operator.login_name
+        ),
+        operator_id: request.operator_id,
+    })
+}
+
 // ========================================================================
 // Bootstrap Authentication (Phase 15)
 // ========================================================================
@@ -1572,13 +1834,14 @@ pub fn create_first_admin(
         });
     }
 
-    // Validate password is not empty
-    if request.password.is_empty() {
-        return Err(ApiError::InvalidInput {
-            field: String::from("password"),
-            message: String::from("Password cannot be empty"),
-        });
-    }
+    // Validate password policy
+    let policy: PasswordPolicy = PasswordPolicy::default();
+    policy.validate(
+        &request.password,
+        &request.password_confirmation,
+        &request.login_name,
+        &request.display_name,
+    )?;
 
     // Create the first admin operator
     let operator_id: i64 = persistence

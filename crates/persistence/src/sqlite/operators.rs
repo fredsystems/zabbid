@@ -481,6 +481,67 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, Pers
         .map_err(|e| PersistenceError::Other(format!("Failed to verify password: {e}")))
 }
 
+/// Updates an operator's password.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `operator_id` - The operator ID
+/// * `new_password` - The new password (will be hashed)
+///
+/// # Errors
+///
+/// Returns an error if the password cannot be hashed or the update fails.
+pub fn update_password(
+    conn: &Connection,
+    operator_id: i64,
+    new_password: &str,
+) -> Result<(), PersistenceError> {
+    info!("Updating password for operator ID: {}", operator_id);
+
+    // Hash the new password using bcrypt
+    let password_hash: String = bcrypt::hash(new_password, bcrypt::DEFAULT_COST)
+        .map_err(|e| PersistenceError::Other(format!("Failed to hash password: {e}")))?;
+
+    conn.execute(
+        "UPDATE operators SET password_hash = ?1 WHERE operator_id = ?2",
+        params![password_hash, operator_id],
+    )?;
+
+    info!("Password updated for operator ID: {}", operator_id);
+    Ok(())
+}
+
+/// Deletes all sessions for a specific operator.
+///
+/// This is used when an operator's password is changed to invalidate all active sessions.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `operator_id` - The operator ID whose sessions should be deleted
+///
+/// # Errors
+///
+/// Returns an error if the database delete fails.
+pub fn delete_sessions_for_operator(
+    conn: &Connection,
+    operator_id: i64,
+) -> Result<usize, PersistenceError> {
+    info!("Deleting all sessions for operator ID: {}", operator_id);
+
+    let rows_affected: usize = conn.execute(
+        "DELETE FROM sessions WHERE operator_id = ?1",
+        params![operator_id],
+    )?;
+
+    info!(
+        "Deleted {} sessions for operator ID: {}",
+        rows_affected, operator_id
+    );
+    Ok(rows_affected)
+}
+
 /// Counts the total number of operators.
 ///
 /// # Arguments

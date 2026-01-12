@@ -570,6 +570,42 @@ impl SqlitePersistence {
         sqlite::verify_password(password, password_hash)
     }
 
+    /// Updates an operator's password.
+    ///
+    /// # Arguments
+    ///
+    /// * `operator_id` - The operator ID
+    /// * `new_password` - The new password (will be hashed)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the password cannot be hashed or the update fails.
+    pub fn update_password(
+        &mut self,
+        operator_id: i64,
+        new_password: &str,
+    ) -> Result<(), PersistenceError> {
+        sqlite::update_password(&self.conn, operator_id, new_password)
+    }
+
+    /// Deletes all sessions for a specific operator.
+    ///
+    /// This is used when an operator's password is changed to invalidate all active sessions.
+    ///
+    /// # Arguments
+    ///
+    /// * `operator_id` - The operator ID whose sessions should be deleted
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database delete fails.
+    pub fn delete_sessions_for_operator(
+        &mut self,
+        operator_id: i64,
+    ) -> Result<usize, PersistenceError> {
+        sqlite::delete_sessions_for_operator(&self.conn, operator_id)
+    }
+
     /// Creates a new session for an operator.
     ///
     /// # Arguments

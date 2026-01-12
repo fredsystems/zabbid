@@ -12,6 +12,7 @@ description = "API boundary layer for the ZAB Bidding System"
 [dependencies]
 rand.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 time.workspace = true
 zab-bid = { path = "../core" }
 zab-bid-audit = { path = "../audit" }
