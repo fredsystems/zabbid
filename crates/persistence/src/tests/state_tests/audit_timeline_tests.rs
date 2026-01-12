@@ -4,7 +4,9 @@
 // https://opensource.org/licenses/MIT.
 
 use crate::SqlitePersistence;
-use crate::tests::{create_test_actor, create_test_cause, create_test_metadata};
+use crate::tests::{
+    create_test_actor, create_test_cause, create_test_metadata, create_test_operator,
+};
 use zab_bid::{Command, State, TransitionResult, apply};
 use zab_bid_audit::AuditEvent;
 use zab_bid_domain::{Area, BidYear};
@@ -12,6 +14,7 @@ use zab_bid_domain::{Area, BidYear};
 #[test]
 fn test_get_audit_timeline_returns_events_in_order() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create multiple events
@@ -78,6 +81,7 @@ fn test_get_audit_timeline_empty_for_nonexistent_scope() {
 #[test]
 fn test_get_audit_timeline_includes_rollback_events() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create checkpoint
@@ -119,6 +123,7 @@ fn test_get_audit_timeline_includes_rollback_events() {
 #[test]
 fn test_get_audit_timeline_does_not_mutate() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create events
@@ -151,6 +156,7 @@ fn test_get_audit_timeline_does_not_mutate() {
 #[test]
 fn test_read_operations_are_side_effect_free() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create initial snapshot
