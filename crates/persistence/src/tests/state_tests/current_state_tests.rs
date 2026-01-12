@@ -26,6 +26,7 @@ fn create_bootstrapped_persistence() -> SqlitePersistence {
     };
     let bid_year_result = zab_bid::apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         create_bid_year_cmd,
         create_test_actor(),
         create_test_cause(),
@@ -36,11 +37,11 @@ fn create_bootstrapped_persistence() -> SqlitePersistence {
 
     // Bootstrap area
     let create_area_cmd: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let area_result = zab_bid::apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         create_area_cmd,
         create_test_actor(),
         create_test_cause(),
@@ -61,6 +62,7 @@ fn test_get_current_state_with_no_deltas() {
     let result: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command,
         create_test_actor(),
         create_test_cause(),
@@ -88,6 +90,7 @@ fn test_get_current_state_after_snapshot_with_user() {
     let result1: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -97,7 +100,6 @@ fn test_get_current_state_after_snapshot_with_user() {
 
     // Register a user (delta event, no snapshot)
     let command2: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("Alice Blue"),
         area: Area::new("North"),
@@ -108,6 +110,7 @@ fn test_get_current_state_after_snapshot_with_user() {
     let result2: TransitionResult = apply(
         &create_test_metadata(),
         &result1.new_state,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -120,6 +123,7 @@ fn test_get_current_state_after_snapshot_with_user() {
     let result3: TransitionResult = apply(
         &create_test_metadata(),
         &result2.new_state,
+        &BidYear::new(2026),
         command3,
         create_test_actor(),
         create_test_cause(),
@@ -163,6 +167,7 @@ fn test_get_current_state_is_deterministic() {
     let result1: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -172,7 +177,6 @@ fn test_get_current_state_is_deterministic() {
 
     // Add a user
     let command2: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("XY"),
         name: String::from("Xavier Young"),
         area: Area::new("North"),
@@ -183,6 +187,7 @@ fn test_get_current_state_is_deterministic() {
     let result2: TransitionResult = apply(
         &create_test_metadata(),
         &result1.new_state,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -195,6 +200,7 @@ fn test_get_current_state_is_deterministic() {
     let result3: TransitionResult = apply(
         &create_test_metadata(),
         &result2.new_state,
+        &BidYear::new(2026),
         command3,
         create_test_actor(),
         create_test_cause(),
@@ -230,6 +236,7 @@ fn test_get_current_state_does_not_mutate() {
     let result: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command,
         create_test_actor(),
         create_test_cause(),
@@ -267,6 +274,7 @@ fn test_get_current_state_with_multiple_users() {
     let result1: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -276,7 +284,6 @@ fn test_get_current_state_with_multiple_users() {
 
     // Add first user
     let command2: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AA"),
         name: String::from("Alice Anderson"),
         area: Area::new("North"),
@@ -287,6 +294,7 @@ fn test_get_current_state_with_multiple_users() {
     let result2: TransitionResult = apply(
         &create_test_metadata(),
         &result1.new_state,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -296,7 +304,6 @@ fn test_get_current_state_with_multiple_users() {
 
     // Add second user
     let command3: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("BB"),
         name: String::from("Bob Brown"),
         area: Area::new("North"),
@@ -307,6 +314,7 @@ fn test_get_current_state_with_multiple_users() {
     let result3: TransitionResult = apply(
         &create_test_metadata(),
         &result2.new_state,
+        &BidYear::new(2026),
         command3,
         create_test_actor(),
         create_test_cause(),
@@ -319,6 +327,7 @@ fn test_get_current_state_with_multiple_users() {
     let result4: TransitionResult = apply(
         &create_test_metadata(),
         &result3.new_state,
+        &BidYear::new(2026),
         command4,
         create_test_actor(),
         create_test_cause(),
@@ -356,6 +365,7 @@ fn bootstrap_area_with_user(
     let res1: TransitionResult = apply(
         metadata,
         &state,
+        &BidYear::new(2026),
         cmd1,
         create_test_actor(),
         create_test_cause(),
@@ -365,7 +375,6 @@ fn bootstrap_area_with_user(
 
     // Register user
     let cmd2: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new(user_initials),
         name: format!("{area_name} User"),
         area,
@@ -376,6 +385,7 @@ fn bootstrap_area_with_user(
     let res2: TransitionResult = apply(
         metadata,
         &res1.new_state,
+        &BidYear::new(2026),
         cmd2,
         create_test_actor(),
         create_test_cause(),
@@ -388,6 +398,7 @@ fn bootstrap_area_with_user(
     let res3: TransitionResult = apply(
         metadata,
         &res2.new_state,
+        &BidYear::new(2026),
         cmd3,
         create_test_actor(),
         create_test_cause(),
@@ -407,6 +418,7 @@ fn create_empty_area_state(
     let res: TransitionResult = apply(
         metadata,
         &state,
+        &BidYear::new(2026),
         cmd,
         create_test_actor(),
         create_test_cause(),
@@ -429,6 +441,7 @@ fn test_get_current_state_different_areas_isolated() {
     };
     let bid_year_result = zab_bid::apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         create_bid_year_cmd,
         create_test_actor(),
         create_test_cause(),
@@ -439,11 +452,11 @@ fn test_get_current_state_different_areas_isolated() {
 
     // Bootstrap North area
     let create_north_cmd: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let north_result = zab_bid::apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         create_north_cmd,
         create_test_actor(),
         create_test_cause(),
@@ -456,11 +469,11 @@ fn test_get_current_state_different_areas_isolated() {
 
     // Bootstrap South area
     let create_south_cmd: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("South"),
     };
     let south_result = zab_bid::apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         create_south_cmd,
         create_test_actor(),
         create_test_cause(),

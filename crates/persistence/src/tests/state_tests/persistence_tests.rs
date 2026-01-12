@@ -29,8 +29,10 @@ fn create_bootstrapped_persistence() -> SqlitePersistence {
         start_date: create_test_start_date(),
         num_pay_periods: create_test_pay_periods(),
     };
+    let placeholder_bid_year = BidYear::new(2026);
     let bid_year_result: BootstrapResult = apply_bootstrap(
         &metadata,
+        &placeholder_bid_year,
         create_bid_year_cmd,
         create_test_actor(),
         create_test_cause(),
@@ -41,11 +43,12 @@ fn create_bootstrapped_persistence() -> SqlitePersistence {
 
     // Bootstrap area
     let create_area_cmd: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
+    let active_bid_year = BidYear::new(2026);
     let area_result: BootstrapResult = apply_bootstrap(
         &metadata,
+        &active_bid_year,
         create_area_cmd,
         create_test_actor(),
         create_test_cause(),
@@ -61,7 +64,6 @@ fn test_persist_and_retrieve_audit_event() {
     let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -73,6 +75,7 @@ fn test_persist_and_retrieve_audit_event() {
     let result: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command,
         create_test_actor(),
         create_test_cause(),
@@ -95,6 +98,7 @@ fn test_persist_with_snapshot() {
     let result: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command,
         create_test_actor(),
         create_test_cause(),
@@ -122,6 +126,7 @@ fn test_get_events_after() {
     let result1: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -134,6 +139,7 @@ fn test_get_events_after() {
     let result2: TransitionResult = apply(
         &create_test_metadata(),
         &result1.new_state,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -175,6 +181,7 @@ fn test_atomic_persistence_failure() {
     let result: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command,
         create_test_actor(),
         create_test_cause(),
@@ -195,6 +202,7 @@ fn test_state_reconstruction_with_snapshot_then_deltas() {
     let result1: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -204,7 +212,6 @@ fn test_state_reconstruction_with_snapshot_then_deltas() {
 
     // Add user (delta)
     let command2: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("TS"),
         name: String::from("Test User"),
         area: Area::new("North"),
@@ -215,6 +222,7 @@ fn test_state_reconstruction_with_snapshot_then_deltas() {
     let result2: TransitionResult = apply(
         &create_test_metadata(),
         &result1.new_state,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -227,6 +235,7 @@ fn test_state_reconstruction_with_snapshot_then_deltas() {
     let result3: TransitionResult = apply(
         &create_test_metadata(),
         &result2.new_state,
+        &BidYear::new(2026),
         command3,
         create_test_actor(),
         create_test_cause(),

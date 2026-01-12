@@ -366,8 +366,14 @@ fn test_canonical_validation_failure_prevents_creation() {
             start_date: create_test_start_date_for_year(i32::from(year)),
             num_pay_periods: create_test_pay_periods(),
         };
-        let result: Result<BootstrapResult, CoreError> =
-            apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause());
+        let placeholder_bid_year = BidYear::new(year);
+        let result: Result<BootstrapResult, CoreError> = apply_bootstrap(
+            &metadata,
+            &placeholder_bid_year,
+            command,
+            create_test_actor(),
+            create_test_cause(),
+        );
         assert!(
             result.is_ok(),
             "Year {year} should pass canonical validation"
@@ -409,8 +415,10 @@ fn test_canonical_validation_is_deterministic() {
             start_date: create_test_start_date(),
             num_pay_periods: create_test_pay_periods(),
         };
+        let placeholder_bid_year = BidYear::new(2026);
         let result: Result<BootstrapResult, CoreError> = apply_bootstrap(
             &metadata,
+            &placeholder_bid_year,
             command.clone(),
             create_test_actor(),
             create_test_cause(),
@@ -428,6 +436,7 @@ fn test_canonical_validation_is_deterministic() {
         };
         let duplicate_result: Result<BootstrapResult, CoreError> = apply_bootstrap(
             &metadata_with_2026,
+            &placeholder_bid_year,
             duplicate_command,
             create_test_actor(),
             create_test_cause(),

@@ -1972,9 +1972,9 @@ async fn handle_import_csv_users(
     let state: State = if let Some((_, first_area)) = metadata.areas.first() {
         persistence
             .get_current_state(&bid_year, first_area)
-            .unwrap_or_else(|_| State::new(bid_year.clone(), first_area.clone()))
+            .unwrap_or_else(|_| State::new(bid_year, first_area.clone()))
     } else {
-        State::new(bid_year.clone(), Area::new("DUMMY"))
+        State::new(bid_year, Area::new("DUMMY"))
     };
 
     // Build API request (bid_year no longer needed in request)

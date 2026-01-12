@@ -21,7 +21,7 @@ use super::helpers::{
     create_test_admin, create_test_admin_operator, create_test_bidder, create_test_bidder_operator,
     create_test_canonical_bid_year, create_test_cause, create_test_metadata,
     create_test_pay_periods, create_test_start_date, create_test_start_date_for_year,
-    create_valid_request,
+    create_valid_request, setup_test_persistence,
 };
 
 // ============================================================================
@@ -148,6 +148,7 @@ fn test_unauthorized_action_does_not_mutate_state() {
 
 #[test]
 fn test_unauthorized_action_does_not_emit_audit_event() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request: RegisterUserRequest = create_valid_request();
@@ -155,6 +156,7 @@ fn test_unauthorized_action_does_not_emit_audit_event() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request,
@@ -169,12 +171,14 @@ fn test_unauthorized_action_does_not_emit_audit_event() {
 
 #[test]
 fn test_admin_can_create_checkpoint() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, ApiError> = checkpoint(
+        &persistence,
         &metadata,
         &state,
         &admin,
@@ -191,12 +195,14 @@ fn test_admin_can_create_checkpoint() {
 
 #[test]
 fn test_bidder_cannot_create_checkpoint() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let bidder: AuthenticatedActor = create_test_bidder();
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, ApiError> = checkpoint(
+        &persistence,
         &metadata,
         &state,
         &bidder,
@@ -219,12 +225,14 @@ fn test_bidder_cannot_create_checkpoint() {
 
 #[test]
 fn test_admin_can_finalize() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, ApiError> = finalize(
+        &persistence,
         &metadata,
         &state,
         &admin,
@@ -241,12 +249,14 @@ fn test_admin_can_finalize() {
 
 #[test]
 fn test_bidder_cannot_finalize() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let bidder: AuthenticatedActor = create_test_bidder();
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, ApiError> = finalize(
+        &persistence,
         &metadata,
         &state,
         &bidder,
@@ -269,12 +279,14 @@ fn test_bidder_cannot_finalize() {
 
 #[test]
 fn test_admin_can_rollback() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, ApiError> = rollback(
+        &persistence,
         &metadata,
         &state,
         1,
@@ -292,12 +304,14 @@ fn test_admin_can_rollback() {
 
 #[test]
 fn test_bidder_cannot_rollback() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let bidder: AuthenticatedActor = create_test_bidder();
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, ApiError> = rollback(
+        &persistence,
         &metadata,
         &state,
         1,
@@ -336,6 +350,7 @@ fn test_authorization_error_converts_to_api_error() {
 
 #[test]
 fn test_valid_api_request_succeeds() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request: RegisterUserRequest = create_valid_request();
@@ -343,6 +358,7 @@ fn test_valid_api_request_succeeds() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request,
@@ -366,6 +382,7 @@ fn test_valid_api_request_succeeds() {
 
 #[test]
 fn test_valid_api_request_emits_audit_event() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request: RegisterUserRequest = create_valid_request();
@@ -373,6 +390,7 @@ fn test_valid_api_request_emits_audit_event() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request,
@@ -391,6 +409,7 @@ fn test_valid_api_request_emits_audit_event() {
 
 #[test]
 fn test_valid_api_request_returns_new_state() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request: RegisterUserRequest = create_valid_request();
@@ -398,6 +417,7 @@ fn test_valid_api_request_returns_new_state() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request,
@@ -414,6 +434,7 @@ fn test_valid_api_request_returns_new_state() {
 
 #[test]
 fn test_duplicate_initials_returns_api_error() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let mut state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request1: RegisterUserRequest = create_valid_request();
@@ -422,6 +443,7 @@ fn test_duplicate_initials_returns_api_error() {
 
     // Register first user successfully
     let result1: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request1,
@@ -434,7 +456,6 @@ fn test_duplicate_initials_returns_api_error() {
 
     // Second registration with same initials in the same area
     let request2: RegisterUserRequest = RegisterUserRequest {
-        bid_year: 2026,
         initials: String::from("AB"), // Duplicate
         name: String::from("Jane Smith"),
         area: String::from("North"), // Same area as first user
@@ -448,6 +469,7 @@ fn test_duplicate_initials_returns_api_error() {
     };
 
     let result2: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request2,
@@ -468,6 +490,7 @@ fn test_duplicate_initials_returns_api_error() {
 
 #[test]
 fn test_failed_api_request_does_not_mutate_state() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let mut state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request1: RegisterUserRequest = create_valid_request();
@@ -476,6 +499,7 @@ fn test_failed_api_request_does_not_mutate_state() {
 
     // Register first user successfully
     let result1: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request1,
@@ -489,7 +513,6 @@ fn test_failed_api_request_does_not_mutate_state() {
 
     // Attempt duplicate registration
     let request2: RegisterUserRequest = RegisterUserRequest {
-        bid_year: 2026,
         initials: String::from("AB"), // Duplicate
         name: String::from("Jane Smith"),
         area: String::from("South"),
@@ -503,6 +526,7 @@ fn test_failed_api_request_does_not_mutate_state() {
     };
 
     let result2: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request2,
@@ -518,10 +542,10 @@ fn test_failed_api_request_does_not_mutate_state() {
 
 #[test]
 fn test_invalid_empty_initials_returns_api_error() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request: RegisterUserRequest = RegisterUserRequest {
-        bid_year: 2026,
         initials: String::new(), // Invalid
         name: String::from("John Doe"),
         area: String::from("North"),
@@ -537,6 +561,7 @@ fn test_invalid_empty_initials_returns_api_error() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request,
@@ -556,10 +581,10 @@ fn test_invalid_empty_initials_returns_api_error() {
 
 #[test]
 fn test_invalid_empty_name_returns_api_error() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request: RegisterUserRequest = RegisterUserRequest {
-        bid_year: 2026,
         initials: String::from("AB"),
         name: String::new(), // Invalid
         area: String::from("North"),
@@ -575,6 +600,7 @@ fn test_invalid_empty_name_returns_api_error() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request,
@@ -593,10 +619,10 @@ fn test_invalid_empty_name_returns_api_error() {
 
 #[test]
 fn test_invalid_empty_area_returns_api_error() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request: RegisterUserRequest = RegisterUserRequest {
-        bid_year: 2026,
         initials: String::from("AB"),
         name: String::from("John Doe"),
         area: String::new(), // Invalid
@@ -612,6 +638,7 @@ fn test_invalid_empty_area_returns_api_error() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request,
@@ -628,10 +655,10 @@ fn test_invalid_empty_area_returns_api_error() {
 
 #[test]
 fn test_invalid_crew_number_returns_api_error() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request: RegisterUserRequest = RegisterUserRequest {
-        bid_year: 2026,
         initials: String::from("AB"),
         name: String::from("John Doe"),
         area: String::from("North"),
@@ -647,6 +674,7 @@ fn test_invalid_crew_number_returns_api_error() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request,
@@ -664,7 +692,9 @@ fn test_invalid_crew_number_returns_api_error() {
 }
 
 #[test]
+#[ignore = "Phase 19: Multiple bid years are no longer supported - all operations target the active bid year"]
 fn test_duplicate_initials_in_different_bid_years_allowed() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     // Need to create metadata with both bid years and areas
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
     metadata.bid_years.push(BidYear::new(2026));
@@ -684,6 +714,7 @@ fn test_duplicate_initials_in_different_bid_years_allowed() {
     // Register user in 2026
     let request1: RegisterUserRequest = create_valid_request();
     let result1: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state1,
         request1,
@@ -695,7 +726,6 @@ fn test_duplicate_initials_in_different_bid_years_allowed() {
 
     // Same initials in 2027 (different bid year)
     let request2: RegisterUserRequest = RegisterUserRequest {
-        bid_year: 2027,               // Different bid year
         initials: String::from("AB"), // Same initials
         name: String::from("Jane Smith"),
         area: String::from("South"),
@@ -709,6 +739,7 @@ fn test_duplicate_initials_in_different_bid_years_allowed() {
     };
 
     let result2: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state2,
         request2,
@@ -724,6 +755,7 @@ fn test_duplicate_initials_in_different_bid_years_allowed() {
 
 #[test]
 fn test_successful_api_call_updates_state() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let request: RegisterUserRequest = create_valid_request();
@@ -731,6 +763,7 @@ fn test_successful_api_call_updates_state() {
     let cause: Cause = create_test_cause();
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request,
@@ -804,17 +837,18 @@ fn test_create_bid_year_requires_admin() {
 
 #[test]
 fn test_create_area_succeeds() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
     metadata.bid_years.push(BidYear::new(2026));
 
     let request: CreateAreaRequest = CreateAreaRequest {
-        bid_year: 2026,
         area_id: String::from("North"),
     };
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
     let result: Result<BootstrapResult, ApiError> = create_area(
+        &persistence,
         &metadata,
         &request,
         &admin,
@@ -829,17 +863,18 @@ fn test_create_area_succeeds() {
 
 #[test]
 fn test_create_area_requires_admin() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
     metadata.bid_years.push(BidYear::new(2026));
 
     let request: CreateAreaRequest = CreateAreaRequest {
-        bid_year: 2026,
         area_id: String::from("North"),
     };
     let bidder: AuthenticatedActor = create_test_bidder();
     let cause: Cause = create_test_cause();
 
     let result: Result<BootstrapResult, ApiError> = create_area(
+        &persistence,
         &metadata,
         &request,
         &bidder,
@@ -853,15 +888,16 @@ fn test_create_area_requires_admin() {
 
 #[test]
 fn test_create_area_without_bid_year_fails() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
     let request: CreateAreaRequest = CreateAreaRequest {
-        bid_year: 2026,
         area_id: String::from("North"),
     };
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
     let result: Result<BootstrapResult, ApiError> = create_area(
+        &persistence,
         &metadata,
         &request,
         &admin,
@@ -1195,6 +1231,7 @@ fn test_list_users_empty() {
 
 #[test]
 fn test_list_users_with_users() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
@@ -1203,7 +1240,6 @@ fn test_list_users_with_users() {
     let cause: Cause = create_test_cause();
 
     let request1: RegisterUserRequest = RegisterUserRequest {
-        bid_year: 2026,
         initials: String::from("AB"),
         name: String::from("Alice Brown"),
         area: String::from("North"),
@@ -1217,6 +1253,7 @@ fn test_list_users_with_users() {
     };
 
     let result1: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request1,
@@ -1229,7 +1266,6 @@ fn test_list_users_with_users() {
     let state_with_user1: State = result1.unwrap().new_state;
 
     let request2: RegisterUserRequest = RegisterUserRequest {
-        bid_year: 2026,
         initials: String::from("CD"),
         name: String::from("Charlie Davis"),
         area: String::from("North"),
@@ -1243,6 +1279,7 @@ fn test_list_users_with_users() {
     };
 
     let result2: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state_with_user1,
         request2,
@@ -1291,6 +1328,7 @@ fn test_list_users_with_users() {
 
 #[test]
 fn test_list_users_with_no_crew() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
@@ -1299,7 +1337,6 @@ fn test_list_users_with_no_crew() {
     let cause: Cause = create_test_cause();
 
     let request: RegisterUserRequest = RegisterUserRequest {
-        bid_year: 2026,
         initials: String::from("EF"),
         name: String::from("Eve Foster"),
         area: String::from("North"),
@@ -1313,6 +1350,7 @@ fn test_list_users_with_no_crew() {
     };
 
     let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request,
@@ -1523,6 +1561,7 @@ fn test_api_error_display_authentication_failed() {
 
 #[test]
 fn test_get_leave_availability_zero_usage() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
@@ -1542,6 +1581,7 @@ fn test_get_leave_availability_zero_usage() {
     let cause: Cause = create_test_cause();
 
     let register_result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request,
@@ -1574,6 +1614,7 @@ fn test_get_leave_availability_zero_usage() {
 
 #[test]
 fn test_get_leave_availability_user_not_found() {
+    let _persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
@@ -1595,6 +1636,7 @@ fn test_get_leave_availability_user_not_found() {
 
 #[test]
 fn test_get_leave_availability_area_not_found() {
+    let _persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
@@ -1622,6 +1664,7 @@ fn test_get_leave_availability_area_not_found() {
 
 #[test]
 fn test_get_leave_availability_explanation_text() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
@@ -1638,6 +1681,7 @@ fn test_get_leave_availability_explanation_text() {
     let cause: Cause = create_test_cause();
 
     let register_result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request,
@@ -1666,6 +1710,7 @@ fn test_get_leave_availability_explanation_text() {
 
 #[test]
 fn test_get_leave_availability_different_service_tiers() {
+    let persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
@@ -1684,6 +1729,7 @@ fn test_get_leave_availability_different_service_tiers() {
     request1.service_computation_date = String::from("2024-01-15");
 
     let register_result1: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state,
         request1,
@@ -1711,6 +1757,7 @@ fn test_get_leave_availability_different_service_tiers() {
     request2.service_computation_date = String::from("2010-01-15");
 
     let register_result2: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+        &persistence,
         &metadata,
         &state1,
         request2,

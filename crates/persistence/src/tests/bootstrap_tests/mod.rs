@@ -32,6 +32,7 @@ fn create_bootstrapped_persistence() -> SqlitePersistence {
     };
     let bid_year_result: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         create_bid_year_cmd,
         create_test_actor(),
         create_test_cause(),
@@ -42,11 +43,11 @@ fn create_bootstrapped_persistence() -> SqlitePersistence {
 
     // Bootstrap area
     let create_area_cmd: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let area_result: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         create_area_cmd,
         create_test_actor(),
         create_test_cause(),
@@ -68,8 +69,14 @@ fn test_persist_bootstrap_bid_year() {
         start_date: create_test_start_date(),
         num_pay_periods: create_test_pay_periods(),
     };
-    let result: BootstrapResult =
-        apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause()).unwrap();
+    let result: BootstrapResult = apply_bootstrap(
+        &metadata,
+        &BidYear::new(2026),
+        command,
+        create_test_actor(),
+        create_test_cause(),
+    )
+    .unwrap();
 
     let event_id: i64 = persistence.persist_bootstrap(&result).unwrap();
 
@@ -94,6 +101,7 @@ fn test_persist_bootstrap_area() {
     };
     let bid_year_result: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         create_bid_year_cmd,
         create_test_actor(),
         create_test_cause(),
@@ -104,11 +112,16 @@ fn test_persist_bootstrap_area() {
 
     // Now create the area
     let command: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
-    let result: BootstrapResult =
-        apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause()).unwrap();
+    let result: BootstrapResult = apply_bootstrap(
+        &metadata,
+        &BidYear::new(2026),
+        command,
+        create_test_actor(),
+        create_test_cause(),
+    )
+    .unwrap();
 
     let event_id: i64 = persistence.persist_bootstrap(&result).unwrap();
 
@@ -139,8 +152,14 @@ fn test_get_bootstrap_metadata_with_bid_year() {
         start_date: create_test_start_date(),
         num_pay_periods: create_test_pay_periods(),
     };
-    let result: BootstrapResult =
-        apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause()).unwrap();
+    let result: BootstrapResult = apply_bootstrap(
+        &metadata,
+        &BidYear::new(2026),
+        command,
+        create_test_actor(),
+        create_test_cause(),
+    )
+    .unwrap();
 
     persistence.persist_bootstrap(&result).unwrap();
 
@@ -165,6 +184,7 @@ fn test_get_bootstrap_metadata_with_multiple_bid_years() {
     };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -181,6 +201,7 @@ fn test_get_bootstrap_metadata_with_multiple_bid_years() {
     };
     let result2: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -209,6 +230,7 @@ fn test_get_bootstrap_metadata_with_areas() {
     };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -219,11 +241,11 @@ fn test_get_bootstrap_metadata_with_areas() {
 
     // Create first area
     let command2: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let result2: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -234,11 +256,11 @@ fn test_get_bootstrap_metadata_with_areas() {
 
     // Create second area
     let command3: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("South"),
     };
     let result3: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command3,
         create_test_actor(),
         create_test_cause(),
@@ -268,6 +290,7 @@ fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
     };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -277,11 +300,11 @@ fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
     metadata = result1.new_metadata;
 
     let command2: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let result2: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -292,7 +315,6 @@ fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
     // Add a regular user registration event
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let user_command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("Test User"),
         area: Area::new("North"),
@@ -303,6 +325,7 @@ fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
     let user_result: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         user_command,
         create_test_actor(),
         create_test_cause(),
@@ -339,6 +362,7 @@ fn test_list_bid_years() {
     };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -355,6 +379,7 @@ fn test_list_bid_years() {
     };
     let result2: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -391,6 +416,7 @@ fn test_list_areas_for_bid_year() {
     };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -401,11 +427,11 @@ fn test_list_areas_for_bid_year() {
 
     // Create areas
     let command2: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let result2: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -415,11 +441,11 @@ fn test_list_areas_for_bid_year() {
     metadata = result2.new_metadata;
 
     let command3: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("South"),
     };
     let result3: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command3,
         create_test_actor(),
         create_test_cause(),
@@ -435,6 +461,7 @@ fn test_list_areas_for_bid_year() {
 }
 
 #[test]
+#[ignore = "Phase 19: Multiple bid years are no longer supported - all operations target the active bid year"]
 fn test_list_areas_isolated_by_bid_year() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
@@ -448,6 +475,7 @@ fn test_list_areas_isolated_by_bid_year() {
     };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -463,6 +491,7 @@ fn test_list_areas_isolated_by_bid_year() {
     };
     let result2: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -473,11 +502,11 @@ fn test_list_areas_isolated_by_bid_year() {
 
     // Create area in 2026
     let command3: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let result3: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command3,
         create_test_actor(),
         create_test_cause(),
@@ -488,11 +517,11 @@ fn test_list_areas_isolated_by_bid_year() {
 
     // Create area in 2027
     let command4: Command = Command::CreateArea {
-        bid_year: BidYear::new(2027),
         area_id: String::from("South"),
     };
     let result4: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command4,
         create_test_actor(),
         create_test_cause(),
@@ -524,6 +553,7 @@ fn test_bootstrap_persistence_is_deterministic() {
     };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -533,11 +563,11 @@ fn test_bootstrap_persistence_is_deterministic() {
     metadata = result1.new_metadata;
 
     let command2: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let result2: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -567,8 +597,14 @@ fn test_bootstrap_read_operations_do_not_mutate() {
         start_date: create_test_start_date(),
         num_pay_periods: create_test_pay_periods(),
     };
-    let result: BootstrapResult =
-        apply_bootstrap(&metadata, command, create_test_actor(), create_test_cause()).unwrap();
+    let result: BootstrapResult = apply_bootstrap(
+        &metadata,
+        &BidYear::new(2026),
+        command,
+        create_test_actor(),
+        create_test_cause(),
+    )
+    .unwrap();
     persistence.persist_bootstrap(&result).unwrap();
 
     // Get initial event count
@@ -608,6 +644,7 @@ fn test_create_area_creates_initial_snapshot() {
     };
     let result1: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -618,11 +655,11 @@ fn test_create_area_creates_initial_snapshot() {
 
     // Create area
     let command2: Command = Command::CreateArea {
-        bid_year: BidYear::new(2026),
         area_id: String::from("North"),
     };
     let result2: BootstrapResult = apply_bootstrap(
         &metadata,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -647,7 +684,6 @@ fn test_list_users() {
 
     // Register a user
     let command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("Alice Blue"),
         area: Area::new("North"),
@@ -658,6 +694,7 @@ fn test_list_users() {
     let result: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command,
         create_test_actor(),
         create_test_cause(),
