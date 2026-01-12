@@ -7,3 +7,4 @@
 
 mod api_tests;
 mod helpers;
+mod operator_tests;

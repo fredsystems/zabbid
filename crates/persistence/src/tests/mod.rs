@@ -5,6 +5,7 @@
 
 mod bootstrap_tests;
 mod initialization_tests;
+mod operator_tests;
 mod state_tests;
 
 use time::Date;

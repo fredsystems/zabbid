@@ -105,6 +105,29 @@ impl SqlitePersistence {
         Ok(event_id)
     }
 
+    /// Persists a standalone audit event.
+    ///
+    /// This is used for operator lifecycle events and other system-level actions
+    /// that don't go through the standard transition flow.
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - The audit event to persist
+    ///
+    /// # Returns
+    ///
+    /// The event ID assigned to the persisted audit event.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if persistence fails.
+    pub fn persist_audit_event(&mut self, event: &AuditEvent) -> Result<i64, PersistenceError> {
+        let tx = self.conn.transaction()?;
+        let event_id: i64 = sqlite::persist_audit_event(&tx, event)?;
+        tx.commit()?;
+        Ok(event_id)
+    }
+
     /// Persists a bootstrap result (audit event for bid year/area creation).
     ///
     /// # Arguments
@@ -471,6 +494,35 @@ impl SqlitePersistence {
     /// Returns an error if the database update fails.
     pub fn disable_operator(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
         sqlite::disable_operator(&self.conn, operator_id)
+    }
+
+    /// Re-enables a disabled operator.
+    ///
+    /// # Arguments
+    ///
+    /// * `operator_id` - The operator ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
+    pub fn enable_operator(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
+        sqlite::enable_operator(&self.conn, operator_id)
+    }
+
+    /// Deletes an operator.
+    ///
+    /// This operation will fail if the operator is referenced by any audit events.
+    ///
+    /// # Arguments
+    ///
+    /// * `operator_id` - The operator ID
+    ///
+    /// # Errors
+    ///
+    /// Returns `PersistenceError::OperatorReferenced` if the operator is referenced
+    /// by audit events. Returns other errors if the database delete fails.
+    pub fn delete_operator(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
+        sqlite::delete_operator(&self.conn, operator_id)
     }
 
     /// Lists all operators.
