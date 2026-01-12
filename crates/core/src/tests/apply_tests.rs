@@ -14,8 +14,8 @@ use zab_bid_domain::{Area, BidYear, Crew, DomainError, Initials, UserType};
 fn test_valid_command_returns_new_state() {
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
     let command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -27,7 +27,7 @@ fn test_valid_command_returns_new_state() {
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
 
     assert!(result.is_ok());
     let transition: TransitionResult = result.unwrap();
@@ -40,8 +40,8 @@ fn test_valid_command_returns_new_state() {
 fn test_valid_command_emits_audit_event() {
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
     let command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -53,7 +53,7 @@ fn test_valid_command_emits_audit_event() {
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
 
     assert!(result.is_ok());
     let transition: TransitionResult = result.unwrap();
@@ -75,8 +75,8 @@ fn test_valid_command_emits_audit_event() {
 fn test_audit_event_contains_before_and_after_state() {
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
     let command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -88,6 +88,7 @@ fn test_audit_event_contains_before_and_after_state() {
     let result: Result<TransitionResult, CoreError> = apply(
         &metadata,
         &state,
+        &active_bid_year,
         command,
         create_test_actor(),
         create_test_cause(),
@@ -103,10 +104,10 @@ fn test_audit_event_contains_before_and_after_state() {
 fn test_duplicate_initials_returns_error() {
     let metadata: BootstrapMetadata = create_test_metadata();
     let mut state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
 
     // First user
     let command1: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -117,14 +118,19 @@ fn test_duplicate_initials_returns_error() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
-    let result1: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command1, actor.clone(), cause.clone());
+    let result1: Result<TransitionResult, CoreError> = apply(
+        &metadata,
+        &state,
+        &active_bid_year,
+        command1,
+        actor.clone(),
+        cause.clone(),
+    );
     assert!(result1.is_ok());
     state = result1.unwrap().new_state;
 
     // Second user with same initials in same bid year
     let command2: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"), // Duplicate!
         name: String::from("Jane Smith"),
         area: Area::new("North"),
@@ -134,7 +140,7 @@ fn test_duplicate_initials_returns_error() {
     };
 
     let result2: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command2, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command2, actor, cause);
 
     assert!(result2.is_err());
     assert!(matches!(
@@ -147,10 +153,10 @@ fn test_duplicate_initials_returns_error() {
 fn test_duplicate_initials_in_different_bid_years_allowed() {
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
 
     // User in 2026
     let command1: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -162,7 +168,7 @@ fn test_duplicate_initials_in_different_bid_years_allowed() {
     let cause: Cause = create_test_cause();
 
     let result1: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command1, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command1, actor, cause);
     assert!(result1.is_ok());
     let _state = result1.unwrap().new_state;
 
@@ -176,8 +182,8 @@ fn test_duplicate_initials_in_different_bid_years_allowed() {
 fn test_invalid_command_with_empty_initials_returns_error() {
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
     let command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new(""), // Invalid: empty
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -189,7 +195,7 @@ fn test_invalid_command_with_empty_initials_returns_error() {
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
 
     assert!(result.is_err());
     assert!(matches!(
@@ -202,8 +208,8 @@ fn test_invalid_command_with_empty_initials_returns_error() {
 fn test_invalid_command_with_empty_name_returns_error() {
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
     let command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::new(), // Invalid: empty
         area: Area::new("North"),
@@ -215,7 +221,7 @@ fn test_invalid_command_with_empty_name_returns_error() {
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
 
     assert!(result.is_err());
     assert!(matches!(
@@ -228,8 +234,8 @@ fn test_invalid_command_with_empty_name_returns_error() {
 fn test_invalid_command_with_empty_area_returns_error() {
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
     let command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("John Doe"),
         area: Area::new(""), // Invalid: empty (doesn't exist in metadata)
@@ -241,7 +247,7 @@ fn test_invalid_command_with_empty_area_returns_error() {
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
 
     assert!(result.is_err());
     assert!(matches!(
@@ -254,8 +260,8 @@ fn test_invalid_command_with_empty_area_returns_error() {
 fn test_user_with_no_crew_is_valid() {
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
     let command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -267,7 +273,7 @@ fn test_user_with_no_crew_is_valid() {
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
 
     assert!(result.is_ok());
     let transition: TransitionResult = result.unwrap();
@@ -279,8 +285,8 @@ fn test_user_with_no_crew_is_valid() {
 fn test_invalid_command_does_not_mutate_state() {
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
     let command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new(""), // Invalid: empty
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -292,7 +298,7 @@ fn test_invalid_command_does_not_mutate_state() {
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
 
     assert!(result.is_err());
     // State should remain unchanged
@@ -303,8 +309,8 @@ fn test_invalid_command_does_not_mutate_state() {
 fn test_invalid_command_does_not_emit_audit_event() {
     let metadata: BootstrapMetadata = create_test_metadata();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
     let command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new(""), // Invalid: empty
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -316,7 +322,7 @@ fn test_invalid_command_does_not_emit_audit_event() {
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
 
     assert!(result.is_err());
     // No audit event should be emitted
@@ -327,12 +333,12 @@ fn test_invalid_command_does_not_emit_audit_event() {
 fn test_multiple_valid_transitions() {
     let metadata: BootstrapMetadata = create_test_metadata();
     let mut state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
     // First user
     let command1: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -340,15 +346,20 @@ fn test_multiple_valid_transitions() {
         crew: Some(Crew::new(1).unwrap()),
         seniority_data: create_test_seniority_data(),
     };
-    let result1: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command1, actor.clone(), cause.clone());
+    let result1: Result<TransitionResult, CoreError> = apply(
+        &metadata,
+        &state,
+        &active_bid_year,
+        command1,
+        actor.clone(),
+        cause.clone(),
+    );
     assert!(result1.is_ok());
     state = result1.unwrap().new_state;
     assert_eq!(state.users.len(), 1);
 
     // Second user with different initials
     let command2: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("XY"),
         name: String::from("Jane Smith"),
         area: Area::new("North"),
@@ -357,7 +368,7 @@ fn test_multiple_valid_transitions() {
         seniority_data: create_test_seniority_data(),
     };
     let result2: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command2, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command2, actor, cause);
     assert!(result2.is_ok());
     state = result2.unwrap().new_state;
     assert_eq!(state.users.len(), 2);
@@ -370,10 +381,10 @@ fn test_multiple_valid_transitions() {
 fn test_failed_duplicate_initials_transition_does_not_mutate_state() {
     let metadata: BootstrapMetadata = create_test_metadata();
     let mut state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
 
     // First user
     let command1: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -384,14 +395,19 @@ fn test_failed_duplicate_initials_transition_does_not_mutate_state() {
     let actor: Actor = create_test_actor();
     let cause: Cause = create_test_cause();
 
-    let result1: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command1, actor.clone(), cause.clone());
+    let result1: Result<TransitionResult, CoreError> = apply(
+        &metadata,
+        &state,
+        &active_bid_year,
+        command1,
+        actor.clone(),
+        cause.clone(),
+    );
     assert!(result1.is_ok());
     state = result1.unwrap().new_state;
 
     // Second user with duplicate initials (should fail)
     let command2: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"), // Duplicate!
         name: String::from("Jane Smith"),
         area: Area::new("North"),
@@ -402,7 +418,7 @@ fn test_failed_duplicate_initials_transition_does_not_mutate_state() {
 
     let original_user_count: usize = state.users.len();
     let result2: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command2, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command2, actor, cause);
 
     assert!(result2.is_err());
     // State must not be mutated on failure
@@ -413,8 +429,8 @@ fn test_failed_duplicate_initials_transition_does_not_mutate_state() {
 fn test_register_user_without_bid_year_fails() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
     let command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -426,7 +442,7 @@ fn test_register_user_without_bid_year_fails() {
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
 
     assert!(result.is_err());
     assert!(matches!(
@@ -442,8 +458,8 @@ fn test_register_user_without_area_fails() {
     // Area not added
 
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
     let command: Command = Command::RegisterUser {
-        bid_year: BidYear::new(2026),
         initials: Initials::new("AB"),
         name: String::from("John Doe"),
         area: Area::new("North"),
@@ -455,7 +471,7 @@ fn test_register_user_without_area_fails() {
     let cause: Cause = create_test_cause();
 
     let result: Result<TransitionResult, CoreError> =
-        apply(&metadata, &state, command, actor, cause);
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
 
     assert!(result.is_err());
     assert!(matches!(

@@ -485,8 +485,10 @@ mod tests {
             start_date: time::Date::from_calendar_date(2026, time::Month::January, 4).unwrap(),
             num_pay_periods: 26,
         };
+        let placeholder_bid_year = BidYear::new(2026);
         let bid_year_result: BootstrapResult = apply_bootstrap(
             &metadata,
+            &placeholder_bid_year,
             create_bid_year_cmd,
             create_test_actor(),
             create_test_cause(),
@@ -499,11 +501,12 @@ mod tests {
 
         // Create area using bootstrap command
         let create_area_cmd: Command = Command::CreateArea {
-            bid_year: BidYear::new(2026),
             area_id: String::from("ZAB"),
         };
+        let active_bid_year = BidYear::new(2026);
         let area_result: BootstrapResult = apply_bootstrap(
             &metadata,
+            &active_bid_year,
             create_area_cmd,
             create_test_actor(),
             create_test_cause(),

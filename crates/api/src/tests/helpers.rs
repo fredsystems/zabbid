@@ -245,7 +245,7 @@ pub fn create_custom_session(
 
 /// Creates a test persistence instance with an active bid year and area set up.
 ///
-/// This helper creates an in-memory SQLite database, initializes it, creates a bid year,
+/// This helper creates an in-memory `SQLite` database, initializes it, creates a bid year,
 /// creates an area, and sets the bid year as active.
 ///
 /// # Errors
@@ -253,16 +253,61 @@ pub fn create_custom_session(
 /// Returns an error if database initialization fails.
 pub fn setup_test_persistence() -> Result<SqlitePersistence, zab_bid_persistence::PersistenceError>
 {
+    use zab_bid::{BootstrapMetadata, BootstrapResult, Command, apply_bootstrap};
+    use zab_bid_audit::{Actor, Cause};
+
     let mut persistence = SqlitePersistence::new_in_memory()?;
 
+    // Create a test operator (required for foreign keys)
+    let operator_id = persistence
+        .create_operator("test-operator", "Test Operator", "password", "Admin")
+        .map_err(|e| {
+            zab_bid_persistence::PersistenceError::Other(format!("Failed to create operator: {e}"))
+        })?;
+
+    let mut metadata = BootstrapMetadata::new();
+
     // Create a canonical bid year
-    let canonical_bid_year = create_test_canonical_bid_year();
-    persistence.create_bid_year(&canonical_bid_year)?;
+    let create_bid_year_cmd = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date(),
+        num_pay_periods: create_test_pay_periods(),
+    };
+
+    let placeholder_bid_year = BidYear::new(2026);
+    let actor = Actor::with_operator(
+        String::from("test-admin"),
+        String::from("admin"),
+        operator_id,
+        String::from("test-operator"),
+        String::from("Test Operator"),
+    );
+    let cause = Cause::new(String::from("test-setup"), String::from("Test setup"));
+
+    let bid_year_result: BootstrapResult = apply_bootstrap(
+        &metadata,
+        &placeholder_bid_year,
+        create_bid_year_cmd,
+        actor.clone(),
+        cause.clone(),
+    )
+    .map_err(|e| zab_bid_persistence::PersistenceError::Other(format!("Bootstrap failed: {e}")))?;
+
+    persistence.persist_bootstrap(&bid_year_result)?;
+    metadata = bid_year_result.new_metadata;
 
     // Create an area
-    let bid_year = BidYear::new(2026);
-    let area = Area::new("North");
-    persistence.create_area(&bid_year, &area)?;
+    let create_area_cmd = Command::CreateArea {
+        area_id: String::from("North"),
+    };
+
+    let active_bid_year = BidYear::new(2026);
+    let area_result: BootstrapResult =
+        apply_bootstrap(&metadata, &active_bid_year, create_area_cmd, actor, cause).map_err(
+            |e| zab_bid_persistence::PersistenceError::Other(format!("Bootstrap failed: {e}")),
+        )?;
+
+    persistence.persist_bootstrap(&area_result)?;
 
     // Set the bid year as active
     persistence.set_active_bid_year(2026)?;

@@ -22,6 +22,7 @@ fn test_get_audit_timeline_returns_events_in_order() {
     let result1: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -33,6 +34,7 @@ fn test_get_audit_timeline_returns_events_in_order() {
     let result2: TransitionResult = apply(
         &create_test_metadata(),
         &result1.new_state,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -44,6 +46,7 @@ fn test_get_audit_timeline_returns_events_in_order() {
     let result3: TransitionResult = apply(
         &create_test_metadata(),
         &result2.new_state,
+        &BidYear::new(2026),
         command3,
         create_test_actor(),
         create_test_cause(),
@@ -89,6 +92,7 @@ fn test_get_audit_timeline_includes_rollback_events() {
     let result1: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command1,
         create_test_actor(),
         create_test_cause(),
@@ -103,6 +107,7 @@ fn test_get_audit_timeline_includes_rollback_events() {
     let result2: TransitionResult = apply(
         &create_test_metadata(),
         &result1.new_state,
+        &BidYear::new(2026),
         command2,
         create_test_actor(),
         create_test_cause(),
@@ -131,6 +136,7 @@ fn test_get_audit_timeline_does_not_mutate() {
     let result: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command,
         create_test_actor(),
         create_test_cause(),
@@ -164,6 +170,7 @@ fn test_read_operations_are_side_effect_free() {
     let result: TransitionResult = apply(
         &create_test_metadata(),
         &state,
+        &BidYear::new(2026),
         command,
         create_test_actor(),
         create_test_cause(),
