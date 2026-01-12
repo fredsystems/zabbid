@@ -165,6 +165,8 @@ pub fn register_user(
         apply(metadata, state, &bid_year, command, actor, cause).map_err(translate_core_error)?;
 
     // Translate to API response
+    // Note: user_id is not included because the user hasn't been persisted yet.
+    // Clients should query /users to get the full user info with user_id.
     let response: RegisterUserResponse = RegisterUserResponse {
         bid_year: bid_year.year(),
         initials: initials.value().to_string(),
@@ -616,6 +618,7 @@ pub fn list_users(
                     });
 
             UserInfo {
+                user_id: user.user_id.unwrap_or(0), // Should always be set when reading from state
                 initials: user.initials.value().to_string(),
                 name: user.name.clone(),
                 crew: user.crew.as_ref().map(Crew::number),
@@ -764,6 +767,10 @@ pub fn get_leave_availability(
             ),
         })?;
 
+    // TODO(Phase 21B): After full migration, user_id should always be present.
+    // For now, default to 0 for unpersisted users (tests only).
+    let user_id: i64 = user.user_id.unwrap_or(0);
+
     // Calculate leave accrual using Phase 9
     let accrual =
         calculate_leave_accrual(user, canonical_bid_year).map_err(translate_domain_error)?;
@@ -803,6 +810,7 @@ pub fn get_leave_availability(
 
     Ok(GetLeaveAvailabilityResponse {
         bid_year: bid_year.year(),
+        user_id,
         initials: initials.value().to_string(),
         earned_hours: availability.earned_hours,
         earned_days: availability.earned_days,
@@ -2241,10 +2249,10 @@ pub fn update_user(
     let result: TransitionResult = apply(metadata, state, &active_bid_year, command, actor, cause)
         .map_err(translate_core_error)?;
 
-    // Persist the updated canonical user state
+    // Persist the updated canonical user state using user_id from request
     persistence
         .update_user(
-            &active_bid_year,
+            request.user_id,
             &initials,
             &request.name,
             &area,
@@ -2270,6 +2278,7 @@ pub fn update_user(
     // Build response
     let response = UpdateUserResponse {
         bid_year: active_bid_year.year(),
+        user_id: request.user_id,
         initials: request.initials.clone(),
         name: request.name.clone(),
         message: String::from("User updated successfully"),

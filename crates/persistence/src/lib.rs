@@ -808,12 +808,12 @@ impl SqlitePersistence {
         sqlite::get_actual_user_count(&self.conn, bid_year, area)
     }
 
-    /// Updates an existing user's information.
+    /// Updates an existing user's information using `user_id` as the canonical identifier.
     ///
     /// # Arguments
     ///
-    /// * `bid_year` - The bid year
-    /// * `initials` - The user's initials (identifier)
+    /// * `user_id` - The user's canonical internal identifier
+    /// * `initials` - The user's initials (mutable field)
     /// * `name` - The user's name
     /// * `area` - The user's area
     /// * `user_type` - The user's type classification
@@ -830,7 +830,7 @@ impl SqlitePersistence {
     #[allow(clippy::too_many_arguments)]
     pub fn update_user(
         &mut self,
-        bid_year: &BidYear,
+        user_id: i64,
         initials: &zab_bid_domain::Initials,
         name: &str,
         area: &Area,
@@ -847,17 +847,19 @@ impl SqlitePersistence {
 
         let rows_affected: usize = self.conn.execute(
             "UPDATE users SET
-                name = ?1,
-                area_id = ?2,
-                user_type = ?3,
-                crew = ?4,
-                cumulative_natca_bu_date = ?5,
-                natca_bu_date = ?6,
-                eod_faa_date = ?7,
-                service_computation_date = ?8,
-                lottery_value = ?9
-             WHERE bid_year = ?10 AND initials = ?11",
+                initials = ?1,
+                name = ?2,
+                area_id = ?3,
+                user_type = ?4,
+                crew = ?5,
+                cumulative_natca_bu_date = ?6,
+                natca_bu_date = ?7,
+                eod_faa_date = ?8,
+                service_computation_date = ?9,
+                lottery_value = ?10
+             WHERE user_id = ?11",
             rusqlite::params![
+                initials.value(),
                 name,
                 area.id(),
                 user_type,
@@ -867,16 +869,13 @@ impl SqlitePersistence {
                 eod_faa_date,
                 service_computation_date,
                 lottery_i32,
-                bid_year.year(),
-                initials.value(),
+                user_id,
             ],
         )?;
 
         if rows_affected == 0 {
             return Err(PersistenceError::NotFound(format!(
-                "User with initials '{}' not found in bid year {}",
-                initials.value(),
-                bid_year.year()
+                "User with user_id {user_id} not found"
             )));
         }
 

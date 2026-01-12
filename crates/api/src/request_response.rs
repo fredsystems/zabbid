@@ -165,6 +165,8 @@ pub struct ListUsersResponse {
 /// User information for listing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserInfo {
+    /// The user's canonical internal identifier.
+    pub user_id: i64,
     /// The user's initials.
     pub initials: String,
     /// The user's name.
@@ -236,6 +238,8 @@ pub struct GetLeaveAvailabilityRequest {
 pub struct GetLeaveAvailabilityResponse {
     /// The bid year.
     pub bid_year: u16,
+    /// The user's canonical internal identifier.
+    pub user_id: i64,
     /// The user's initials.
     pub initials: String,
     /// Total hours earned (from Phase 9, post-rounding).
@@ -552,7 +556,9 @@ pub struct SetExpectedUserCountResponse {
 /// API request to update an existing user in the active bid year.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UpdateUserRequest {
-    /// The user's initials (identifier, cannot be changed).
+    /// The user's canonical internal identifier.
+    pub user_id: i64,
+    /// The user's initials (unique per bid year, mutable).
     pub initials: String,
     /// The user's name.
     pub name: String,
@@ -579,6 +585,8 @@ pub struct UpdateUserRequest {
 pub struct UpdateUserResponse {
     /// The bid year.
     pub bid_year: u16,
+    /// The user's canonical internal identifier.
+    pub user_id: i64,
     /// The user's initials.
     pub initials: String,
     /// The user's name.

@@ -1551,6 +1551,8 @@ struct UpdateUserApiRequest {
     cause_id: String,
     /// The cause description.
     cause_description: String,
+    /// The user's canonical internal identifier.
+    user_id: i64,
     /// The user's initials.
     initials: String,
     /// The user's name.
@@ -1837,6 +1839,7 @@ async fn handle_update_user(
 
     // Build API request (bid_year no longer needed in request)
     let update_request: UpdateUserRequest = UpdateUserRequest {
+        user_id: req.user_id,
         initials: req.initials.clone(),
         name: req.name.clone(),
         area: req.area.clone(),
