@@ -8,21 +8,8 @@ use tracing::info;
 
 use crate::error::PersistenceError;
 
-/// Initializes the database schema.
-///
-/// # Arguments
-///
-/// * `conn` - The database connection to initialize
-///
-/// # Errors
-///
-/// Returns an error if schema creation fails.
-pub fn initialize_schema(conn: &Connection) -> Result<(), PersistenceError> {
-    info!("Initializing database schema");
-
-    // Enable foreign key enforcement
-    conn.execute("PRAGMA foreign_keys = ON", [])?;
-
+/// Initializes the operator and session tables.
+fn initialize_operator_schema(conn: &Connection) -> Result<(), PersistenceError> {
     conn.execute_batch(
         "
         -- Operator tables (Phase 14)
@@ -53,10 +40,19 @@ pub fn initialize_schema(conn: &Connection) -> Result<(), PersistenceError> {
 
         CREATE INDEX IF NOT EXISTS idx_sessions_operator
             ON sessions(operator_id);
+        ",
+    )?;
+    Ok(())
+}
 
-        -- Canonical state tables (Phase 7)
+/// Initializes the canonical state tables.
+fn initialize_canonical_schema(conn: &Connection) -> Result<(), PersistenceError> {
+    conn.execute_batch(
+        "
+        -- Canonical state tables (Phase 7, Phase 23A: canonical IDs)
         CREATE TABLE IF NOT EXISTS bid_years (
-            year INTEGER PRIMARY KEY NOT NULL,
+            bid_year_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL UNIQUE,
             start_date TEXT NOT NULL,
             num_pay_periods INTEGER NOT NULL CHECK(num_pay_periods IN (26, 27)),
             is_active INTEGER NOT NULL DEFAULT 0 CHECK(is_active IN (0, 1)),
@@ -64,17 +60,19 @@ pub fn initialize_schema(conn: &Connection) -> Result<(), PersistenceError> {
         );
 
         CREATE TABLE IF NOT EXISTS areas (
-            bid_year INTEGER NOT NULL,
-            area_id TEXT NOT NULL,
+            area_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bid_year_id INTEGER NOT NULL,
+            area_code TEXT NOT NULL,
+            area_name TEXT,
             expected_user_count INTEGER,
-            PRIMARY KEY (bid_year, area_id),
-            FOREIGN KEY(bid_year) REFERENCES bid_years(year)
+            UNIQUE (bid_year_id, area_code),
+            FOREIGN KEY(bid_year_id) REFERENCES bid_years(bid_year_id)
         );
 
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bid_year INTEGER NOT NULL,
-            area_id TEXT NOT NULL,
+            bid_year_id INTEGER NOT NULL,
+            area_id INTEGER NOT NULL,
             initials TEXT NOT NULL,
             name TEXT NOT NULL,
             user_type TEXT NOT NULL,
@@ -84,21 +82,34 @@ pub fn initialize_schema(conn: &Connection) -> Result<(), PersistenceError> {
             eod_faa_date TEXT NOT NULL,
             service_computation_date TEXT NOT NULL,
             lottery_value INTEGER,
-            UNIQUE (bid_year, area_id, initials),
-            FOREIGN KEY(bid_year, area_id) REFERENCES areas(bid_year, area_id)
+            UNIQUE (bid_year_id, area_id, initials),
+            FOREIGN KEY(bid_year_id) REFERENCES bid_years(bid_year_id),
+            FOREIGN KEY(area_id) REFERENCES areas(area_id)
         );
 
         CREATE INDEX IF NOT EXISTS idx_users_by_area
-            ON users(bid_year, area_id);
+            ON users(bid_year_id, area_id);
 
         CREATE INDEX IF NOT EXISTS idx_users_by_initials
-            ON users(bid_year, area_id, initials);
+            ON users(bid_year_id, area_id, initials);
+        ",
+    )?;
 
+    Ok(())
+}
+
+/// Initializes the audit log and snapshot tables.
+fn initialize_audit_schema(conn: &Connection) -> Result<(), PersistenceError> {
+    conn.execute_batch(
+        "
         -- Audit log and derived historical state tables
+        -- Phase 23A: Now use canonical IDs with FKs, but area_id can be NULL for CreateBidYear
         CREATE TABLE IF NOT EXISTS audit_events (
             event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bid_year INTEGER NOT NULL,
-            area TEXT NOT NULL,
+            bid_year_id INTEGER NOT NULL,
+            area_id INTEGER,
+            year INTEGER NOT NULL,
+            area_code TEXT NOT NULL,
             actor_operator_id INTEGER NOT NULL,
             actor_login_name TEXT NOT NULL,
             actor_display_name TEXT NOT NULL,
@@ -108,28 +119,54 @@ pub fn initialize_schema(conn: &Connection) -> Result<(), PersistenceError> {
             before_snapshot_json TEXT NOT NULL,
             after_snapshot_json TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(bid_year, area, event_id),
-            FOREIGN KEY(actor_operator_id) REFERENCES operators(operator_id) ON DELETE RESTRICT
+            UNIQUE(bid_year_id, area_id, event_id),
+            FOREIGN KEY(actor_operator_id) REFERENCES operators(operator_id) ON DELETE RESTRICT,
+            FOREIGN KEY(bid_year_id) REFERENCES bid_years(bid_year_id),
+            FOREIGN KEY(area_id) REFERENCES areas(area_id)
         );
 
         CREATE INDEX IF NOT EXISTS idx_audit_events_scope
-            ON audit_events(bid_year, area, event_id);
+            ON audit_events(bid_year_id, area_id, event_id);
 
         CREATE TABLE IF NOT EXISTS state_snapshots (
             snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bid_year INTEGER NOT NULL,
-            area TEXT NOT NULL,
+            bid_year_id INTEGER NOT NULL,
+            area_id INTEGER NOT NULL,
             event_id INTEGER NOT NULL,
             state_json TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(bid_year, area, event_id),
-            FOREIGN KEY(event_id) REFERENCES audit_events(event_id)
+            UNIQUE(bid_year_id, area_id, event_id),
+            FOREIGN KEY(event_id) REFERENCES audit_events(event_id),
+            FOREIGN KEY(bid_year_id) REFERENCES bid_years(bid_year_id),
+            FOREIGN KEY(area_id) REFERENCES areas(area_id)
         );
 
         CREATE INDEX IF NOT EXISTS idx_state_snapshots_scope
-            ON state_snapshots(bid_year, area, event_id DESC);
+            ON state_snapshots(bid_year_id, area_id, event_id DESC);
         ",
     )?;
+    Ok(())
+}
+
+/// Initializes the database schema.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection to initialize
+///
+/// # Errors
+///
+/// Returns an error if schema creation fails.
+pub fn initialize_schema(conn: &Connection) -> Result<(), PersistenceError> {
+    info!("Initializing database schema");
+
+    // Enable foreign key enforcement
+    conn.execute("PRAGMA foreign_keys = ON", [])?;
+
+    // Initialize schema components
+    initialize_operator_schema(conn)?;
+    initialize_canonical_schema(conn)?;
+    initialize_audit_schema(conn)?;
 
     Ok(())
 }

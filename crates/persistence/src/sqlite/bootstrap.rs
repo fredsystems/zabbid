@@ -45,6 +45,8 @@ pub fn verify_foreign_key_enforcement(conn: &Connection) -> Result<(), Persisten
 /// This method queries the canonical `bid_years` and `areas` tables to retrieve
 /// the set of bid years and areas that have been created.
 ///
+/// Phase 23A: Now retrieves and populates canonical IDs.
+///
 /// # Arguments
 ///
 /// * `conn` - The database connection
@@ -61,29 +63,49 @@ pub fn get_bootstrap_metadata(conn: &Connection) -> Result<BootstrapMetadata, Pe
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Query canonical bid_years table
-    let mut stmt = conn.prepare("SELECT year FROM bid_years ORDER BY year ASC")?;
+    let mut stmt = conn.prepare(
+        "SELECT bid_year_id, year
+         FROM bid_years
+         ORDER BY year ASC",
+    )?;
     let bid_year_rows = stmt.query_map([], |row| {
-        let year_value: i32 = row.get(0)?;
-        Ok(u16::try_from(year_value).expect("bid_year value out of u16 range"))
+        let bid_year_id: i64 = row.get(0)?;
+        let year_value: i32 = row.get(1)?;
+        Ok((
+            bid_year_id,
+            u16::try_from(year_value).expect("bid_year value out of u16 range"),
+        ))
     })?;
 
     for row_result in bid_year_rows {
-        let year: u16 = row_result?;
-        metadata.bid_years.push(BidYear::new(year));
+        let (bid_year_id, year): (i64, u16) = row_result?;
+        metadata.bid_years.push(BidYear::with_id(bid_year_id, year));
     }
 
     // Query canonical areas table
-    let mut stmt =
-        conn.prepare("SELECT bid_year, area_id FROM areas ORDER BY bid_year ASC, area_id ASC")?;
+    let mut stmt = conn.prepare(
+        "SELECT a.area_id, a.bid_year_id, b.year, a.area_code, a.area_name
+         FROM areas a
+         JOIN bid_years b ON a.bid_year_id = b.bid_year_id
+         ORDER BY b.year ASC, a.area_code ASC",
+    )?;
     let area_rows = stmt.query_map([], |row| {
-        Ok((row.get::<_, i32>(0)?, row.get::<_, String>(1)?))
+        Ok((
+            row.get::<_, i64>(0)?,            // area_id
+            row.get::<_, i64>(1)?,            // bid_year_id
+            row.get::<_, i32>(2)?,            // year
+            row.get::<_, String>(3)?,         // area_code
+            row.get::<_, Option<String>>(4)?, // area_name
+        ))
     })?;
 
     for row_result in area_rows {
-        let (bid_year_value, area_id) = row_result?;
-        let bid_year: BidYear =
-            BidYear::new(u16::try_from(bid_year_value).expect("bid_year value out of u16 range"));
-        let area: Area = Area::new(&area_id);
+        let (area_id, bid_year_id, year_value, area_code, area_name) = row_result?;
+        let bid_year: BidYear = BidYear::with_id(
+            bid_year_id,
+            u16::try_from(year_value).expect("bid_year value out of u16 range"),
+        );
+        let area: Area = Area::with_id(area_id, &area_code, area_name);
         metadata.areas.push((bid_year, area));
     }
 
@@ -109,8 +131,11 @@ pub fn get_bootstrap_metadata(conn: &Connection) -> Result<BootstrapMetadata, Pe
 /// Panics if a bid year value from the database cannot be converted to `u16`.
 /// This should never happen in practice as the schema enforces valid ranges.
 pub fn list_bid_years(conn: &Connection) -> Result<Vec<CanonicalBidYear>, PersistenceError> {
-    let mut stmt =
-        conn.prepare("SELECT year, start_date, num_pay_periods FROM bid_years ORDER BY year ASC")?;
+    let mut stmt = conn.prepare(
+        "SELECT year, start_date, num_pay_periods
+         FROM bid_years
+         ORDER BY year ASC",
+    )?;
 
     let rows = stmt.query_map([], |row| {
         Ok((
@@ -158,6 +183,8 @@ pub fn list_bid_years(conn: &Connection) -> Result<Vec<CanonicalBidYear>, Persis
 ///
 /// This queries the canonical `areas` table directly.
 ///
+/// Phase 23A: Now constructs Area objects with their IDs.
+///
 /// # Arguments
 ///
 /// * `conn` - The database connection
@@ -167,18 +194,36 @@ pub fn list_bid_years(conn: &Connection) -> Result<Vec<CanonicalBidYear>, Persis
 ///
 /// Returns an error if the database cannot be queried.
 pub fn list_areas(conn: &Connection, bid_year: &BidYear) -> Result<Vec<Area>, PersistenceError> {
-    let mut stmt =
-        conn.prepare("SELECT area_id FROM areas WHERE bid_year = ?1 ORDER BY area_id ASC")?;
+    // Phase 23A: Look up the bid_year_id if not already present
+    // If the bid year doesn't exist, return an empty list
+    let bid_year_id: i64 = match bid_year.bid_year_id() {
+        Some(id) => id,
+        None => match super::queries::lookup_bid_year_id(conn, bid_year.year()) {
+            Ok(id) => id,
+            Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
+            Err(e) => return Err(e),
+        },
+    };
 
-    let rows = stmt.query_map(params![bid_year.year()], |row| {
-        let area_id: String = row.get(0)?;
-        Ok(area_id)
+    let mut stmt = conn.prepare(
+        "SELECT area_id, area_code, area_name
+         FROM areas
+         WHERE bid_year_id = ?1
+         ORDER BY area_code ASC",
+    )?;
+
+    let rows = stmt.query_map(params![bid_year_id], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,            // area_id
+            row.get::<_, String>(1)?,         // area_code
+            row.get::<_, Option<String>>(2)?, // area_name
+        ))
     })?;
 
     let mut areas: Vec<Area> = Vec::new();
     for row_result in rows {
-        let area_id: String = row_result?;
-        areas.push(Area::new(&area_id));
+        let (area_id, area_code, area_name) = row_result?;
+        areas.push(Area::with_id(area_id, &area_code, area_name));
     }
 
     Ok(areas)
@@ -202,16 +247,20 @@ pub fn list_users(
     bid_year: &BidYear,
     area: &Area,
 ) -> Result<Vec<User>, PersistenceError> {
+    // Phase 23A: Look up the canonical IDs
+    let bid_year_id = super::queries::lookup_bid_year_id(conn, bid_year.year())?;
+    let area_id = super::queries::lookup_area_id(conn, bid_year_id, area.id())?;
+
     let mut stmt = conn.prepare(
         "SELECT user_id, initials, name, user_type, crew,
                 cumulative_natca_bu_date, natca_bu_date, eod_faa_date,
                 service_computation_date, lottery_value
          FROM users
-         WHERE bid_year = ?1 AND area_id = ?2
+         WHERE bid_year_id = ?1 AND area_id = ?2
          ORDER BY initials ASC",
     )?;
 
-    let rows = stmt.query_map(params![bid_year.year(), area.id()], |row| {
+    let rows = stmt.query_map(params![bid_year_id, area_id], |row| {
         Ok((
             row.get::<_, i64>(0)?,         // user_id
             row.get::<_, String>(1)?,      // initials
@@ -383,9 +432,13 @@ pub fn set_expected_user_count(
     area: &Area,
     expected_count: u32,
 ) -> Result<(), PersistenceError> {
+    // Phase 23A: Look up the canonical IDs
+    let bid_year_id = super::queries::lookup_bid_year_id(conn, bid_year.year())?;
+    let area_id = super::queries::lookup_area_id(conn, bid_year_id, area.id())?;
+
     let rows_affected: usize = conn.execute(
-        "UPDATE areas SET expected_user_count = ?1 WHERE bid_year = ?2 AND area_id = ?3",
-        params![expected_count, bid_year.year(), area.id()],
+        "UPDATE areas SET expected_user_count = ?1 WHERE bid_year_id = ?2 AND area_id = ?3",
+        params![expected_count, bid_year_id, area_id],
     )?;
 
     if rows_affected == 0 {
@@ -445,9 +498,13 @@ pub fn get_expected_user_count(
     bid_year: &BidYear,
     area: &Area,
 ) -> Result<Option<u32>, PersistenceError> {
+    // Phase 23A: Look up the canonical IDs
+    let bid_year_id = super::queries::lookup_bid_year_id(conn, bid_year.year())?;
+    let area_id = super::queries::lookup_area_id(conn, bid_year_id, area.id())?;
+
     let result = conn.query_row(
-        "SELECT expected_user_count FROM areas WHERE bid_year = ?1 AND area_id = ?2",
-        params![bid_year.year(), area.id()],
+        "SELECT expected_user_count FROM areas WHERE bid_year_id = ?1 AND area_id = ?2",
+        params![bid_year_id, area_id],
         |row| {
             let count: Option<i32> = row.get(0)?;
             Ok(count.and_then(|c| u32::try_from(c).ok()))
@@ -472,9 +529,12 @@ pub fn get_expected_user_count(
 ///
 /// Returns an error if the database cannot be queried.
 pub fn get_actual_area_count(conn: &Connection, year: u16) -> Result<usize, PersistenceError> {
+    // Phase 23A: Look up the canonical ID
+    let bid_year_id = super::queries::lookup_bid_year_id(conn, year)?;
+
     let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM areas WHERE bid_year = ?1",
-        params![year],
+        "SELECT COUNT(*) FROM areas WHERE bid_year_id = ?1",
+        params![bid_year_id],
         |row| row.get(0),
     )?;
 
@@ -497,9 +557,13 @@ pub fn get_actual_user_count(
     bid_year: &BidYear,
     area: &Area,
 ) -> Result<usize, PersistenceError> {
+    // Phase 23A: Look up the canonical IDs
+    let bid_year_id = super::queries::lookup_bid_year_id(conn, bid_year.year())?;
+    let area_id = super::queries::lookup_area_id(conn, bid_year_id, area.id())?;
+
     let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM users WHERE bid_year = ?1 AND area_id = ?2",
-        params![bid_year.year(), area.id()],
+        "SELECT COUNT(*) FROM users WHERE bid_year_id = ?1 AND area_id = ?2",
+        params![bid_year_id, area_id],
         |row| row.get(0),
     )?;
 

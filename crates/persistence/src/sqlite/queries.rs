@@ -4,7 +4,7 @@
 // https://opensource.org/licenses/MIT.
 
 use num_traits::ToPrimitive;
-use rusqlite::{Connection, Result as SqliteResult, params};
+use rusqlite::{Connection, Result as SqliteResult, Transaction, params};
 use zab_bid::State;
 use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
 use zab_bid_domain::{Area, BidYear, Crew, Initials, SeniorityData, User, UserType};
@@ -14,7 +14,129 @@ use crate::data_models::{
 };
 use crate::error::PersistenceError;
 
+/// Looks up the `bid_year_id` from the year value.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `year` - The year value
+///
+/// # Errors
+///
+/// Returns an error if the bid year does not exist.
+pub fn lookup_bid_year_id(conn: &Connection, year: u16) -> Result<i64, PersistenceError> {
+    let bid_year_id: i64 = conn
+        .query_row(
+            "SELECT bid_year_id FROM bid_years WHERE year = ?1",
+            params![year],
+            |row| row.get(0),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => {
+                PersistenceError::ReconstructionError(format!("Bid year {year} does not exist"))
+            }
+            _ => PersistenceError::DatabaseError(e.to_string()),
+        })?;
+    Ok(bid_year_id)
+}
+
+/// Looks up the `bid_year_id` from the year value within a transaction.
+///
+/// # Arguments
+///
+/// * `tx` - The database transaction
+/// * `year` - The year value
+///
+/// # Errors
+///
+/// Returns an error if the bid year does not exist.
+pub fn lookup_bid_year_id_tx(tx: &Transaction<'_>, year: u16) -> Result<i64, PersistenceError> {
+    let bid_year_id: i64 = tx
+        .query_row(
+            "SELECT bid_year_id FROM bid_years WHERE year = ?1",
+            params![year],
+            |row| row.get(0),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => {
+                PersistenceError::ReconstructionError(format!("Bid year {year} does not exist"))
+            }
+            _ => PersistenceError::DatabaseError(e.to_string()),
+        })?;
+    Ok(bid_year_id)
+}
+
+/// Looks up the `area_id` from the `bid_year_id` and `area_code`.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The bid year ID
+/// * `area_code` - The area code
+///
+/// # Errors
+///
+/// Returns an error if the area does not exist.
+pub fn lookup_area_id(
+    conn: &Connection,
+    bid_year_id: i64,
+    area_code: &str,
+) -> Result<i64, PersistenceError> {
+    let area_id: i64 = conn
+        .query_row(
+            "SELECT area_id FROM areas WHERE bid_year_id = ?1 AND area_code = ?2",
+            params![bid_year_id, area_code],
+            |row| row.get(0),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => PersistenceError::ReconstructionError(format!(
+                "Area {area_code} in bid year ID {bid_year_id} does not exist"
+            )),
+            _ => PersistenceError::DatabaseError(e.to_string()),
+        })?;
+    Ok(area_id)
+}
+
+/// Looks up the `area_id` from the `bid_year_id` and `area_code` within a transaction.
+///
+/// # Arguments
+///
+/// * `tx` - The database transaction
+/// * `bid_year_id` - The bid year ID
+/// * `area_code` - The area code
+///
+/// # Errors
+///
+/// Returns an error if the area does not exist.
+pub fn lookup_area_id_tx(
+    tx: &Transaction<'_>,
+    bid_year_id: i64,
+    area_code: &str,
+) -> Result<i64, PersistenceError> {
+    // Special case: bid_year_id -1 (sentinel for year 0) with any area code
+    // Return a sentinel ID that won't conflict with real IDs
+    if bid_year_id == -1 {
+        return Ok(-1);
+    }
+
+    let area_id: i64 = tx
+        .query_row(
+            "SELECT area_id FROM areas WHERE bid_year_id = ?1 AND area_code = ?2",
+            params![bid_year_id, area_code],
+            |row| row.get(0),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => PersistenceError::ReconstructionError(format!(
+                "Area {area_code} in bid year ID {bid_year_id} does not exist"
+            )),
+            _ => PersistenceError::DatabaseError(e.to_string()),
+        })?;
+    Ok(area_id)
+}
+
 /// Retrieves an audit event by ID.
+///
+/// Phase 23A: Now retrieves and uses canonical IDs to construct domain objects.
 ///
 /// # Arguments
 ///
@@ -26,25 +148,28 @@ use crate::error::PersistenceError;
 /// Returns an error if the event is not found or cannot be deserialized.
 pub fn get_audit_event(conn: &Connection, event_id: i64) -> Result<AuditEvent, PersistenceError> {
     let row_result: SqliteResult<AuditEventRow> = conn.query_row(
-        "SELECT event_id, bid_year, area, actor_operator_id, actor_login_name,
-                    actor_display_name, actor_json, cause_json, action_json,
+        "SELECT event_id, bid_year_id, area_id, year, area_code,
+                    actor_operator_id, actor_login_name, actor_display_name,
+                    actor_json, cause_json, action_json,
                     before_snapshot_json, after_snapshot_json
              FROM audit_events
              WHERE event_id = ?1",
         params![event_id],
         |row| {
             Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
-                row.get(6)?,
-                row.get(7)?,
-                row.get(8)?,
-                row.get(9)?,
-                row.get(10)?,
+                row.get(0)?,  // event_id
+                row.get(1)?,  // bid_year_id
+                row.get(2)?,  // area_id
+                row.get(3)?,  // year
+                row.get(4)?,  // area_code
+                row.get(5)?,  // actor_operator_id
+                row.get(6)?,  // actor_login_name
+                row.get(7)?,  // actor_display_name
+                row.get(8)?,  // actor_json
+                row.get(9)?,  // cause_json
+                row.get(10)?, // action_json
+                row.get(11)?, // before_json
+                row.get(12)?, // after_json
             ))
         },
     );
@@ -52,8 +177,10 @@ pub fn get_audit_event(conn: &Connection, event_id: i64) -> Result<AuditEvent, P
     match row_result {
         Ok((
             retrieved_event_id,
-            bid_year,
-            area,
+            bid_year_id,
+            area_id,
+            year,
+            area_code,
             actor_operator_id,
             actor_login_name,
             actor_display_name,
@@ -82,6 +209,14 @@ pub fn get_audit_event(conn: &Connection, event_id: i64) -> Result<AuditEvent, P
                 Actor::new(actor_data.id, actor_data.actor_type)
             };
 
+            // Reconstruct domain objects with IDs (Phase 23A)
+            let bid_year: BidYear = BidYear::with_id(bid_year_id, year);
+            // For CreateBidYear events, area_id might be NULL (use a sentinel area)
+            let area: Area = area_id.map_or_else(
+                || Area::new(&area_code),
+                |id| Area::with_id(id, &area_code, None),
+            );
+
             Ok(AuditEvent::with_id(
                 retrieved_event_id,
                 actor,
@@ -89,8 +224,8 @@ pub fn get_audit_event(conn: &Connection, event_id: i64) -> Result<AuditEvent, P
                 Action::new(action_data.name, action_data.details),
                 StateSnapshot::new(before_data.data),
                 StateSnapshot::new(after_data.data),
-                BidYear::new(bid_year),
-                Area::new(&area),
+                bid_year,
+                area,
             ))
         }
         Err(rusqlite::Error::QueryReturnedNoRows) => Err(PersistenceError::EventNotFound(event_id)),
@@ -99,6 +234,8 @@ pub fn get_audit_event(conn: &Connection, event_id: i64) -> Result<AuditEvent, P
 }
 
 /// Retrieves the most recent state snapshot for a `(bid_year, area)` scope.
+///
+/// Phase 23A: Now uses `bid_year_id` and `area_id` for queries.
 ///
 /// # Arguments
 ///
@@ -114,13 +251,17 @@ pub fn get_latest_snapshot(
     bid_year: &BidYear,
     area: &Area,
 ) -> Result<(State, i64), PersistenceError> {
+    // Look up the IDs
+    let bid_year_id: i64 = lookup_bid_year_id(conn, bid_year.year())?;
+    let area_id: i64 = lookup_area_id(conn, bid_year_id, area.id())?;
+
     let row_result: SqliteResult<(String, i64)> = conn.query_row(
         "SELECT state_json, event_id
              FROM state_snapshots
-             WHERE bid_year = ?1 AND area = ?2
+             WHERE bid_year_id = ?1 AND area_id = ?2
              ORDER BY event_id DESC
              LIMIT 1",
-        params![bid_year.year(), area.id()],
+        params![bid_year_id, area_id],
         |row| Ok((row.get(0)?, row.get(1)?)),
     );
 
@@ -148,6 +289,8 @@ pub fn get_latest_snapshot(
 
 /// Retrieves all audit events for a `(bid_year, area)` scope after a given event ID.
 ///
+/// Phase 23A: Now uses `bid_year_id` and `area_id` for queries.
+///
 /// # Arguments
 ///
 /// * `conn` - The database connection
@@ -164,36 +307,45 @@ pub fn get_events_after(
     area: &Area,
     after_event_id: i64,
 ) -> Result<Vec<AuditEvent>, PersistenceError> {
+    // Look up the IDs
+    let bid_year_id: i64 = lookup_bid_year_id(conn, bid_year.year())?;
+    let area_id: i64 = lookup_area_id(conn, bid_year_id, area.id())?;
+
     let mut stmt = conn.prepare(
-        "SELECT event_id, bid_year, area, actor_operator_id, actor_login_name,
-                actor_display_name, actor_json, cause_json, action_json,
+        "SELECT event_id, bid_year_id, area_id, year, area_code,
+                actor_operator_id, actor_login_name, actor_display_name,
+                actor_json, cause_json, action_json,
                 before_snapshot_json, after_snapshot_json
          FROM audit_events
-         WHERE bid_year = ?1 AND area = ?2 AND event_id > ?3
+         WHERE bid_year_id = ?1 AND area_id = ?2 AND event_id > ?3
          ORDER BY event_id ASC",
     )?;
 
     let events: Result<Vec<AuditEvent>, PersistenceError> = stmt
-        .query_map(params![bid_year.year(), area.id(), after_event_id], |row| {
+        .query_map(params![bid_year_id, area_id, after_event_id], |row| {
             Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, u16>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-                row.get::<_, String>(7)?,
-                row.get::<_, String>(8)?,
-                row.get::<_, String>(9)?,
-                row.get::<_, String>(10)?,
+                row.get::<_, i64>(0)?,         // event_id
+                row.get::<_, i64>(1)?,         // bid_year_id
+                row.get::<_, Option<i64>>(2)?, // area_id (nullable)
+                row.get::<_, u16>(3)?,         // year
+                row.get::<_, String>(4)?,      // area_code
+                row.get::<_, i64>(5)?,         // actor_operator_id
+                row.get::<_, String>(6)?,      // actor_login_name
+                row.get::<_, String>(7)?,      // actor_display_name
+                row.get::<_, String>(8)?,      // actor_json
+                row.get::<_, String>(9)?,      // cause_json
+                row.get::<_, String>(10)?,     // action_json
+                row.get::<_, String>(11)?,     // before_json
+                row.get::<_, String>(12)?,     // after_json
             ))
         })?
         .map(|row_result| {
             let (
                 event_id,
-                bid_year,
-                area,
+                bid_year_id,
+                area_id,
+                year,
+                area_code,
                 actor_operator_id,
                 actor_login_name,
                 actor_display_name,
@@ -223,6 +375,15 @@ pub fn get_events_after(
                 Actor::new(actor_data.id, actor_data.actor_type)
             };
 
+            // Reconstruct domain objects with IDs (Phase 23A)
+            let bid_year: BidYear = BidYear::with_id(bid_year_id, year);
+            // area_id should always be present in get_events_after (it filters by area_id)
+            // but handle None as a safety measure
+            let area: Area = area_id.map_or_else(
+                || Area::new(&area_code),
+                |id| Area::with_id(id, &area_code, None),
+            );
+
             Ok(AuditEvent::with_id(
                 event_id,
                 actor,
@@ -230,8 +391,8 @@ pub fn get_events_after(
                 Action::new(action_data.name, action_data.details),
                 StateSnapshot::new(before_data.data),
                 StateSnapshot::new(after_data.data),
-                BidYear::new(bid_year),
-                Area::new(&area),
+                bid_year,
+                area,
             ))
         })
         .collect();
@@ -277,16 +438,20 @@ pub fn get_current_state(
         "Retrieving current effective state from canonical tables"
     );
 
+    // Look up the IDs (Phase 23A)
+    let bid_year_id: i64 = lookup_bid_year_id(conn, bid_year.year())?;
+    let area_id: i64 = lookup_area_id(conn, bid_year_id, area.id())?;
+
     let mut stmt = conn.prepare(
         "SELECT user_id, initials, name, user_type, crew,
                 cumulative_natca_bu_date, natca_bu_date, eod_faa_date,
                 service_computation_date, lottery_value
          FROM users
-         WHERE bid_year = ?1 AND area_id = ?2
+         WHERE bid_year_id = ?1 AND area_id = ?2
          ORDER BY initials ASC",
     )?;
 
-    let rows = stmt.query_map(params![bid_year.year(), area.id()], |row| {
+    let rows = stmt.query_map(params![bid_year_id, area_id], |row| {
         Ok((
             row.get::<_, i64>(0)?,         // user_id
             row.get::<_, String>(1)?,      // initials
@@ -430,17 +595,30 @@ pub fn get_audit_timeline(
         "Retrieving audit timeline"
     );
 
+    // Phase 23A: Look up the canonical IDs
+    // If the bid year or area doesn't exist, return an empty timeline
+    let bid_year_id = match lookup_bid_year_id(conn, bid_year.year()) {
+        Ok(id) => id,
+        Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    let area_id = match lookup_area_id(conn, bid_year_id, area.id()) {
+        Ok(id) => id,
+        Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+
     let mut stmt = conn.prepare(
-        "SELECT event_id, bid_year, area, actor_operator_id, actor_login_name,
+        "SELECT event_id, year, area_code, actor_operator_id, actor_login_name,
                 actor_display_name, actor_json, cause_json, action_json,
                 before_snapshot_json, after_snapshot_json
          FROM audit_events
-         WHERE bid_year = ?1 AND area = ?2
+         WHERE bid_year_id = ?1 AND area_id = ?2
          ORDER BY event_id ASC",
     )?;
 
     let events: Result<Vec<AuditEvent>, PersistenceError> = stmt
-        .query_map(params![bid_year.year(), area.id()], |row| {
+        .query_map(params![bid_year_id, area_id], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, u16>(1)?,
@@ -458,8 +636,8 @@ pub fn get_audit_timeline(
         .map(|row_result| {
             let (
                 event_id,
-                bid_year,
-                area,
+                year,
+                area_code,
                 actor_operator_id,
                 actor_login_name,
                 actor_display_name,
@@ -489,6 +667,7 @@ pub fn get_audit_timeline(
                 Actor::new(actor_data.id, actor_data.actor_type)
             };
 
+            // Phase 23A: Reconstruct BidYear and Area with IDs
             Ok(AuditEvent::with_id(
                 event_id,
                 actor,
@@ -496,8 +675,8 @@ pub fn get_audit_timeline(
                 Action::new(action_data.name, action_data.details),
                 StateSnapshot::new(before_data.data),
                 StateSnapshot::new(after_data.data),
-                BidYear::new(bid_year),
-                Area::new(&area),
+                BidYear::with_id(bid_year_id, year),
+                Area::with_id(area_id, &area_code, None),
             ))
         })
         .collect();
@@ -532,14 +711,18 @@ fn get_snapshot_before_timestamp(
     area: &Area,
     timestamp: &str,
 ) -> Result<(State, i64), PersistenceError> {
+    // Phase 23A: Look up the canonical IDs
+    let bid_year_id = lookup_bid_year_id(conn, bid_year.year())?;
+    let area_id = lookup_area_id(conn, bid_year_id, area.id())?;
+
     let row_result: SqliteResult<(String, i64)> = conn.query_row(
         "SELECT s.state_json, s.event_id
          FROM state_snapshots s
          JOIN audit_events e ON s.event_id = e.event_id
-         WHERE s.bid_year = ?1 AND s.area = ?2 AND e.created_at <= ?3
+         WHERE s.bid_year_id = ?1 AND s.area_id = ?2 AND e.created_at <= ?3
          ORDER BY s.event_id DESC
          LIMIT 1",
-        params![bid_year.year(), area.id(), timestamp],
+        params![bid_year_id, area_id, timestamp],
         |row| Ok((row.get(0)?, row.get(1)?)),
     );
 
@@ -569,6 +752,8 @@ fn get_snapshot_before_timestamp(
 ///
 /// Returns a vector of tuples containing (`area_id`, `user_count`).
 ///
+/// Phase 23A: Now uses `bid_year_id` for queries.
+///
 /// # Arguments
 ///
 /// * `conn` - The database connection
@@ -581,25 +766,33 @@ pub fn count_users_by_area(
     conn: &Connection,
     bid_year: &BidYear,
 ) -> Result<Vec<(String, usize)>, PersistenceError> {
+    // Get the bid_year_id
+    let bid_year_id: i64 = bid_year.bid_year_id().ok_or_else(|| {
+        PersistenceError::ReconstructionError(
+            "BidYear must have a bid_year_id to count users".to_string(),
+        )
+    })?;
+
     let mut stmt = conn.prepare(
-        "SELECT area_id, COUNT(*) as user_count
-         FROM users
-         WHERE bid_year = ?1
-         GROUP BY area_id
-         ORDER BY area_id ASC",
+        "SELECT a.area_code, COUNT(*) as user_count
+         FROM users u
+         JOIN areas a ON u.area_id = a.area_id
+         WHERE u.bid_year_id = ?1
+         GROUP BY a.area_code
+         ORDER BY a.area_code ASC",
     )?;
 
-    let rows = stmt.query_map(params![bid_year.year()], |row| {
+    let rows = stmt.query_map(params![bid_year_id], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
     })?;
 
     let mut result: Vec<(String, usize)> = Vec::new();
     for row in rows {
-        let (area_id, count) = row.map_err(|e| PersistenceError::DatabaseError(e.to_string()))?;
+        let (area_code, count) = row.map_err(|e| PersistenceError::DatabaseError(e.to_string()))?;
         let count_usize: usize = count.to_usize().ok_or_else(|| {
             PersistenceError::DatabaseError("Count conversion failed".to_string())
         })?;
-        result.push((area_id, count_usize));
+        result.push((area_code, count_usize));
     }
 
     Ok(result)
@@ -645,6 +838,8 @@ pub fn count_areas_by_bid_year(conn: &Connection) -> Result<Vec<(u16, usize)>, P
 ///
 /// Returns a vector of tuples containing (`bid_year`, `total_user_count`).
 ///
+/// Phase 23A: Updated to use `bid_year_id`.
+///
 /// # Arguments
 ///
 /// * `conn` - The database connection
@@ -654,10 +849,11 @@ pub fn count_areas_by_bid_year(conn: &Connection) -> Result<Vec<(u16, usize)>, P
 /// Returns an error if the database cannot be queried or if conversions fail.
 pub fn count_users_by_bid_year(conn: &Connection) -> Result<Vec<(u16, usize)>, PersistenceError> {
     let mut stmt = conn.prepare(
-        "SELECT bid_year, COUNT(*) as user_count
-         FROM users
-         GROUP BY bid_year
-         ORDER BY bid_year ASC",
+        "SELECT b.year, COUNT(*) as user_count
+         FROM users u
+         JOIN bid_years b ON u.bid_year_id = b.bid_year_id
+         GROUP BY b.year
+         ORDER BY b.year ASC",
     )?;
 
     let rows = stmt.query_map([], |row| Ok((row.get::<_, i32>(0)?, row.get::<_, i64>(1)?)))?;
@@ -679,7 +875,9 @@ pub fn count_users_by_bid_year(conn: &Connection) -> Result<Vec<(u16, usize)>, P
 
 /// Counts users per (`bid_year`, `area_id`) combination.
 ///
-/// Returns a vector of tuples containing (`bid_year`, `area_id`, `user_count`).
+/// Returns a vector of tuples containing (`bid_year`, `area_code`, `user_count`).
+///
+/// Phase 23A: Updated to use join tables and return `area_code`.
 ///
 /// # Arguments
 ///
@@ -692,10 +890,12 @@ pub fn count_users_by_bid_year_and_area(
     conn: &Connection,
 ) -> Result<Vec<(u16, String, usize)>, PersistenceError> {
     let mut stmt = conn.prepare(
-        "SELECT bid_year, area_id, COUNT(*) as user_count
-         FROM users
-         GROUP BY bid_year, area_id
-         ORDER BY bid_year ASC, area_id ASC",
+        "SELECT b.year, a.area_code, COUNT(*) as user_count
+         FROM users u
+         JOIN bid_years b ON u.bid_year_id = b.bid_year_id
+         JOIN areas a ON u.area_id = a.area_id
+         GROUP BY b.year, a.area_code
+         ORDER BY b.year ASC, a.area_code ASC",
     )?;
 
     let rows = stmt.query_map([], |row| {
@@ -708,7 +908,7 @@ pub fn count_users_by_bid_year_and_area(
 
     let mut result: Vec<(u16, String, usize)> = Vec::new();
     for row in rows {
-        let (bid_year, area_id, count) =
+        let (bid_year, area_code, count) =
             row.map_err(|e| PersistenceError::DatabaseError(e.to_string()))?;
         let bid_year_u16: u16 = bid_year.to_u16().ok_or_else(|| {
             PersistenceError::DatabaseError("Bid year conversion failed".to_string())
@@ -716,7 +916,7 @@ pub fn count_users_by_bid_year_and_area(
         let count_usize: usize = count.to_usize().ok_or_else(|| {
             PersistenceError::DatabaseError("Count conversion failed".to_string())
         })?;
-        result.push((bid_year_u16, area_id, count_usize));
+        result.push((bid_year_u16, area_code, count_usize));
     }
 
     Ok(result)

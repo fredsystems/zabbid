@@ -70,6 +70,9 @@ pub fn persist_transition(
 
 /// Persists a bootstrap result (audit event for bid year/area creation).
 ///
+/// Phase 23A: This function must insert the canonical record first to obtain
+/// the generated ID, then persist the audit event with both the ID and display values.
+///
 /// # Arguments
 ///
 /// * `tx` - The active database transaction
@@ -86,11 +89,7 @@ pub fn persist_bootstrap(
     tx: &Transaction<'_>,
     result: &BootstrapResult,
 ) -> Result<i64, PersistenceError> {
-    // Persist the audit event
-    let event_id: i64 = persist_audit_event(tx, &result.audit_event)?;
-    debug!(event_id, "Persisted bootstrap audit event");
-
-    // Update canonical tables based on the action
+    // Update canonical tables first to generate IDs
     match result.audit_event.action.name.as_str() {
         "CreateBidYear" => {
             // Extract canonical bid year metadata
@@ -102,6 +101,7 @@ pub fn persist_bootstrap(
             // Format date as ISO 8601 string for storage
             let start_date_str: String = canonical.start_date().to_string();
 
+            // Insert bid year and get generated ID
             tx.execute(
                 "INSERT INTO bid_years (year, start_date, num_pay_periods) VALUES (?1, ?2, ?3)",
                 params![
@@ -110,26 +110,51 @@ pub fn persist_bootstrap(
                     canonical.num_pay_periods()
                 ],
             )?;
+            let bid_year_id: i64 = tx.last_insert_rowid();
             debug!(
+                bid_year_id,
                 bid_year = canonical.year(),
                 start_date = %start_date_str,
                 num_pay_periods = canonical.num_pay_periods(),
                 "Inserted bid year with canonical metadata into canonical table"
             );
+
+            // Persist audit event with the generated ID
+            // Note: For CreateBidYear, area is a placeholder, so area_id is None
+            let event_id: i64 =
+                persist_audit_event_with_ids(tx, &result.audit_event, bid_year_id, None)?;
+            debug!(
+                event_id,
+                "Persisted bootstrap audit event for CreateBidYear"
+            );
+
+            info!(event_id, bid_year_id, "Persisted CreateBidYear");
+            Ok(event_id)
         }
         "CreateArea" => {
-            tx.execute(
-                "INSERT INTO areas (bid_year, area_id) VALUES (?1, ?2)",
-                params![
-                    result.audit_event.bid_year.year(),
-                    result.audit_event.area.id()
-                ],
+            // Look up bid_year_id
+            let bid_year_id: i64 = crate::sqlite::queries::lookup_bid_year_id_tx(
+                tx,
+                result.audit_event.bid_year.year(),
             )?;
+
+            // Insert area and get generated ID
+            tx.execute(
+                "INSERT INTO areas (bid_year_id, area_code) VALUES (?1, ?2)",
+                params![bid_year_id, result.audit_event.area.id()],
+            )?;
+            let area_id: i64 = tx.last_insert_rowid();
             debug!(
-                bid_year = result.audit_event.bid_year.year(),
-                area = result.audit_event.area.id(),
+                area_id,
+                bid_year_id,
+                area_code = result.audit_event.area.id(),
                 "Inserted area into canonical table"
             );
+
+            // Persist audit event with the generated IDs
+            let event_id: i64 =
+                persist_audit_event_with_ids(tx, &result.audit_event, bid_year_id, Some(area_id))?;
+            debug!(event_id, "Persisted bootstrap audit event for CreateArea");
 
             // Create an initial empty snapshot for new areas
             let initial_state: State = State::new(
@@ -138,18 +163,24 @@ pub fn persist_bootstrap(
             );
             persist_state_snapshot_tx(tx, &initial_state, event_id)?;
             debug!(event_id, "Created initial empty snapshot for new area");
+
+            info!(event_id, area_id, bid_year_id, "Persisted CreateArea");
+            Ok(event_id)
         }
         _ => {
-            // Non-bootstrap actions should not be handled here
+            // Non-bootstrap actions should use the standard persist path
+            let event_id: i64 = persist_audit_event(tx, &result.audit_event)?;
+            debug!(event_id, "Persisted bootstrap audit event");
+            info!(event_id, "Persisted bootstrap operation");
+            Ok(event_id)
         }
     }
-
-    info!(event_id, "Persisted bootstrap operation");
-
-    Ok(event_id)
 }
 
 /// Persists an audit event within a transaction.
+///
+/// Phase 23A: This function now looks up the `bid_year_id` and `area_id`
+/// from the `BidYear` and `Area` objects before persisting.
 ///
 /// # Arguments
 ///
@@ -166,6 +197,42 @@ pub fn persist_bootstrap(
 pub fn persist_audit_event(
     tx: &Transaction<'_>,
     event: &AuditEvent,
+) -> Result<i64, PersistenceError> {
+    // Look up canonical IDs - these must exist or we fail
+    let bid_year_id: i64 =
+        crate::sqlite::queries::lookup_bid_year_id_tx(tx, event.bid_year.year())?;
+    let area_id: i64 = crate::sqlite::queries::lookup_area_id_tx(tx, bid_year_id, event.area.id())?;
+
+    persist_audit_event_with_ids(tx, event, bid_year_id, Some(area_id))
+}
+
+/// Persists an audit event with explicit IDs within a transaction.
+///
+/// This is an internal helper used when IDs are already known
+/// (e.g., during bootstrap operations).
+///
+/// Phase 23A: `area_id` is optional to support `CreateBidYear` events
+/// where the area is not meaningful.
+///
+/// # Arguments
+///
+/// * `tx` - The active database transaction
+/// * `event` - The audit event to persist
+/// * `bid_year_id` - The bid year ID
+/// * `area_id` - The area ID (`None` for `CreateBidYear`)
+///
+/// # Returns
+///
+/// The event ID assigned by the database.
+///
+/// # Errors
+///
+/// Returns an error if persistence or serialization fails.
+fn persist_audit_event_with_ids(
+    tx: &Transaction<'_>,
+    event: &AuditEvent,
+    bid_year_id: i64,
+    area_id: Option<i64>,
 ) -> Result<i64, PersistenceError> {
     let actor_data: ActorData = ActorData {
         id: event.actor.id.clone(),
@@ -207,11 +274,14 @@ pub fn persist_audit_event(
 
     tx.execute(
         "INSERT INTO audit_events (
-            bid_year, area, actor_operator_id, actor_login_name, actor_display_name,
+            bid_year_id, area_id, year, area_code,
+            actor_operator_id, actor_login_name, actor_display_name,
             actor_json, cause_json, action_json,
             before_snapshot_json, after_snapshot_json
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
+            bid_year_id,
+            area_id,
             event.bid_year.year(),
             event.area.id(),
             actor_operator_id,
@@ -230,6 +300,8 @@ pub fn persist_audit_event(
 
 /// Persists a full state snapshot within a transaction.
 ///
+/// Phase 23A: Now looks up and uses `bid_year_id` and `area_id`.
+///
 /// # Arguments
 ///
 /// * `tx` - The active database transaction
@@ -244,6 +316,11 @@ fn persist_state_snapshot_tx(
     state: &State,
     event_id: i64,
 ) -> Result<(), PersistenceError> {
+    // Look up the IDs
+    let bid_year_id: i64 =
+        crate::sqlite::queries::lookup_bid_year_id_tx(tx, state.bid_year.year())?;
+    let area_id: i64 = crate::sqlite::queries::lookup_area_id_tx(tx, bid_year_id, state.area.id())?;
+
     let state_data: StateData = StateData {
         bid_year: state.bid_year.year(),
         area: state.area.id().to_string(),
@@ -251,11 +328,11 @@ fn persist_state_snapshot_tx(
     };
 
     tx.execute(
-        "INSERT INTO state_snapshots (bid_year, area, event_id, state_json)
+        "INSERT INTO state_snapshots (bid_year_id, area_id, event_id, state_json)
          VALUES (?1, ?2, ?3, ?4)",
         params![
-            state.bid_year.year(),
-            state.area.id(),
+            bid_year_id,
+            area_id,
             event_id,
             serde_json::to_string(&state_data)?,
         ],
@@ -268,6 +345,8 @@ fn persist_state_snapshot_tx(
 ///
 /// This is used for incremental `RegisterUser` operations, inserting only the newly added user
 /// rather than replacing the entire table. Expects the new user to not have a `user_id` yet.
+///
+/// Phase 23A: Now looks up and uses `bid_year_id` and `area_id`.
 ///
 /// # Arguments
 ///
@@ -290,16 +369,20 @@ fn insert_new_user_tx(tx: &Transaction<'_>, state: &State) -> Result<(), Persist
         ));
     }
 
+    // Look up the IDs
+    let bid_year_id: i64 = crate::sqlite::queries::lookup_bid_year_id_tx(tx, user.bid_year.year())?;
+    let area_id: i64 = crate::sqlite::queries::lookup_area_id_tx(tx, bid_year_id, user.area.id())?;
+
     // Insert new user and let SQLite assign user_id
     tx.execute(
         "INSERT INTO users (
-            bid_year, area_id, initials, name, user_type, crew,
+            bid_year_id, area_id, initials, name, user_type, crew,
             cumulative_natca_bu_date, natca_bu_date,
             eod_faa_date, service_computation_date, lottery_value
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
-            user.bid_year.year(),
-            user.area.id(),
+            bid_year_id,
+            area_id,
             user.initials.value(),
             user.name,
             user.user_type.as_str(),
@@ -323,6 +406,8 @@ fn insert_new_user_tx(tx: &Transaction<'_>, state: &State) -> Result<(), Persist
 /// Users with existing `user_id` values are updated in place.
 /// Users without `user_id` are inserted as new rows.
 ///
+/// Phase 23A: Now looks up and uses `bid_year_id` and `area_id`.
+///
 /// # Arguments
 ///
 /// * `tx` - The active database transaction
@@ -332,10 +417,15 @@ fn insert_new_user_tx(tx: &Transaction<'_>, state: &State) -> Result<(), Persist
 ///
 /// Returns an error if the database operation fails.
 fn sync_canonical_users_tx(tx: &Transaction<'_>, state: &State) -> Result<(), PersistenceError> {
-    // Delete all existing users for this (bid_year, area)
+    // Look up the IDs
+    let bid_year_id: i64 =
+        crate::sqlite::queries::lookup_bid_year_id_tx(tx, state.bid_year.year())?;
+    let area_id: i64 = crate::sqlite::queries::lookup_area_id_tx(tx, bid_year_id, state.area.id())?;
+
+    // Delete all existing users for this (bid_year_id, area_id)
     tx.execute(
-        "DELETE FROM users WHERE bid_year = ?1 AND area_id = ?2",
-        params![state.bid_year.year(), state.area.id()],
+        "DELETE FROM users WHERE bid_year_id = ?1 AND area_id = ?2",
+        params![bid_year_id, area_id],
     )?;
 
     // Insert all users from the new state
@@ -344,14 +434,14 @@ fn sync_canonical_users_tx(tx: &Transaction<'_>, state: &State) -> Result<(), Pe
             // User has an existing user_id, insert with explicit ID
             tx.execute(
                 "INSERT INTO users (
-                    user_id, bid_year, area_id, initials, name, user_type, crew,
+                    user_id, bid_year_id, area_id, initials, name, user_type, crew,
                     cumulative_natca_bu_date, natca_bu_date,
                     eod_faa_date, service_computation_date, lottery_value
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     user_id,
-                    user.bid_year.year(),
-                    user.area.id(),
+                    bid_year_id,
+                    area_id,
                     user.initials.value(),
                     user.name,
                     user.user_type.as_str(),
@@ -367,13 +457,13 @@ fn sync_canonical_users_tx(tx: &Transaction<'_>, state: &State) -> Result<(), Pe
             // User has no user_id, insert and let SQLite assign one
             tx.execute(
                 "INSERT INTO users (
-                    bid_year, area_id, initials, name, user_type, crew,
+                    bid_year_id, area_id, initials, name, user_type, crew,
                     cumulative_natca_bu_date, natca_bu_date,
                     eod_faa_date, service_computation_date, lottery_value
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
-                    user.bid_year.year(),
-                    user.area.id(),
+                    bid_year_id,
+                    area_id,
                     user.initials.value(),
                     user.name,
                     user.user_type.as_str(),

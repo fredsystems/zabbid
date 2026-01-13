@@ -688,6 +688,51 @@ Once a user is authenticated and has an active session:
 
 This rule applies **only** to authentication and session-establishment flows.
 
+## TODO — Post Phase 23A Enforcement
+
+After Phase 23A (Canonical Identity for Area & Bid Year) is complete:
+
+### Canonical Identity Enforcement Rules
+
+Agents must NOT introduce workaround logic to compensate for incomplete work
+in higher layers when modifying **domain** or **persistence** code.
+
+Specifically, agents must NOT:
+
+- Create sentinel or fake canonical records (e.g. negative IDs, year = 0)
+- Insert placeholder rows solely to satisfy foreign key constraints
+- Hardcode identity mappings (e.g. year → ID magic values)
+- Auto-create canonical entities as a side effect of unrelated operations
+- Mutate persistence logic to “heal” missing state for test compatibility
+- Add filtering logic to hide non-domain records from queries
+- Modify schema or persistence behavior to make out-of-scope tests pass
+
+Canonical tables must contain **only real domain entities** created via
+explicit bootstrap or domain transitions.
+
+If introducing canonical identity causes failures in:
+
+- API tests
+- server tests
+- UI behavior
+
+Those failures are **expected** and must be addressed in a later phase.
+
+Agents must stop and report failures rather than compensating for them.
+
+### Tooling Restrictions for Refactors
+
+When performing large refactors or identity migrations, agents must NOT:
+
+- Use Python, shell scripts, sed/awk, or external tooling to modify code
+- Generate or apply mechanical edits outside the Rust codebase
+- Bypass normal refactoring patterns due to context or token pressure
+
+If remaining work exceeds available context or requires unsafe shortcuts,
+the agent must stop and request guidance.
+
+Correctness and architectural integrity take precedence over completion speed.
+
 ## When to Stop
 
 If any of the following are true:

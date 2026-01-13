@@ -177,7 +177,7 @@ fn ci() -> Result<()> {
     deny()?;
     machete()?;
     build()?;
-    // test()?;
+    test()?;
     Ok(())
 }
 

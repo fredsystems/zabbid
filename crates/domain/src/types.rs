@@ -8,22 +8,65 @@ use serde::{Deserialize, Serialize};
 
 /// Represents a bid year identifier.
 ///
-/// A bid year is the scope within which users are identified and rules are enforced.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Phase 23A: A bid year now has a canonical numeric ID (`bid_year_id`)
+/// as well as a human-readable year value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BidYear {
-    /// The year value (e.g., 2026).
+    /// The canonical numeric identifier assigned by the database.
+    /// `None` indicates the bid year has not been persisted yet.
+    bid_year_id: Option<i64>,
+    /// The year value (e.g., 2026) - used for display only.
     year: u16,
 }
 
+// Phase 23A: Custom PartialEq and Hash that ignore bid_year_id
+// Two BidYears are equal if they have the same year, regardless of their IDs
+impl PartialEq for BidYear {
+    fn eq(&self, other: &Self) -> bool {
+        self.year == other.year
+    }
+}
+
+impl Eq for BidYear {}
+
+impl std::hash::Hash for BidYear {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.year.hash(state);
+    }
+}
+
 impl BidYear {
-    /// Creates a new `BidYear`.
+    /// Creates a new `BidYear` without a persisted ID.
     ///
     /// # Arguments
     ///
     /// * `year` - The year value
     #[must_use]
     pub const fn new(year: u16) -> Self {
-        Self { year }
+        Self {
+            bid_year_id: None,
+            year,
+        }
+    }
+
+    /// Creates a `BidYear` with an existing persisted ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical numeric identifier
+    /// * `year` - The year value
+    #[must_use]
+    pub const fn with_id(bid_year_id: i64, year: u16) -> Self {
+        Self {
+            bid_year_id: Some(bid_year_id),
+            year,
+        }
+    }
+
+    /// Returns the canonical numeric identifier if persisted.
+    #[must_use]
+    pub const fn bid_year_id(&self) -> Option<i64> {
+        self.bid_year_id
     }
 
     /// Returns the year value.
@@ -66,32 +109,93 @@ impl Initials {
 
 /// Represents an area identifier.
 ///
-/// A user must belong to exactly one area.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Phase 23A: An area now has a canonical numeric ID (`area_id`)
+/// as well as a human-readable area code.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_field_names)]
 pub struct Area {
-    /// The area identifier (e.g., "North", "South").
-    id: String,
+    /// The canonical numeric identifier assigned by the database.
+    /// `None` indicates the area has not been persisted yet.
+    area_id: Option<i64>,
+    /// The area code (e.g., "North", "South") - used for display only.
+    /// Normalized to uppercase for consistency.
+    area_code: String,
+    /// Optional area name for additional context.
+    area_name: Option<String>,
+}
+
+// Phase 23A: Custom PartialEq and Hash that ignore area_id
+// Two Areas are equal if they have the same area_code, regardless of their IDs
+impl PartialEq for Area {
+    fn eq(&self, other: &Self) -> bool {
+        self.area_code == other.area_code
+    }
+}
+
+impl Eq for Area {}
+
+impl std::hash::Hash for Area {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.area_code.hash(state);
+    }
 }
 
 impl Area {
-    /// Creates a new `Area`.
+    /// Creates a new `Area` without a persisted ID.
     ///
-    /// Area identifiers are normalized to uppercase to ensure case-insensitive uniqueness.
+    /// Area codes are normalized to uppercase to ensure case-insensitive uniqueness.
     ///
     /// # Arguments
     ///
-    /// * `id` - The area identifier (will be normalized to uppercase)
+    /// * `area_code` - The area code (will be normalized to uppercase)
     #[must_use]
-    pub fn new(id: &str) -> Self {
+    pub fn new(area_code: &str) -> Self {
         Self {
-            id: id.to_uppercase(),
+            area_id: None,
+            area_code: area_code.to_uppercase(),
+            area_name: None,
         }
     }
 
-    /// Returns the area identifier.
+    /// Creates an `Area` with an existing persisted ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `area_id` - The canonical numeric identifier
+    /// * `area_code` - The area code
+    /// * `area_name` - Optional area name
+    #[must_use]
+    pub fn with_id(area_id: i64, area_code: &str, area_name: Option<String>) -> Self {
+        Self {
+            area_id: Some(area_id),
+            area_code: area_code.to_uppercase(),
+            area_name,
+        }
+    }
+
+    /// Returns the canonical numeric identifier if persisted.
+    #[must_use]
+    pub const fn area_id(&self) -> Option<i64> {
+        self.area_id
+    }
+
+    /// Returns the area code.
+    #[must_use]
+    pub fn area_code(&self) -> &str {
+        &self.area_code
+    }
+
+    /// Returns the area name if set.
+    #[must_use]
+    pub fn area_name(&self) -> Option<&str> {
+        self.area_name.as_deref()
+    }
+
+    /// Legacy method for backward compatibility - returns `area_code`.
+    /// This will be removed in Phase 23B when API layer is updated.
     #[must_use]
     pub fn id(&self) -> &str {
-        &self.id
+        &self.area_code
     }
 }
 
