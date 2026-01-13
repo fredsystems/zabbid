@@ -269,31 +269,40 @@ impl AuthenticationService {
         // Retrieve operator by login name
         let operator: OperatorData = persistence
             .get_operator_by_login(login_name)
-            .map_err(|e| AuthError::AuthenticationFailed {
-                reason: format!("Database error: {e}"),
+            .map_err(|e| {
+                tracing::warn!(login_name, error = %e, "Database error during login");
+                AuthError::AuthenticationFailed {
+                    reason: String::from("invalid_credentials"),
+                }
             })?
-            .ok_or_else(|| AuthError::AuthenticationFailed {
-                reason: format!("Unknown operator: {login_name}"),
+            .ok_or_else(|| {
+                tracing::debug!(login_name, "Unknown operator attempted login");
+                AuthError::AuthenticationFailed {
+                    reason: String::from("invalid_credentials"),
+                }
             })?;
 
         // Check if operator is disabled
         if operator.is_disabled {
+            tracing::info!(login_name = %operator.login_name, operator_id = operator.operator_id, "Disabled operator attempted login");
             return Err(AuthError::AuthenticationFailed {
-                reason: String::from("Operator is disabled"),
+                reason: String::from("invalid_credentials"),
             });
         }
 
         // Verify password
         let password_valid: bool =
             SqlitePersistence::verify_password(password, &operator.password_hash).map_err(|e| {
+                tracing::warn!(login_name = %operator.login_name, error = %e, "Password verification error");
                 AuthError::AuthenticationFailed {
-                    reason: format!("Password verification failed: {e}"),
+                    reason: String::from("invalid_credentials"),
                 }
             })?;
 
         if !password_valid {
+            tracing::info!(login_name = %operator.login_name, "Invalid password attempt");
             return Err(AuthError::AuthenticationFailed {
-                reason: String::from("Invalid password"),
+                reason: String::from("invalid_credentials"),
             });
         }
 
@@ -316,23 +325,30 @@ impl AuthenticationService {
             OffsetDateTime::now_utc() + Self::DEFAULT_SESSION_EXPIRATION;
         let expires_at_str: String = expires_at
             .format(&time::format_description::well_known::Iso8601::DEFAULT)
-            .map_err(|e| AuthError::AuthenticationFailed {
-                reason: format!("Failed to format expiration time: {e}"),
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to format expiration time");
+                AuthError::AuthenticationFailed {
+                    reason: String::from("invalid_credentials"),
+                }
             })?;
 
         // Create session
         persistence
             .create_session(&session_token, operator.operator_id, &expires_at_str)
-            .map_err(|e| AuthError::AuthenticationFailed {
-                reason: format!("Failed to create session: {e}"),
+            .map_err(|e| {
+                tracing::error!(operator_id = operator.operator_id, error = %e, "Failed to create session");
+                AuthError::AuthenticationFailed {
+                    reason: String::from("invalid_credentials"),
+                }
             })?;
 
         // Update last login timestamp
-        persistence
+        let _ = persistence
             .update_last_login(operator.operator_id)
-            .map_err(|e| AuthError::AuthenticationFailed {
-                reason: format!("Failed to update last login: {e}"),
-            })?;
+            .map_err(|e| {
+                tracing::warn!(operator_id = operator.operator_id, error = %e, "Failed to update last login timestamp");
+                // Don't fail auth if we can't update the timestamp
+            });
 
         let authenticated_actor: AuthenticatedActor =
             AuthenticatedActor::new(operator.login_name.clone(), role);
@@ -493,4 +509,163 @@ pub fn authenticate_stub(actor_id: String, role: Role) -> Result<AuthenticatedAc
         });
     }
     Ok(AuthenticatedActor::new(actor_id, role))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zab_bid_persistence::SqlitePersistence;
+
+    fn create_test_persistence() -> SqlitePersistence {
+        SqlitePersistence::new_in_memory().expect("Failed to create test database")
+    }
+
+    fn create_test_operator(
+        persistence: &mut SqlitePersistence,
+        login_name: &str,
+        display_name: &str,
+        password: &str,
+        role: &str,
+    ) -> i64 {
+        persistence
+            .create_operator(login_name, display_name, password, role)
+            .expect("Failed to create operator")
+    }
+
+    /// `PHASE_22.1`: Verify unknown operator returns generic error message
+    #[test]
+    fn test_login_unknown_operator_returns_generic_error() {
+        let mut persistence = create_test_persistence();
+
+        let result = AuthenticationService::login(&mut persistence, "nonexistent", "password");
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        if let AuthError::AuthenticationFailed { reason } = err {
+            assert_eq!(reason, "invalid_credentials");
+        } else {
+            panic!("Expected AuthenticationFailed error");
+        }
+    }
+
+    /// `PHASE_22.1`: Verify incorrect password returns generic error message
+    #[test]
+    fn test_login_wrong_password_returns_generic_error() {
+        let mut persistence = create_test_persistence();
+        create_test_operator(
+            &mut persistence,
+            "testuser",
+            "Test User",
+            "correct_password",
+            "Admin",
+        );
+
+        let result = AuthenticationService::login(&mut persistence, "testuser", "wrong_password");
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        if let AuthError::AuthenticationFailed { reason } = err {
+            assert_eq!(reason, "invalid_credentials");
+        } else {
+            panic!("Expected AuthenticationFailed error");
+        }
+    }
+
+    /// `PHASE_22.1`: Verify disabled operator returns generic error message
+    #[test]
+    fn test_login_disabled_operator_returns_generic_error() {
+        let mut persistence = create_test_persistence();
+        let operator_id = create_test_operator(
+            &mut persistence,
+            "disabled_user",
+            "Disabled User",
+            "password",
+            "Admin",
+        );
+        persistence
+            .disable_operator(operator_id)
+            .expect("Failed to disable operator");
+
+        let result = AuthenticationService::login(&mut persistence, "disabled_user", "password");
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        if let AuthError::AuthenticationFailed { reason } = err {
+            assert_eq!(reason, "invalid_credentials");
+        } else {
+            panic!("Expected AuthenticationFailed error");
+        }
+    }
+
+    /// `PHASE_22.1`: Verify successful login
+    #[test]
+    fn test_login_success() {
+        let mut persistence = create_test_persistence();
+        create_test_operator(
+            &mut persistence,
+            "validuser",
+            "Valid User",
+            "validpass",
+            "Admin",
+        );
+
+        let result = AuthenticationService::login(&mut persistence, "validuser", "validpass");
+
+        assert!(result.is_ok());
+        let (_session_token, actor, operator) = result.unwrap();
+        assert_eq!(actor.id.to_lowercase(), "validuser");
+        assert_eq!(operator.login_name.to_lowercase(), "validuser");
+    }
+
+    /// `PHASE_22.1`: Verify all auth failures return same error string
+    #[test]
+    fn test_all_auth_failures_return_same_error() {
+        let mut persistence = create_test_persistence();
+        create_test_operator(
+            &mut persistence,
+            "enabled_user",
+            "Enabled User",
+            "correct",
+            "Admin",
+        );
+        let disabled_id = create_test_operator(
+            &mut persistence,
+            "disabled_user",
+            "Disabled User",
+            "correct",
+            "Admin",
+        );
+        persistence
+            .disable_operator(disabled_id)
+            .expect("Failed to disable operator");
+
+        // Test unknown operator
+        let err1 = AuthenticationService::login(&mut persistence, "unknown", "any").unwrap_err();
+
+        // Test wrong password
+        let err2 =
+            AuthenticationService::login(&mut persistence, "enabled_user", "wrong").unwrap_err();
+
+        // Test disabled operator
+        let err3 =
+            AuthenticationService::login(&mut persistence, "disabled_user", "correct").unwrap_err();
+
+        // Extract error messages
+        let AuthError::AuthenticationFailed { reason: msg1 } = err1 else {
+            panic!("Expected AuthenticationFailed");
+        };
+
+        let AuthError::AuthenticationFailed { reason: msg2 } = err2 else {
+            panic!("Expected AuthenticationFailed");
+        };
+
+        let AuthError::AuthenticationFailed { reason: msg3 } = err3 else {
+            panic!("Expected AuthenticationFailed");
+        };
+
+        // All three errors must have identical messages
+        assert_eq!(msg1, msg2);
+        assert_eq!(msg2, msg3);
+        assert_eq!(msg1, "invalid_credentials");
+    }
 }

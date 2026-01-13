@@ -127,7 +127,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
       <div className="error">
         <h2>Invalid Bid Year</h2>
         <p>The bid year parameter is missing or invalid.</p>
-        <button type="button" onClick={() => navigate("/")}>
+        <button type="button" onClick={() => navigate("/admin")}>
           Back to Overview
         </button>
       </div>
@@ -149,7 +149,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
             automatically refresh when the backend becomes available.
           </p>
         )}
-        <button type="button" onClick={() => navigate("/")}>
+        <button type="button" onClick={() => navigate("/admin")}>
           Back to Overview
         </button>
       </div>
@@ -160,7 +160,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
     <div className="area-view">
       <div className="view-header">
         <h2>Areas for Bid Year {bidYear}</h2>
-        <button type="button" onClick={() => navigate("/")}>
+        <button type="button" onClick={() => navigate("/admin")}>
           Back to Overview
         </button>
       </div>

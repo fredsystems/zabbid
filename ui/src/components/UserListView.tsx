@@ -164,7 +164,7 @@ export function UserListView({
         )}
         <button
           type="button"
-          onClick={() => navigate(`/bid-year/${bidYear}/areas`)}
+          onClick={() => navigate(`/admin/bid-year/${bidYear}/areas`)}
         >
           Back to Areas
         </button>
@@ -184,7 +184,7 @@ export function UserListView({
         </h2>
         <button
           type="button"
-          onClick={() => navigate(`/bid-year/${bidYear}/areas`)}
+          onClick={() => navigate(`/admin/bid-year/${bidYear}/areas`)}
         >
           Back to Areas
         </button>

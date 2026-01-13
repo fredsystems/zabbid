@@ -187,7 +187,7 @@ export function UserDetailView({
           type="button"
           onClick={() =>
             navigate(
-              `/bid-year/${bidYear}/area/${encodeURIComponent(areaId)}/users`,
+              `/admin/bid-year/${bidYear}/area/${encodeURIComponent(areaId)}/users`,
             )
           }
         >
@@ -206,7 +206,7 @@ export function UserDetailView({
           type="button"
           onClick={() =>
             navigate(
-              `/bid-year/${bidYear}/area/${encodeURIComponent(areaId)}/users`,
+              `/admin/bid-year/${bidYear}/area/${encodeURIComponent(areaId)}/users`,
             )
           }
         >
@@ -228,7 +228,7 @@ export function UserDetailView({
           type="button"
           onClick={() =>
             navigate(
-              `/bid-year/${bidYear}/area/${encodeURIComponent(areaId)}/users`,
+              `/admin/bid-year/${bidYear}/area/${encodeURIComponent(areaId)}/users`,
             )
           }
         >

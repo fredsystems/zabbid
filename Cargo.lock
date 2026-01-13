@@ -1750,6 +1750,7 @@ dependencies = [
  "serde",
  "thiserror",
  "time",
+ "tracing",
  "zab-bid",
  "zab-bid-audit",
  "zab-bid-domain",
