@@ -26,6 +26,7 @@ import { AreaView } from "./components/AreaView";
 import { BootstrapCompleteness } from "./components/BootstrapCompleteness";
 import { BootstrapOverview } from "./components/BootstrapOverview";
 import { ConnectionStatus } from "./components/ConnectionStatus";
+import { Navigation } from "./components/Navigation";
 import { OperatorManagement } from "./components/OperatorManagement";
 import { UserDetailView } from "./components/UserDetailView";
 import { UserListView } from "./components/UserListView";
@@ -542,52 +543,27 @@ function AuthenticatedAdminApp({
   return (
     <div className="app">
       <header className="app-header">
-        <div>
+        <div className="header-left">
           <h1>ZAB Bidding Operators Interface</h1>
           <ConnectionStatus state={connectionState} />
         </div>
-        <div className="operator-info">
-          {authState.role === "Admin" && (
-            <>
-              <button
-                type="button"
-                onClick={() => navigate("/admin")}
-                className="button-secondary"
-                style={{ marginRight: "1rem" }}
-              >
-                Dashboard
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate("/admin/bootstrap")}
-                className="button-secondary"
-                style={{ marginRight: "1rem" }}
-              >
-                Bootstrap
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate("/admin/operators")}
-                className="button-secondary"
-                style={{ marginRight: "1rem" }}
-              >
-                Operators
-              </button>
-            </>
-          )}
-          <div className="operator-details">
-            <div className="operator-name">{authState.displayName}</div>
-            <div className="operator-meta">
-              {authState.loginName} ({authState.role})
+        <div className="header-right">
+          {authState.role === "Admin" && <Navigation role={authState.role} />}
+          <div className="operator-info">
+            <div className="operator-details">
+              <div className="operator-name">{authState.displayName}</div>
+              <div className="operator-meta">
+                {authState.loginName} ({authState.role})
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={handleLogoutClick}
+              className="button-error"
+            >
+              Logout
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={handleLogoutClick}
-            className="button-error"
-          >
-            Logout
-          </button>
         </div>
       </header>
       <main className="app-main">

@@ -259,7 +259,7 @@ export function UserListView({
 
                 <div className="card-footer">
                   <Link
-                    to={`/bid-year/${bidYear}/area/${encodeURIComponent(
+                    to={`/admin/bid-year/${bidYear}/area/${encodeURIComponent(
                       areaId,
                     )}/user/${encodeURIComponent(user.initials)}`}
                   >

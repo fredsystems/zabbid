@@ -201,6 +201,8 @@ export function BootstrapCompleteness({
         {isAdmin && (
           <CreateBidYearForm
             sessionToken={sessionToken}
+            hasExistingBidYears={completeness.bid_years.length > 0}
+            hasActiveBidYear={completeness.active_bid_year !== null}
             onRefresh={loadCompleteness}
             onError={setError}
           />
@@ -491,12 +493,16 @@ function BidYearItem({
 
 interface CreateBidYearFormProps {
   sessionToken: string | null;
+  hasExistingBidYears: boolean;
+  hasActiveBidYear: boolean;
   onRefresh: () => Promise<void>;
   onError: (error: string) => void;
 }
 
 function CreateBidYearForm({
   sessionToken,
+  hasExistingBidYears,
+  hasActiveBidYear,
   onRefresh,
   onError,
 }: CreateBidYearFormProps) {
@@ -504,6 +510,7 @@ function CreateBidYearForm({
   const [year, setYear] = useState("");
   const [startDate, setStartDate] = useState("");
   const [payPeriods, setPayPeriods] = useState("26");
+  const [expectedAreaCount, setExpectedAreaCount] = useState("");
   const [creating, setCreating] = useState(false);
 
   const handleCreate = async () => {
@@ -526,11 +533,35 @@ function CreateBidYearForm({
       setCreating(true);
       onError("");
       await createBidYear(sessionToken, yearNum, startDate, payPeriodsNum);
+
+      // If this is the first bid year, automatically set it as active
+      if (!hasExistingBidYears || !hasActiveBidYear) {
+        try {
+          await setActiveBidYear(sessionToken, yearNum);
+        } catch (err) {
+          console.warn("Failed to set newly created bid year as active:", err);
+        }
+      }
+
+      // If expected area count is provided, set it
+      if (expectedAreaCount) {
+        const expectedCount = Number.parseInt(expectedAreaCount, 10);
+        if (!Number.isNaN(expectedCount) && expectedCount >= 0) {
+          try {
+            await setExpectedAreaCountApi(sessionToken, expectedCount);
+          } catch (err) {
+            // Don't fail the whole operation if setting expected count fails
+            console.warn("Failed to set expected area count:", err);
+          }
+        }
+      }
+
       await onRefresh();
       setIsOpen(false);
       setYear("");
       setStartDate("");
       setPayPeriods("26");
+      setExpectedAreaCount("");
     } catch (err) {
       if (err instanceof ApiError) {
         onError(`Failed to create bid year: ${err.message}`);
@@ -577,6 +608,8 @@ function CreateBidYearForm({
         <input
           id="new-bid-year-start"
           type="date"
+          min="2000-01-01"
+          max="2100-12-31"
           value={startDate}
           onChange={(e) => setStartDate(e.target.value)}
           disabled={creating}
@@ -594,6 +627,21 @@ function CreateBidYearForm({
           <option value="27">27</option>
         </select>
       </div>
+      <div className="form-row">
+        <label htmlFor="new-bid-year-expected-areas">
+          Expected Area Count (optional):
+        </label>
+        <input
+          id="new-bid-year-expected-areas"
+          type="number"
+          min="0"
+          max="100"
+          value={expectedAreaCount}
+          onChange={(e) => setExpectedAreaCount(e.target.value)}
+          disabled={creating}
+          placeholder="e.g., 5"
+        />
+      </div>
       <div className="form-actions">
         <button
           type="button"
@@ -610,6 +658,7 @@ function CreateBidYearForm({
             setYear("");
             setStartDate("");
             setPayPeriods("26");
+            setExpectedAreaCount("");
           }}
           disabled={creating}
           className="btn-cancel"
@@ -1200,6 +1249,8 @@ function CreateUserForm({
         <input
           id="new-user-cum-natca"
           type="date"
+          min="1960-01-01"
+          max="2100-12-31"
           value={cumulativeNatcaBuDate}
           onChange={(e) => setCumulativeNatcaBuDate(e.target.value)}
           disabled={creating}
@@ -1211,6 +1262,8 @@ function CreateUserForm({
         <input
           id="new-user-natca"
           type="date"
+          min="1960-01-01"
+          max="2100-12-31"
           value={natcaBuDate}
           onChange={(e) => setNatcaBuDate(e.target.value)}
           disabled={creating}
@@ -1222,6 +1275,8 @@ function CreateUserForm({
         <input
           id="new-user-eod"
           type="date"
+          min="1960-01-01"
+          max="2100-12-31"
           value={eodFaaDate}
           onChange={(e) => setEodFaaDate(e.target.value)}
           disabled={creating}
@@ -1233,6 +1288,8 @@ function CreateUserForm({
         <input
           id="new-user-scd"
           type="date"
+          min="1960-01-01"
+          max="2100-12-31"
           value={serviceComputationDate}
           onChange={(e) => setServiceComputationDate(e.target.value)}
           disabled={creating}
