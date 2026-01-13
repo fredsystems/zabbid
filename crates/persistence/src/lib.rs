@@ -556,6 +556,19 @@ impl SqlitePersistence {
         sqlite::count_operators(&self.conn)
     }
 
+    /// Counts the number of active admin operators.
+    ///
+    /// An active admin operator is one where:
+    /// - `role` is 'Admin'
+    /// - `is_disabled` is false
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub fn count_active_admin_operators(&self) -> Result<i64, PersistenceError> {
+        sqlite::count_active_admin_operators(&self.conn)
+    }
+
     /// Verifies a password against a stored hash.
     ///
     /// # Arguments

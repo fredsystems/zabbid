@@ -263,6 +263,48 @@ Agents must NOT:
 - Actors are distinct from domain users whose data is being managed
 - Roles apply only to actors, never to domain users
 
+## Capabilities & Authorization Semantics
+
+Roles define who an operator is.
+Capabilities define what an operator can do right now.
+
+### Rules
+
+- The backend is the sole authority for determining capabilities
+
+- Capabilities may depend on:
+  - operator role
+  - system state
+  - domain invariants (e.g. “last active admin”)
+
+- The frontend must:
+  - render pages consistently
+  - gate actions only (buttons, forms, destructive controls)
+  - rely on capability flags provided by the backend
+
+- The frontend must NOT:
+  - infer permissions from roles
+  - encode domain rules (e.g. “admins can always X”)
+  - assume an action is allowed because a button is visible
+
+### Capability Design
+
+- Capabilities must be expressed as explicit booleans
+  (e.g. can_disable_operator, can_delete_user)
+- Capability payloads must not explain why an action is disallowed
+- Capabilities must be deterministic and testable
+
+### Backend Enforcement
+
+- Capability exposure does NOT replace authorization checks
+- All mutating endpoints must still enforce authorization
+- Capability mismatches must fail safely with authorization errors
+
+### This ensures
+
+- UI and backend cannot drift
+- New permissions can be added without UI rewrites
+
 ### Roles
 
 #### Admin
@@ -402,6 +444,7 @@ Frontend validation is permitted **only** to improve UX.
   - Disable impossible actions
 - The backend remains the **sole authority**
 - All frontend checks must assume they can be bypassed
+- The frontend may disable or hide actions based on capabilities, not roles.
 
 ---
 
@@ -566,7 +609,7 @@ security-sensitive information to unauthenticated clients.
 
 For login and session-establishment endpoints:
 
-- Failures must \*\*ukov be indistinguishable to the client
+- Failures must be indistinguishable to the client
 - The API must NOT reveal whether:
   - the username does not exist
   - the password is incorrect
@@ -595,6 +638,7 @@ Once a user is authenticated and has an active session:
 ### UI Responsibilities
 
 - The UI must treat authentication errors as opaque
+- The UI must not branch on HTTP status codes or error bodies to infer authentication causes
 - The UI must never attempt to infer or display the underlying cause
 - The UI may display a single generic error message only
 

@@ -38,6 +38,8 @@ export function OperatorManagement({ sessionToken }: OperatorManagementProps) {
   const [newLoginName, setNewLoginName] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
   const [newRole, setNewRole] = useState("Bidder");
+  const [newPassword, setNewPassword] = useState("");
+  const [newPasswordConfirmation, setNewPasswordConfirmation] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -73,10 +75,14 @@ export function OperatorManagement({ sessionToken }: OperatorManagementProps) {
         newLoginName,
         newDisplayName,
         newRole,
+        newPassword,
+        newPasswordConfirmation,
       );
       setNewLoginName("");
       setNewDisplayName("");
       setNewRole("Bidder");
+      setNewPassword("");
+      setNewPasswordConfirmation("");
       setShowCreateForm(false);
       await loadOperators();
     } catch (err) {
@@ -216,6 +222,32 @@ export function OperatorManagement({ sessionToken }: OperatorManagementProps) {
                 <option value="Bidder">Bidder</option>
                 <option value="Admin">Admin</option>
               </select>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="new-password">Password</label>
+              <input
+                id="new-password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                disabled={creating}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="new-password-confirmation">
+                Confirm Password
+              </label>
+              <input
+                id="new-password-confirmation"
+                type="password"
+                value={newPasswordConfirmation}
+                onChange={(e) => setNewPasswordConfirmation(e.target.value)}
+                required
+                disabled={creating}
+              />
             </div>
 
             {createError && <div className="error-message">{createError}</div>}

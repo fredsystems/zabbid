@@ -283,6 +283,10 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
             field: String::from("expected_user_count"),
             message: format!("Invalid expected user count: {count}. Must be greater than 0"),
         },
+        DomainError::CannotRemoveLastActiveAdmin => ApiError::DomainRuleViolation {
+            rule: String::from("last_active_admin"),
+            message: String::from("Operation would leave the system without an active admin"),
+        },
     }
 }
 

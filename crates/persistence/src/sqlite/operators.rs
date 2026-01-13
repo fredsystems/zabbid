@@ -559,3 +559,29 @@ pub fn count_operators(conn: &Connection) -> Result<i64, PersistenceError> {
     debug!("Total operators: {}", count);
     Ok(count)
 }
+
+/// Counts the number of active admin operators.
+///
+/// An active admin operator is one where:
+/// - `role` is 'Admin'
+/// - `is_disabled` is false
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub fn count_active_admin_operators(conn: &Connection) -> Result<i64, PersistenceError> {
+    debug!("Counting active admin operators");
+
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM operators WHERE role = 'Admin' AND is_disabled = 0",
+        [],
+        |row| row.get(0),
+    )?;
+
+    debug!("Active admin operators: {}", count);
+    Ok(count)
+}

@@ -549,3 +549,255 @@ fn test_unauthorized_action_does_not_emit_audit_event() {
 
     assert_eq!(count_after, count_before);
 }
+
+// Phase 22.2: Required Active Admin Invariant Tests
+
+#[test]
+fn test_cannot_disable_last_active_admin() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let admin = create_test_admin();
+
+    // Create a single admin operator
+    let admin_op_id = persistence
+        .create_operator("admin1", "Admin One", "password", "Admin")
+        .unwrap();
+    let admin_operator = persistence
+        .get_operator_by_id(admin_op_id)
+        .unwrap()
+        .unwrap();
+
+    let request = DisableOperatorRequest {
+        operator_id: admin_op_id,
+    };
+    let cause = create_test_cause();
+
+    let result = disable_operator(&mut persistence, request, &admin, &admin_operator, cause);
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ApiError::DomainRuleViolation { rule, message } => {
+            assert_eq!(rule, "last_active_admin");
+            assert!(message.contains("without an active admin"));
+        }
+        other => panic!("Expected DomainRuleViolation error, got: {other:?}"),
+    }
+}
+
+#[test]
+fn test_cannot_delete_last_active_admin() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let admin = create_test_admin();
+
+    // Create a single admin operator
+    let admin_op_id = persistence
+        .create_operator("admin1", "Admin One", "password", "Admin")
+        .unwrap();
+    let admin_operator = persistence
+        .get_operator_by_id(admin_op_id)
+        .unwrap()
+        .unwrap();
+
+    let request = DeleteOperatorRequest {
+        operator_id: admin_op_id,
+    };
+    let cause = create_test_cause();
+
+    let result = delete_operator(&mut persistence, request, &admin, &admin_operator, cause);
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ApiError::DomainRuleViolation { rule, message } => {
+            assert_eq!(rule, "last_active_admin");
+            assert!(message.contains("without an active admin"));
+        }
+        other => panic!("Expected DomainRuleViolation error, got: {other:?}"),
+    }
+}
+
+#[test]
+fn test_can_disable_admin_when_another_active_admin_exists() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let admin = create_test_admin();
+
+    // Create two admin operators
+    let admin1_id = persistence
+        .create_operator("admin1", "Admin One", "password", "Admin")
+        .unwrap();
+    let admin1_operator = persistence.get_operator_by_id(admin1_id).unwrap().unwrap();
+
+    let admin2_id = persistence
+        .create_operator("admin2", "Admin Two", "password", "Admin")
+        .unwrap();
+
+    // Disable the second admin (should succeed because admin1 is still active)
+    let request = DisableOperatorRequest {
+        operator_id: admin2_id,
+    };
+    let cause = create_test_cause();
+
+    let result = disable_operator(&mut persistence, request, &admin, &admin1_operator, cause);
+
+    assert!(result.is_ok());
+
+    // Verify the operator was disabled
+    let admin2 = persistence.get_operator_by_id(admin2_id).unwrap().unwrap();
+    assert!(admin2.is_disabled);
+}
+
+#[test]
+fn test_can_delete_admin_when_another_active_admin_exists() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let admin = create_test_admin();
+
+    // Create two admin operators
+    let admin1_id = persistence
+        .create_operator("admin1", "Admin One", "password", "Admin")
+        .unwrap();
+    let admin1_operator = persistence.get_operator_by_id(admin1_id).unwrap().unwrap();
+
+    let admin2_id = persistence
+        .create_operator("admin2", "Admin Two", "password", "Admin")
+        .unwrap();
+
+    // Delete the second admin (should succeed because admin1 is still active)
+    let request = DeleteOperatorRequest {
+        operator_id: admin2_id,
+    };
+    let cause = create_test_cause();
+
+    let result = delete_operator(&mut persistence, request, &admin, &admin1_operator, cause);
+
+    assert!(result.is_ok());
+
+    // Verify the operator was deleted
+    let admin2 = persistence.get_operator_by_id(admin2_id).unwrap();
+    assert!(admin2.is_none());
+}
+
+#[test]
+fn test_disabled_admins_do_not_count_toward_invariant() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let admin = create_test_admin();
+
+    // Create two admin operators
+    let admin1_id = persistence
+        .create_operator("admin1", "Admin One", "password", "Admin")
+        .unwrap();
+    let admin1_operator = persistence.get_operator_by_id(admin1_id).unwrap().unwrap();
+
+    let admin2_id = persistence
+        .create_operator("admin2", "Admin Two", "password", "Admin")
+        .unwrap();
+
+    // Disable the second admin
+    persistence.disable_operator(admin2_id).unwrap();
+
+    // Now try to disable the first admin (should fail because admin2 is disabled)
+    let request = DisableOperatorRequest {
+        operator_id: admin1_id,
+    };
+    let cause = create_test_cause();
+
+    let result = disable_operator(&mut persistence, request, &admin, &admin1_operator, cause);
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ApiError::DomainRuleViolation { rule, .. } => {
+            assert_eq!(rule, "last_active_admin");
+        }
+        other => panic!("Expected DomainRuleViolation error, got: {other:?}"),
+    }
+}
+
+#[test]
+fn test_bidder_operators_do_not_satisfy_requirement() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let admin = create_test_admin();
+
+    // Create one admin and one bidder
+    let admin_id = persistence
+        .create_operator("admin1", "Admin One", "password", "Admin")
+        .unwrap();
+    let admin_operator = persistence.get_operator_by_id(admin_id).unwrap().unwrap();
+
+    let _bidder_id = persistence
+        .create_operator("bidder1", "Bidder One", "password", "Bidder")
+        .unwrap();
+
+    // Try to disable the admin (should fail even though bidder exists)
+    let request = DisableOperatorRequest {
+        operator_id: admin_id,
+    };
+    let cause = create_test_cause();
+
+    let result = disable_operator(&mut persistence, request, &admin, &admin_operator, cause);
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ApiError::DomainRuleViolation { rule, .. } => {
+            assert_eq!(rule, "last_active_admin");
+        }
+        other => panic!("Expected DomainRuleViolation error, got: {other:?}"),
+    }
+}
+
+#[test]
+fn test_can_disable_already_disabled_admin_without_checking_invariant() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let admin = create_test_admin();
+
+    // Create a single admin operator
+    let admin_id = persistence
+        .create_operator("admin1", "Admin One", "password", "Admin")
+        .unwrap();
+    let admin_operator = persistence.get_operator_by_id(admin_id).unwrap().unwrap();
+
+    // Disable the admin directly in persistence (bypassing the invariant check)
+    persistence.disable_operator(admin_id).unwrap();
+
+    // Verify they're disabled
+    let admin_after_disable = persistence.get_operator_by_id(admin_id).unwrap().unwrap();
+    assert!(admin_after_disable.is_disabled);
+
+    // Now try to disable again through the API (should succeed because they're already disabled)
+    let request = DisableOperatorRequest {
+        operator_id: admin_id,
+    };
+    let cause = create_test_cause();
+
+    let result = disable_operator(&mut persistence, request, &admin, &admin_operator, cause);
+
+    // This should succeed because the invariant only checks active admins
+    // Since the operator is already disabled, they don't count as an active admin
+    // So the check passes (0 active admins being removed, count can be 0)
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_can_delete_disabled_admin_when_no_active_admins() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let admin = create_test_admin();
+
+    // Create two admin operators
+    let admin1_id = persistence
+        .create_operator("admin1", "Admin One", "password", "Admin")
+        .unwrap();
+    let admin1_operator = persistence.get_operator_by_id(admin1_id).unwrap().unwrap();
+
+    let admin2_id = persistence
+        .create_operator("admin2", "Admin Two", "password", "Admin")
+        .unwrap();
+
+    // Disable admin2
+    persistence.disable_operator(admin2_id).unwrap();
+
+    // Delete disabled admin2 (should succeed even though only 1 active admin remains)
+    let request = DeleteOperatorRequest {
+        operator_id: admin2_id,
+    };
+    let cause = create_test_cause();
+
+    let result = delete_operator(&mut persistence, request, &admin, &admin1_operator, cause);
+
+    assert!(result.is_ok());
+}

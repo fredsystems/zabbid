@@ -1233,6 +1233,24 @@ pub fn disable_operator(
             }
         })?;
 
+    // Enforce invariant: cannot disable the last active admin
+    // Only check if the target is an active admin
+    if target_operator.role == "Admin" && !target_operator.is_disabled {
+        let active_admin_count: i64 =
+            persistence
+                .count_active_admin_operators()
+                .map_err(|e| ApiError::Internal {
+                    message: format!("Failed to count active admins: {e}"),
+                })?;
+
+        if active_admin_count <= 1 {
+            return Err(ApiError::DomainRuleViolation {
+                rule: String::from("last_active_admin"),
+                message: String::from("Operation would leave the system without an active admin"),
+            });
+        }
+    }
+
     // Perform the disable operation
     persistence
         .disable_operator(request.operator_id)
@@ -1454,6 +1472,24 @@ pub fn delete_operator(
                 message: format!("Operator with ID {operator_id} not found"),
             }
         })?;
+
+    // Enforce invariant: cannot delete the last active admin
+    // Only check if the target is an active admin
+    if target_operator.role == "Admin" && !target_operator.is_disabled {
+        let active_admin_count: i64 =
+            persistence
+                .count_active_admin_operators()
+                .map_err(|e| ApiError::Internal {
+                    message: format!("Failed to count active admins: {e}"),
+                })?;
+
+        if active_admin_count <= 1 {
+            return Err(ApiError::DomainRuleViolation {
+                rule: String::from("last_active_admin"),
+                message: String::from("Operation would leave the system without an active admin"),
+            });
+        }
+    }
 
     // Perform the delete operation (will fail if operator is referenced)
     persistence
