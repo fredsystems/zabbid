@@ -70,6 +70,50 @@ All changes must advance these goals. If unsure, stop and ask.
 - Before completing a phase, or any work, ensure git add has been run on all of the modified files, and `cargo xtask ci` and `pre-commit run --all-files` pass without errors.
 - For casting primitive types that don't fit within each other, use `num-traits`.
 
+## Code Semantics & Readability
+
+### Boolean Usage Guidelines
+
+Booleans are permitted and encouraged when they represent:
+
+- Simple, independent flags
+- Obvious yes/no state
+- Local implementation details
+- Small structs with 1–2 boolean fields
+
+However, when a group of booleans collectively represents:
+
+- Capabilities
+- Permissions
+- States in a workflow
+- Policy decisions
+- Conceptual sets of allowed actions
+
+agents should prefer a **semantic representation** internally, such as:
+
+- Enums
+- Enum sets
+- Structs wrapping meaningful types
+
+This improves readability, reasoning, and maintainability.
+
+### Internal vs External Representation
+
+It is acceptable — and often desirable — to:
+
+- Use semantic types (e.g. enums) internally
+- Expose simplified booleans at API boundaries for ergonomics
+
+Example pattern:
+
+- **Internal**: enum-based capability or state model
+- **API layer**: serialized boolean fields derived from that model
+
+Agents should **not** suppress clippy warnings about excessive booleans
+unless the boolean representation is clearly the most readable and appropriate choice.
+
+If unsure, prefer clarity over mechanical consistency and ask.
+
 ## Workspace structure
 
 - The workspace may be expanded with new member crates when doing so meaningfully reduces complexity or clarifies responsibility
