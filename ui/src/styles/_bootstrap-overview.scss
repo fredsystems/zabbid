@@ -1,0 +1,237 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Bootstrap Overview styles.
+ * Mobile-first card-based layout for bid years.
+ */
+
+@use "variables" as *;
+
+.bootstrap-overview {
+  padding: $spacing-md;
+  max-width: 1200px;
+  margin: 0 auto;
+
+  @media (min-width: 768px) {
+    padding: $spacing-xl;
+  }
+
+  h2 {
+    font-size: $font-size-2xl;
+    margin-bottom: $spacing-lg;
+    color: $color-text-primary;
+  }
+
+  .info-message,
+  .warning-message {
+    padding: $spacing-md;
+    border-radius: $radius-md;
+    margin-bottom: $spacing-lg;
+    line-height: 1.5;
+  }
+
+  .info-message {
+    background: rgba($color-info, 0.1);
+    border: 2px solid $color-info;
+    color: $color-text-primary;
+  }
+
+  .warning-message {
+    background: rgba($color-warning, 0.1);
+    border: 2px solid $color-warning;
+    color: $color-text-primary;
+
+    strong {
+      color: $color-warning;
+    }
+  }
+
+  .active-bid-year-notice {
+    padding: $spacing-md;
+    background: rgba($color-success, 0.1);
+    border: 2px solid $color-success;
+    border-radius: $radius-md;
+    margin-bottom: $spacing-lg;
+
+    p {
+      margin: 0;
+      color: $color-text-primary;
+    }
+
+    strong {
+      color: $color-success;
+    }
+  }
+
+  .bid-years-list {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-md;
+    margin-bottom: $spacing-xl;
+
+    @media (min-width: 768px) {
+      gap: $spacing-lg;
+    }
+  }
+
+  .bid-year-card {
+    background: $color-bg-surface;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+    transition: all $transition-base;
+    box-shadow: $shadow-sm;
+
+    @media (min-width: 768px) {
+      padding: $spacing-lg;
+    }
+
+    &:hover {
+      box-shadow: $shadow-md;
+      border-color: $color-accent-primary;
+    }
+
+    &.active {
+      border-color: $color-success;
+      background: linear-gradient(
+        135deg,
+        $color-bg-surface 0%,
+        rgba($color-success, 0.05) 100%
+      );
+    }
+
+    .card-header {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-sm;
+      margin-bottom: $spacing-md;
+      padding-bottom: $spacing-md;
+      border-bottom: 1px solid $color-border;
+
+      @media (min-width: 600px) {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      h3 {
+        margin: 0;
+        font-size: $font-size-xl;
+        color: $color-text-primary;
+      }
+    }
+
+    .card-body {
+      margin-bottom: $spacing-md;
+
+      dl {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: $spacing-sm $spacing-md;
+        margin: 0;
+
+        @media (min-width: 600px) {
+          grid-template-columns: repeat(2, auto 1fr);
+        }
+
+        dt {
+          font-weight: 600;
+          color: $color-text-muted;
+          font-size: $font-size-sm;
+        }
+
+        dd {
+          margin: 0;
+          color: $color-text-primary;
+          font-size: $font-size-base;
+        }
+      }
+    }
+
+    .card-footer {
+      display: flex;
+      justify-content: flex-end;
+      padding-top: $spacing-md;
+      border-top: 1px solid $color-border;
+
+      .btn-view {
+        display: inline-flex;
+        align-items: center;
+        padding: $spacing-sm $spacing-lg;
+        background: $color-accent-primary;
+        color: $color-bg-base;
+        text-decoration: none;
+        border-radius: $radius-sm;
+        font-weight: 600;
+        transition: all $transition-base;
+        box-shadow: $shadow-sm;
+
+        &:hover {
+          background: $color-accent-secondary;
+          box-shadow: $shadow-md;
+        }
+      }
+    }
+  }
+
+  .bootstrap-summary {
+    background: $color-bg-surface;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+
+    @media (min-width: 768px) {
+      padding: $spacing-lg;
+    }
+
+    h3 {
+      margin: 0 0 $spacing-md 0;
+      font-size: $font-size-lg;
+      color: $color-text-primary;
+    }
+
+    ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+
+      li {
+        padding: $spacing-sm 0;
+        color: $color-text-primary;
+        font-size: $font-size-base;
+        border-bottom: 1px solid $color-border-subtle;
+
+        &:last-child {
+          border-bottom: none;
+        }
+      }
+    }
+  }
+
+  .loading,
+  .error {
+    text-align: center;
+    padding: $spacing-xl;
+    color: $color-text-muted;
+    font-size: $font-size-lg;
+  }
+
+  .error {
+    color: $color-error;
+    background: rgba($color-error, 0.1);
+    border: 2px solid $color-error;
+    border-radius: $radius-md;
+
+    h2 {
+      color: $color-error;
+      margin-top: 0;
+    }
+
+    p {
+      color: $color-text-primary;
+    }
+  }
+}

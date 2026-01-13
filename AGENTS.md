@@ -555,6 +555,27 @@ Guide users with clear empty state messages:
 
 These patterns create a consistent, readable, and usable interface across all admin workflows.
 
+## Authentication & Security Error Handling
+
+Authentication is a security boundary.
+
+Agents must ensure that authentication failures do **not** leak security-sensitive
+information to unauthenticated clients.
+
+Specifically:
+
+- Login failures must not distinguish between:
+  - unknown usernames
+  - incorrect passwords
+  - disabled operators
+- All authentication failures must return a generic error (e.g. “invalid credentials”)
+- Internal causes may be logged or recorded for diagnostics, but must not be exposed
+  via API responses or UI messaging
+
+Authorization failures **after authentication** may be explicit.
+
+This rule applies only to authentication and session-establishment endpoints.
+
 ## When to Stop
 
 If any of the following are true:

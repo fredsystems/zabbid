@@ -171,7 +171,7 @@ export function OperatorManagement({ sessionToken }: OperatorManagementProps) {
         <button
           type="button"
           onClick={() => setShowCreateForm(!showCreateForm)}
-          className="button-success"
+          className="button-primary"
         >
           {showCreateForm ? "Cancel" : "Create Operator"}
         </button>
@@ -224,7 +224,7 @@ export function OperatorManagement({ sessionToken }: OperatorManagementProps) {
               <button
                 type="submit"
                 disabled={creating}
-                className="button-success"
+                className="button-primary"
               >
                 {creating ? "Creating..." : "Create"}
               </button>
@@ -232,7 +232,7 @@ export function OperatorManagement({ sessionToken }: OperatorManagementProps) {
                 type="button"
                 onClick={() => setShowCreateForm(false)}
                 disabled={creating}
-                className="button-secondary"
+                className="button-cancel"
               >
                 Cancel
               </button>

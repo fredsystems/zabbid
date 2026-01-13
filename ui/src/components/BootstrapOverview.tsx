@@ -175,47 +175,46 @@ export function BootstrapOverview({
       )}
 
       {bidYears.length > 0 && (
-        <div className="responsive-table-wrapper">
-          <table className="bid-years-table">
-            <thead>
-              <tr>
-                <th>Year</th>
-                <th>Start Date</th>
-                <th>End Date</th>
-                <th>Pay Periods</th>
-                <th>Areas</th>
-                <th>Total Users</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bidYears.map((year) => {
-                const isActive = activeBidYear?.year === year.year;
-                return (
-                  <tr key={year.year} className={isActive ? "active-row" : ""}>
-                    <td>{year.year}</td>
-                    <td>{year.start_date}</td>
-                    <td>{year.end_date}</td>
-                    <td>{year.num_pay_periods}</td>
-                    <td>{year.area_count}</td>
-                    <td>{year.total_user_count}</td>
-                    <td>
-                      {isActive && <span className="badge active">Active</span>}
-                      {!isActive && (
-                        <span className="badge inactive">Inactive</span>
-                      )}
-                    </td>
-                    <td>
-                      <Link to={`/bid-year/${year.year}/areas`}>
-                        View Areas
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="bid-years-list">
+          {bidYears.map((year) => {
+            const isActive = activeBidYear?.year === year.year;
+            return (
+              <div
+                key={year.year}
+                className={`bid-year-card ${isActive ? "active" : ""}`}
+              >
+                <div className="card-header">
+                  <h3>Bid Year {year.year}</h3>
+                  {isActive && <span className="badge active">Active</span>}
+                  {!isActive && (
+                    <span className="badge inactive">Inactive</span>
+                  )}
+                </div>
+                <div className="card-body">
+                  <dl>
+                    <dt>Start Date:</dt>
+                    <dd>{year.start_date}</dd>
+                    <dt>End Date:</dt>
+                    <dd>{year.end_date}</dd>
+                    <dt>Pay Periods:</dt>
+                    <dd>{year.num_pay_periods}</dd>
+                    <dt>Areas:</dt>
+                    <dd>{year.area_count}</dd>
+                    <dt>Total Users:</dt>
+                    <dd>{year.total_user_count}</dd>
+                  </dl>
+                </div>
+                <div className="card-footer">
+                  <Link
+                    to={`/admin/bid-year/${year.year}/areas`}
+                    className="btn-view"
+                  >
+                    View Areas
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

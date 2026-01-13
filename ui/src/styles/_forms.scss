@@ -16,7 +16,7 @@
 
 button {
   background-color: $color-accent-primary;
-  color: $color-text-primary;
+  color: $color-bg-base; // Dark text for readability on colored backgrounds
   border: none;
   padding: $spacing-sm $spacing-md;
   border-radius: $radius-sm;
@@ -30,9 +30,11 @@ button {
   align-items: center;
   justify-content: center;
   gap: $spacing-xs;
+  box-shadow: $shadow-sm;
 
   &:hover:not(:disabled) {
     background-color: $mocha-sapphire;
+    box-shadow: $shadow-md;
   }
 
   &:active:not(:disabled) {
@@ -43,13 +45,14 @@ button {
     background-color: $color-disabled-bg;
     color: $color-disabled-text;
     cursor: not-allowed;
-    opacity: 0.6;
+    opacity: 0.5;
   }
 }
 
 // Button variants
 .button-success {
   background-color: $color-success;
+  color: $color-bg-base; // Dark text for readability
 
   &:hover:not(:disabled) {
     background-color: $mocha-teal;
@@ -59,6 +62,7 @@ button {
 .button-error,
 .button-danger {
   background-color: $color-error;
+  color: $color-bg-base; // Dark text for readability
 
   &:hover:not(:disabled) {
     background-color: $mocha-maroon;
@@ -80,6 +84,26 @@ button {
 
   &:hover:not(:disabled) {
     background-color: $color-bg-surface-overlay;
+  }
+}
+
+.button-cancel {
+  background-color: transparent;
+  color: $color-text-secondary;
+  border: 2px solid $color-border;
+
+  &:hover:not(:disabled) {
+    background-color: $color-bg-surface;
+    border-color: $color-text-secondary;
+  }
+}
+
+.button-primary {
+  background-color: $color-accent-primary;
+  color: $color-bg-base;
+
+  &:hover:not(:disabled) {
+    background-color: $mocha-sapphire;
   }
 }
 

@@ -56,6 +56,18 @@ body {
     padding: $spacing-md $spacing-xl;
   }
 
+  .header-left {
+    flex: 1;
+    min-width: 200px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: $spacing-md;
+    flex-wrap: wrap;
+  }
+
   h1 {
     margin: 0;
     font-size: $font-size-xl;
