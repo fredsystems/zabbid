@@ -33,7 +33,7 @@ button {
   box-shadow: $shadow-sm;
 
   &:hover:not(:disabled) {
-    background-color: $mocha-sapphire;
+    background-color: $color-accent-secondary;
     box-shadow: $shadow-md;
   }
 

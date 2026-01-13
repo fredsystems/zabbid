@@ -15,6 +15,7 @@ rand.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 time.workspace = true
+tracing.workspace = true
 zab-bid = { path = "../core" }
 zab-bid-audit = { path = "../audit" }
 zab-bid-domain = { path = "../domain" }

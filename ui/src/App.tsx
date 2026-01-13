@@ -468,7 +468,12 @@ function LoginPage({ onLogin }: LoginPageProps) {
       );
     } catch (err) {
       if (err instanceof api.ApiError) {
-        setError(err.message);
+        // Always show generic message for authentication errors
+        if (err.status === 401) {
+          setError("Invalid username or password");
+        } else {
+          setError(err.message);
+        }
       } else if (err instanceof api.NetworkError) {
         setError(err.message);
       } else {

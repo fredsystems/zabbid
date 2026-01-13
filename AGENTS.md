@@ -557,24 +557,48 @@ These patterns create a consistent, readable, and usable interface across all ad
 
 ## Authentication & Security Error Handling
 
-Authentication is a security boundary.
+Authentication is a **security boundary**, not a usability feature.
 
-Agents must ensure that authentication failures do **not** leak security-sensitive
-information to unauthenticated clients.
+Agents must ensure that authentication failures do **not** leak
+security-sensitive information to unauthenticated clients.
 
-Specifically:
+### Authentication Failures (Pre-Session)
 
-- Login failures must not distinguish between:
-  - unknown usernames
-  - incorrect passwords
-  - disabled operators
-- All authentication failures must return a generic error (e.g. “invalid credentials”)
-- Internal causes may be logged or recorded for diagnostics, but must not be exposed
-  via API responses or UI messaging
+For login and session-establishment endpoints:
 
-Authorization failures **after authentication** may be explicit.
+- Failures must \*\*ukov be indistinguishable to the client
+- The API must NOT reveal whether:
+  - the username does not exist
+  - the password is incorrect
+  - the operator account is disabled
+  - the operator lacks required roles
+- All authentication failures must return a single, generic error message
+  (e.g. “invalid credentials”)
 
-This rule applies only to authentication and session-establishment endpoints.
+Internal causes:
+
+- MAY be logged for diagnostics
+- MAY be recorded in audit or security logs
+- MUST NOT be exposed via API responses or UI messaging
+
+### Authorization Failures (Post-Authentication)
+
+Once a user is authenticated and has an active session:
+
+- Authorization failures MAY be explicit
+- It is acceptable to return errors such as:
+  - “insufficient permissions”
+  - “admin role required”
+- These errors must still avoid leaking internal state details
+  (e.g. counts, existence of other operators)
+
+### UI Responsibilities
+
+- The UI must treat authentication errors as opaque
+- The UI must never attempt to infer or display the underlying cause
+- The UI may display a single generic error message only
+
+This rule applies **only** to authentication and session-establishment flows.
 
 ## When to Stop
 

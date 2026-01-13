@@ -141,18 +141,18 @@
     justify-content: center;
     text-decoration: none;
     background-color: $color-accent-primary;
-    color: $color-text-primary;
+    color: $color-bg-base; // Dark text for better contrast on blue background
     border-radius: $radius-sm;
     font-weight: 500;
     transition: background-color $transition-base;
 
     &:hover {
-      background-color: $mocha-sapphire;
+      background-color: $color-accent-secondary;
       text-decoration: none;
     }
 
     &:visited {
-      color: $color-text-primary;
+      color: $color-bg-base; // Dark text for visited links too
     }
   }
 
