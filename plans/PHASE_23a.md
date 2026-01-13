@@ -39,6 +39,7 @@ Finish the identity model so all internal references use stable numeric IDs, whi
   - domain
   - API
   - server
+- Operator-management audit scoping is addressed in Phase 23B
 
 ---
 
@@ -46,5 +47,5 @@ Finish the identity model so all internal references use stable numeric IDs, whi
 
 - No mutation uses area code or year as identity
 - All read APIs expose IDs plus display fields
-- All tests pass
+- All tests pass once API scoping is reconciled
 - No UI touched
