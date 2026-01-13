@@ -9,6 +9,35 @@
  */
 
 /**
+ * Global capabilities for an authenticated operator.
+ */
+export interface GlobalCapabilities {
+  can_create_operator: boolean;
+  can_create_bid_year: boolean;
+  can_create_area: boolean;
+  can_create_user: boolean;
+  can_modify_users: boolean;
+  can_bootstrap: boolean;
+}
+
+/**
+ * Target-specific capabilities for an operator instance.
+ */
+export interface OperatorCapabilities {
+  can_disable: boolean;
+  can_delete: boolean;
+}
+
+/**
+ * Target-specific capabilities for a user instance.
+ */
+export interface UserCapabilities {
+  can_delete: boolean;
+  can_move_area: boolean;
+  can_edit_seniority: boolean;
+}
+
+/**
  * Bid year information with canonical metadata and aggregate counts.
  */
 export interface BidYearInfo {
@@ -79,6 +108,8 @@ export interface UserInfo {
   is_exhausted: boolean;
   /** Whether leave balance is overdrawn */
   is_overdrawn: boolean;
+  /** Target-specific capabilities for this user instance */
+  capabilities: UserCapabilities;
 }
 
 /**
@@ -379,6 +410,44 @@ export interface PreviewCsvUsersResponse {
  * Status of a single CSV row import.
  */
 export type CsvImportRowStatus = "success" | "failed";
+
+/**
+ * Information about an operator.
+ */
+export interface OperatorInfo {
+  /** The operator's internal identifier */
+  operator_id: number;
+  /** The operator's login name */
+  login_name: string;
+  /** The operator's display name */
+  display_name: string;
+  /** The operator's role (Admin or Bidder) */
+  role: string;
+  /** Whether the operator is disabled */
+  is_disabled: boolean;
+  /** When the operator was created */
+  created_at: string;
+  /** When the operator last logged in */
+  last_login_at: string | null;
+  /** Target-specific capabilities for this operator instance */
+  capabilities: OperatorCapabilities;
+}
+
+/**
+ * Response for the whoami endpoint.
+ */
+export interface WhoAmIResponse {
+  /** The operator's login name */
+  login_name: string;
+  /** The operator's display name */
+  display_name: string;
+  /** The operator's role */
+  role: string;
+  /** Whether the operator is disabled */
+  is_disabled: boolean;
+  /** Global capabilities for this operator */
+  capabilities: GlobalCapabilities;
+}
 
 /**
  * Result of a single row import attempt.

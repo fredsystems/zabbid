@@ -240,6 +240,8 @@ struct UserInfoResponse {
     is_exhausted: bool,
     /// Whether leave balance is overdrawn.
     is_overdrawn: bool,
+    /// Target-specific capabilities for this user instance.
+    capabilities: zab_bid_api::UserCapabilities,
 }
 
 /// Query parameters for leave availability.
@@ -784,6 +786,7 @@ async fn handle_list_users(
             remaining_days: u.remaining_days,
             is_exhausted: u.is_exhausted,
             is_overdrawn: u.is_overdrawn,
+            capabilities: u.capabilities,
         })
         .collect();
 

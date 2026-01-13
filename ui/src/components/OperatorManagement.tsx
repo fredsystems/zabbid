@@ -13,23 +13,18 @@
 import { useCallback, useEffect, useState } from "react";
 import * as api from "../api";
 import { ApiError } from "../api";
-
-interface Operator {
-  operator_id: number;
-  login_name: string;
-  display_name: string;
-  role: string;
-  is_disabled: boolean;
-  created_at: string;
-  last_login_at: string | null;
-}
+import type { GlobalCapabilities, OperatorInfo } from "../types";
 
 interface OperatorManagementProps {
   sessionToken: string;
+  capabilities: GlobalCapabilities | null;
 }
 
-export function OperatorManagement({ sessionToken }: OperatorManagementProps) {
-  const [operators, setOperators] = useState<Operator[]>([]);
+export function OperatorManagement({
+  sessionToken,
+  capabilities,
+}: OperatorManagementProps) {
+  const [operators, setOperators] = useState<OperatorInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -42,6 +37,8 @@ export function OperatorManagement({ sessionToken }: OperatorManagementProps) {
   const [newPasswordConfirmation, setNewPasswordConfirmation] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+
+  const canCreateOperator = capabilities?.can_create_operator ?? false;
 
   const loadOperators = useCallback(async () => {
     try {
@@ -178,6 +175,8 @@ export function OperatorManagement({ sessionToken }: OperatorManagementProps) {
           type="button"
           onClick={() => setShowCreateForm(!showCreateForm)}
           className="button-primary"
+          disabled={!canCreateOperator}
+          title={!canCreateOperator ? "Action not permitted" : ""}
         >
           {showCreateForm ? "Cancel" : "Create Operator"}
         </button>
@@ -324,6 +323,12 @@ export function OperatorManagement({ sessionToken }: OperatorManagementProps) {
                     type="button"
                     onClick={() => handleEnable(operator.operator_id)}
                     className="button-success"
+                    disabled={!operator.capabilities.can_disable}
+                    title={
+                      !operator.capabilities.can_disable
+                        ? "Action not permitted"
+                        : ""
+                    }
                   >
                     Enable
                   </button>
@@ -332,6 +337,12 @@ export function OperatorManagement({ sessionToken }: OperatorManagementProps) {
                     type="button"
                     onClick={() => handleDisable(operator.operator_id)}
                     className="button-warning"
+                    disabled={!operator.capabilities.can_disable}
+                    title={
+                      !operator.capabilities.can_disable
+                        ? "Action not permitted"
+                        : ""
+                    }
                   >
                     Disable
                   </button>
@@ -342,6 +353,12 @@ export function OperatorManagement({ sessionToken }: OperatorManagementProps) {
                     handleDelete(operator.operator_id, operator.login_name)
                   }
                   className="button-error"
+                  disabled={!operator.capabilities.can_delete}
+                  title={
+                    !operator.capabilities.can_delete
+                      ? "Action not permitted"
+                      : ""
+                  }
                 >
                   Delete
                 </button>

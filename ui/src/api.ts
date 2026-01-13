@@ -19,11 +19,13 @@ import type {
   ListAreasResponse,
   ListBidYearsResponse,
   ListUsersResponse,
+  OperatorInfo,
   PreviewCsvUsersResponse,
   SetActiveBidYearResponse,
   SetExpectedAreaCountResponse,
   SetExpectedUserCountResponse,
   UpdateUserResponse,
+  WhoAmIResponse,
 } from "./types";
 
 const API_BASE = "/api";
@@ -128,13 +130,18 @@ export async function listAreas(bidYear: number): Promise<ListAreasResponse> {
  * List all users in a specific area for a bid year.
  */
 export async function listUsers(
+  sessionToken: string,
   bidYear: number,
   area: string,
 ): Promise<ListUsersResponse> {
   const url = `${API_BASE}/users?bid_year=${encodeURIComponent(
     bidYear,
   )}&area=${encodeURIComponent(area)}`;
-  return fetchJson<ListUsersResponse>(url);
+  return fetchJson<ListUsersResponse>(url, {
+    headers: {
+      Authorization: `Bearer ${sessionToken}`,
+    },
+  });
 }
 
 /**
@@ -247,12 +254,7 @@ export async function logout(sessionToken: string): Promise<void> {
 /**
  * Get current operator information.
  */
-export async function whoami(sessionToken: string): Promise<{
-  login_name: string;
-  display_name: string;
-  role: string;
-  is_disabled: boolean;
-}> {
+export async function whoami(sessionToken: string): Promise<WhoAmIResponse> {
   return fetchJson(`${API_BASE}/auth/me`, {
     headers: {
       Authorization: `Bearer ${sessionToken}`,
@@ -264,15 +266,7 @@ export async function whoami(sessionToken: string): Promise<{
  * List all operators (admin only).
  */
 export async function listOperators(sessionToken: string): Promise<{
-  operators: Array<{
-    operator_id: number;
-    login_name: string;
-    display_name: string;
-    role: string;
-    is_disabled: boolean;
-    created_at: string;
-    last_login_at: string | null;
-  }>;
+  operators: OperatorInfo[];
 }> {
   return fetchJson(`${API_BASE}/operators`, {
     headers: {
