@@ -30,7 +30,7 @@ import { Navigation } from "./components/Navigation";
 import { OperatorManagement } from "./components/OperatorManagement";
 import { UserDetailView } from "./components/UserDetailView";
 import { UserListView } from "./components/UserListView";
-import type { LiveEvent } from "./types";
+import type { GlobalCapabilities, LiveEvent } from "./types";
 import { useLiveEvents } from "./useLiveEvents";
 import "./styles/main.scss";
 
@@ -40,6 +40,7 @@ interface AuthState {
   loginName: string | null;
   displayName: string | null;
   role: string | null;
+  capabilities: GlobalCapabilities | null;
 }
 
 interface BootstrapState {
@@ -62,6 +63,7 @@ function AppRoutes() {
     loginName: null,
     displayName: null,
     role: null,
+    capabilities: null,
   });
 
   const [bootstrapState, setBootstrapState] = useState<BootstrapState>({
@@ -82,15 +84,16 @@ function AppRoutes() {
         const storedRole = localStorage.getItem("role");
 
         if (storedToken && storedLoginName && storedDisplayName && storedRole) {
-          // Verify session is still valid
+          // Verify session is still valid and fetch capabilities
           try {
-            await api.whoami(storedToken);
+            const whoamiResponse = await api.whoami(storedToken);
             setAuthState({
               isAuthenticated: true,
               sessionToken: storedToken,
               loginName: storedLoginName,
               displayName: storedDisplayName,
               role: storedRole,
+              capabilities: whoamiResponse.capabilities,
             });
           } catch {
             // Session invalid, clear storage
@@ -118,7 +121,7 @@ function AppRoutes() {
   }, []);
 
   const handleLogin = useCallback(
-    (
+    async (
       sessionToken: string,
       loginName: string,
       displayName: string,
@@ -128,13 +131,29 @@ function AppRoutes() {
       localStorage.setItem("login_name", loginName);
       localStorage.setItem("display_name", displayName);
       localStorage.setItem("role", role);
-      setAuthState({
-        isAuthenticated: true,
-        sessionToken,
-        loginName,
-        displayName,
-        role,
-      });
+
+      // Fetch capabilities
+      try {
+        const whoamiResponse = await api.whoami(sessionToken);
+        setAuthState({
+          isAuthenticated: true,
+          sessionToken,
+          loginName,
+          displayName,
+          role,
+          capabilities: whoamiResponse.capabilities,
+        });
+      } catch {
+        // If we can't fetch capabilities, set them to null
+        setAuthState({
+          isAuthenticated: true,
+          sessionToken,
+          loginName,
+          displayName,
+          role,
+          capabilities: null,
+        });
+      }
     },
     [],
   );
@@ -157,6 +176,7 @@ function AppRoutes() {
       loginName: null,
       displayName: null,
       role: null,
+      capabilities: null,
     });
   }, [authState.sessionToken]);
 
@@ -553,7 +573,7 @@ function AuthenticatedAdminApp({
           <ConnectionStatus state={connectionState} />
         </div>
         <div className="header-right">
-          {authState.role === "Admin" && <Navigation role={authState.role} />}
+          <Navigation capabilities={authState.capabilities} />
           <div className="operator-info">
             <div className="operator-details">
               <div className="operator-name">{authState.displayName}</div>
@@ -587,7 +607,7 @@ function AuthenticatedAdminApp({
             element={
               <BootstrapCompleteness
                 sessionToken={authState.sessionToken}
-                role={authState.role}
+                capabilities={authState.capabilities}
                 connectionState={connectionState}
                 lastEvent={lastEvent}
               />
@@ -606,6 +626,7 @@ function AuthenticatedAdminApp({
             path="bid-year/:year/area/:areaId/users"
             element={
               <UserListView
+                sessionToken={authState.sessionToken}
                 connectionState={connectionState}
                 lastEvent={lastEvent}
               />
@@ -624,7 +645,10 @@ function AuthenticatedAdminApp({
             path="operators"
             element={
               authState.role === "Admin" && authState.sessionToken ? (
-                <OperatorManagement sessionToken={authState.sessionToken} />
+                <OperatorManagement
+                  sessionToken={authState.sessionToken}
+                  capabilities={authState.capabilities}
+                />
               ) : (
                 <Navigate to="/admin" replace />
               )

@@ -23,11 +23,13 @@ import { listUsers, NetworkError } from "../api";
 import type { ConnectionState, LiveEvent, UserInfo } from "../types";
 
 interface UserListViewProps {
+  sessionToken: string | null;
   connectionState: ConnectionState;
   lastEvent: LiveEvent | null;
 }
 
 export function UserListView({
+  sessionToken,
   connectionState,
   lastEvent,
 }: UserListViewProps) {
@@ -41,8 +43,12 @@ export function UserListView({
   const bidYear = year ? parseInt(year, 10) : null;
 
   useEffect(() => {
-    if (!bidYear || !areaId) {
-      setError("Invalid bid year or area");
+    if (!bidYear || !areaId || !sessionToken) {
+      if (!sessionToken) {
+        setError("Not authenticated");
+      } else {
+        setError("Invalid bid year or area");
+      }
       setLoading(false);
       return;
     }
@@ -51,7 +57,7 @@ export function UserListView({
       try {
         setLoading(true);
         setError(null);
-        const response = await listUsers(bidYear, areaId);
+        const response = await listUsers(sessionToken, bidYear, areaId);
         setUsers(response.users);
       } catch (err) {
         if (err instanceof NetworkError) {
@@ -67,7 +73,7 @@ export function UserListView({
     };
 
     void loadUsers();
-  }, [bidYear, areaId]);
+  }, [bidYear, areaId, sessionToken]);
 
   // Auto-refresh when connection is restored
   useEffect(() => {
@@ -81,13 +87,13 @@ export function UserListView({
     const wasNotConnected = previousConnectionState.current !== "connected";
     const nowConnected = connectionState === "connected";
 
-    if (wasNotConnected && nowConnected && bidYear && areaId) {
+    if (wasNotConnected && nowConnected && bidYear && areaId && sessionToken) {
       console.log("[UserListView] Connection established, refreshing data");
       const loadUsers = async () => {
         try {
           setLoading(true);
           setError(null);
-          const response = await listUsers(bidYear, areaId);
+          const response = await listUsers(sessionToken, bidYear, areaId);
           setUsers(response.users);
         } catch (err) {
           if (err instanceof NetworkError) {
@@ -107,11 +113,11 @@ export function UserListView({
     }
 
     previousConnectionState.current = connectionState;
-  }, [connectionState, bidYear, areaId]);
+  }, [connectionState, bidYear, areaId, sessionToken]);
 
   // Refresh when relevant live events occur
   useEffect(() => {
-    if (!lastEvent || !bidYear || !areaId) return;
+    if (!lastEvent || !bidYear || !areaId || !sessionToken) return;
 
     if (
       (lastEvent.type === "user_registered" &&
@@ -124,7 +130,7 @@ export function UserListView({
       console.log("[UserListView] Relevant event received, refreshing data");
       const loadUsers = async () => {
         try {
-          const response = await listUsers(bidYear, areaId);
+          const response = await listUsers(sessionToken, bidYear, areaId);
           setUsers(response.users);
         } catch (err) {
           // Silently fail on live event refresh - connection state will show the issue
@@ -133,7 +139,7 @@ export function UserListView({
       };
       void loadUsers();
     }
-  }, [lastEvent, bidYear, areaId]);
+  }, [lastEvent, bidYear, areaId, sessionToken]);
 
   if (!bidYear || !areaId) {
     return (

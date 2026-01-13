@@ -40,6 +40,7 @@ import type {
   BlockingReason,
   ConnectionState,
   GetBootstrapCompletenessResponse,
+  GlobalCapabilities,
   ListUsersResponse,
   LiveEvent,
   UserInfo,
@@ -48,14 +49,14 @@ import { CsvUserImport } from "./CsvUserImport";
 
 interface BootstrapCompletenessProps {
   sessionToken: string | null;
-  role: string | null;
+  capabilities: GlobalCapabilities | null;
   connectionState: ConnectionState;
   lastEvent: LiveEvent | null;
 }
 
 export function BootstrapCompleteness({
   sessionToken,
-  role,
+  capabilities,
   connectionState,
   lastEvent,
 }: BootstrapCompletenessProps) {
@@ -64,7 +65,9 @@ export function BootstrapCompleteness({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const isAdmin = role === "Admin";
+  // Derive isAdmin from capabilities for backward compatibility
+  // TODO: Replace all isAdmin checks with specific capability checks
+  const isAdmin = capabilities?.can_create_bid_year ?? false;
 
   const loadCompleteness = useCallback(async () => {
     try {
@@ -964,9 +967,19 @@ function UserManagementForArea({
 
   useEffect(() => {
     const loadUsers = async () => {
+      if (!sessionToken) {
+        setUsers([]);
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
-        const response: ListUsersResponse = await listUsers(bidYear, areaId);
+        const response: ListUsersResponse = await listUsers(
+          sessionToken,
+          bidYear,
+          areaId,
+        );
         setUsers(response.users);
       } catch (err) {
         console.error("Failed to load users:", err);
@@ -977,12 +990,21 @@ function UserManagementForArea({
     };
 
     void loadUsers();
-  }, [bidYear, areaId]);
+  }, [bidYear, areaId, sessionToken]);
 
   const refreshUsers = async () => {
+    if (!sessionToken) {
+      setUsers([]);
+      return;
+    }
+
     try {
       setLoading(true);
-      const response: ListUsersResponse = await listUsers(bidYear, areaId);
+      const response: ListUsersResponse = await listUsers(
+        sessionToken,
+        bidYear,
+        areaId,
+      );
       setUsers(response.users);
     } catch (err) {
       console.error("Failed to load users:", err);

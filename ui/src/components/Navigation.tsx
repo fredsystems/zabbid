@@ -10,18 +10,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import type { GlobalCapabilities } from "../types";
 
 interface NavigationProps {
-  role: string;
+  capabilities: GlobalCapabilities | null;
 }
 
-export function Navigation({ role }: NavigationProps) {
+export function Navigation({ capabilities }: NavigationProps) {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  const isAdmin = role === "Admin";
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -59,8 +58,6 @@ export function Navigation({ role }: NavigationProps) {
     return "Dashboard";
   };
 
-  if (!isAdmin) return null;
-
   return (
     <div className="navigation-dropdown" ref={dropdownRef}>
       <button
@@ -92,15 +89,17 @@ export function Navigation({ role }: NavigationProps) {
           >
             Bootstrap Setup
           </button>
-          <button
-            type="button"
-            onClick={() => handleNavigation("/admin/operators")}
-            className={
-              location.pathname.startsWith("/admin/operators") ? "active" : ""
-            }
-          >
-            Operator Management
-          </button>
+          {capabilities?.can_create_operator && (
+            <button
+              type="button"
+              onClick={() => handleNavigation("/admin/operators")}
+              className={
+                location.pathname.startsWith("/admin/operators") ? "active" : ""
+              }
+            >
+              Operator Management
+            </button>
+          )}
         </div>
       )}
     </div>
