@@ -116,6 +116,8 @@ pub enum DomainError {
         /// The invalid count value.
         count: u32,
     },
+    /// Cannot remove the last active admin operator.
+    CannotRemoveLastActiveAdmin,
 }
 
 impl std::fmt::Display for DomainError {
@@ -212,6 +214,9 @@ impl std::fmt::Display for DomainError {
                     f,
                     "Invalid expected user count: {count}. Must be greater than 0"
                 )
+            }
+            Self::CannotRemoveLastActiveAdmin => {
+                write!(f, "Cannot disable or delete the last active admin operator")
             }
         }
     }

@@ -289,6 +289,8 @@ export async function createOperator(
   loginName: string,
   displayName: string,
   role: string,
+  password: string,
+  passwordConfirmation: string,
 ): Promise<{
   success: boolean;
   message: string | null;
@@ -306,6 +308,8 @@ export async function createOperator(
       login_name: loginName,
       display_name: displayName,
       role,
+      password,
+      password_confirmation: passwordConfirmation,
     }),
   });
 }
