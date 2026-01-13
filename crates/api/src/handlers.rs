@@ -28,13 +28,14 @@ use crate::request_response::{
     CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
     DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
     GetActiveBidYearResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse,
-    ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse,
-    ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse,
-    OperatorInfo, PreviewCsvUsersRequest, PreviewCsvUsersResponse, RegisterUserRequest,
-    RegisterUserResponse, ResetPasswordRequest, ResetPasswordResponse, SetActiveBidYearRequest,
-    SetActiveBidYearResponse, SetExpectedAreaCountRequest, SetExpectedAreaCountResponse,
-    SetExpectedUserCountRequest, SetExpectedUserCountResponse, UpdateUserRequest,
-    UpdateUserResponse, UserInfo, WhoAmIResponse,
+    GlobalCapabilities, ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest,
+    ListAreasResponse, ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse,
+    LoginRequest, LoginResponse, OperatorCapabilities, OperatorInfo, PreviewCsvUsersRequest,
+    PreviewCsvUsersResponse, RegisterUserRequest, RegisterUserResponse, ResetPasswordRequest,
+    ResetPasswordResponse, SetActiveBidYearRequest, SetActiveBidYearResponse,
+    SetExpectedAreaCountRequest, SetExpectedAreaCountResponse, SetExpectedUserCountRequest,
+    SetExpectedUserCountResponse, UpdateUserRequest, UpdateUserResponse, UserCapabilities,
+    UserInfo, WhoAmIResponse,
 };
 use zab_bid_persistence::PersistenceError;
 
@@ -543,20 +544,23 @@ pub fn list_areas(
     })
 }
 
-/// Lists all users for a given bid year and area.
+/// Lists all users in a given bid year and area with leave balances and capabilities.
 ///
-/// This is a read-only operation that requires no authorization.
+/// This is a read-only operation. No authorization check is performed.
 ///
 /// # Arguments
 ///
 /// * `metadata` - The current bootstrap metadata
+/// * `canonical_bid_years` - The list of canonical bid years
 /// * `bid_year` - The bid year to list users for
 /// * `area` - The area to list users for
-/// * `state` - The current state for the bid year and area
+/// * `state` - The current state for this scope
+/// * `authenticated_actor` - The authenticated actor (for capability computation)
+/// * `actor_operator` - The authenticated operator's data (for capability computation)
 ///
 /// # Returns
 ///
-/// * `Ok(ListUsersResponse)` containing all users for the scope
+/// * `Ok(ListUsersResponse)` containing all users for the scope with capabilities
 /// * `Err(ApiError)` if the bid year or area does not exist
 ///
 /// # Errors
@@ -570,6 +574,8 @@ pub fn list_users(
     bid_year: &BidYear,
     area: &Area,
     state: &State,
+    authenticated_actor: &AuthenticatedActor,
+    actor_operator: &OperatorData,
 ) -> Result<ListUsersResponse, ApiError> {
     // Validate bid year and area exist before processing
     validate_area_exists(metadata, bid_year, area).map_err(translate_domain_error)?;
@@ -625,6 +631,13 @@ pub fn list_users(
                         is_overdrawn: false,
                     });
 
+            // Compute user capabilities
+            let capabilities: UserCapabilities =
+                crate::capabilities::compute_user_capabilities(authenticated_actor, actor_operator)
+                    .map_err(|e| ApiError::Internal {
+                        message: format!("Failed to compute user capabilities: {e}"),
+                    })?;
+
             Ok(UserInfo {
                 user_id,
                 initials: user.initials.value().to_string(),
@@ -637,6 +650,7 @@ pub fn list_users(
                 remaining_days: availability.remaining_days,
                 is_exhausted: availability.is_exhausted,
                 is_overdrawn: availability.is_overdrawn,
+                capabilities,
             })
         })
         .collect();
@@ -981,23 +995,40 @@ pub fn logout(persistence: &mut SqlitePersistence, session_token: &str) -> Resul
     Ok(())
 }
 
-/// Returns the current operator's information.
+/// Returns the current operator's information with global capabilities.
 ///
 /// # Arguments
 ///
+/// * `persistence` - The persistence layer (for computing capabilities)
+/// * `actor` - The authenticated actor
 /// * `operator` - The operator data from the validated session
 ///
 /// # Returns
 ///
-/// * `Ok(WhoAmIResponse)` with operator information
-#[must_use]
-pub fn whoami(operator: &OperatorData) -> WhoAmIResponse {
-    WhoAmIResponse {
+/// * `Ok(WhoAmIResponse)` with operator information and capabilities
+///
+/// # Errors
+///
+/// Returns an error if capability computation fails.
+pub fn whoami(
+    _persistence: &mut SqlitePersistence,
+    actor: &AuthenticatedActor,
+    operator: &OperatorData,
+) -> Result<WhoAmIResponse, ApiError> {
+    let capabilities: GlobalCapabilities =
+        crate::capabilities::compute_global_capabilities(actor, operator).map_err(|e| {
+            ApiError::Internal {
+                message: format!("Failed to compute global capabilities: {e}"),
+            }
+        })?;
+
+    Ok(WhoAmIResponse {
         login_name: operator.login_name.clone(),
         display_name: operator.display_name.clone(),
         role: operator.role.clone(),
         is_disabled: operator.is_disabled,
-    }
+        capabilities,
+    })
 }
 
 /// Creates a new operator.
@@ -1124,7 +1155,7 @@ pub fn create_operator(
     })
 }
 
-/// Lists all operators.
+/// Lists all operators with per-operator capabilities.
 ///
 /// Only Admin actors may list operators.
 ///
@@ -1132,10 +1163,11 @@ pub fn create_operator(
 ///
 /// * `persistence` - The persistence layer
 /// * `authenticated_actor` - The authenticated actor performing this action
+/// * `actor_operator` - The authenticated operator's data
 ///
 /// # Returns
 ///
-/// * `Ok(ListOperatorsResponse)` with the list of operators
+/// * `Ok(ListOperatorsResponse)` with the list of operators and their capabilities
 /// * `Err(ApiError)` if unauthorized or query fails
 ///
 /// # Errors
@@ -1144,8 +1176,9 @@ pub fn create_operator(
 /// - The actor is not authorized (not an Admin)
 /// - Database operations fail
 pub fn list_operators(
-    persistence: &SqlitePersistence,
+    persistence: &mut SqlitePersistence,
     authenticated_actor: &AuthenticatedActor,
+    actor_operator: &OperatorData,
 ) -> Result<ListOperatorsResponse, ApiError> {
     // Enforce authorization before executing command
     if authenticated_actor.role != Role::Admin {
@@ -1162,21 +1195,35 @@ pub fn list_operators(
                 message: format!("Failed to list operators: {e}"),
             })?;
 
-    let operator_infos: Vec<OperatorInfo> = operators
+    let operator_infos: Result<Vec<OperatorInfo>, ApiError> = operators
         .into_iter()
-        .map(|op| OperatorInfo {
-            operator_id: op.operator_id,
-            login_name: op.login_name,
-            display_name: op.display_name,
-            role: op.role,
-            is_disabled: op.is_disabled,
-            created_at: op.created_at,
-            last_login_at: op.last_login_at,
+        .map(|op| {
+            let capabilities: OperatorCapabilities =
+                crate::capabilities::compute_operator_capabilities(
+                    authenticated_actor,
+                    actor_operator,
+                    &op,
+                    persistence,
+                )
+                .map_err(|e| ApiError::Internal {
+                    message: format!("Failed to compute operator capabilities: {e}"),
+                })?;
+
+            Ok(OperatorInfo {
+                operator_id: op.operator_id,
+                login_name: op.login_name,
+                display_name: op.display_name,
+                role: op.role,
+                is_disabled: op.is_disabled,
+                created_at: op.created_at,
+                last_login_at: op.last_login_at,
+                capabilities,
+            })
         })
         .collect();
 
     Ok(ListOperatorsResponse {
-        operators: operator_infos,
+        operators: operator_infos?,
     })
 }
 
