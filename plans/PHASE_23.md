@@ -16,6 +16,7 @@ Finish the identity model so all internal references use stable numeric IDs, whi
 - API responses include both:
   - `area_id`
   - `area_code` (display)
+- area_code uniqueness is enforced per bid year
 
 ---
 
