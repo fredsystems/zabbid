@@ -1222,8 +1222,18 @@ fn test_list_users_empty() {
     let bid_year: BidYear = BidYear::new(2026);
     let area: Area = Area::new("North");
     let state: State = State::new(bid_year.clone(), area.clone());
-    let response: ListUsersResponse =
-        list_users(&metadata, &canonical_bid_years, &bid_year, &area, &state).unwrap();
+    let actor = create_test_admin();
+    let operator = create_test_admin_operator();
+    let response: ListUsersResponse = list_users(
+        &metadata,
+        &canonical_bid_years,
+        &bid_year,
+        &area,
+        &state,
+        &actor,
+        &operator,
+    )
+    .unwrap();
 
     assert_eq!(response.bid_year, 2026);
     assert_eq!(response.area, "NORTH");
@@ -1316,12 +1326,16 @@ fn test_list_users_with_users() {
         .expect("Failed to reload state");
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
         vec![create_test_canonical_bid_year()];
+    let actor = create_test_admin();
+    let operator = create_test_admin_operator();
     let response: ListUsersResponse = list_users(
         &metadata,
         &canonical_bid_years,
         &bid_year,
         &area,
         &final_state,
+        &actor,
+        &operator,
     )
     .unwrap();
 
@@ -1400,12 +1414,16 @@ fn test_list_users_with_no_crew() {
         .expect("Failed to reload state");
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
         vec![create_test_canonical_bid_year()];
+    let actor = create_test_admin();
+    let operator = create_test_admin_operator();
     let response: ListUsersResponse = list_users(
         &metadata,
         &canonical_bid_years,
         &bid_year,
         &area,
         &final_state,
+        &actor,
+        &operator,
     )
     .unwrap();
 
@@ -1427,7 +1445,17 @@ fn test_list_users_nonexistent_bid_year() {
     let area: Area = Area::new("North");
     let state: State = State::new(bid_year.clone(), area.clone());
 
-    let result = list_users(&metadata, &canonical_bid_years, &bid_year, &area, &state);
+    let actor = create_test_admin();
+    let operator = create_test_admin_operator();
+    let result = list_users(
+        &metadata,
+        &canonical_bid_years,
+        &bid_year,
+        &area,
+        &state,
+        &actor,
+        &operator,
+    );
 
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1454,7 +1482,17 @@ fn test_list_users_nonexistent_area() {
     let area: Area = Area::new("NonExistent");
     let state: State = State::new(bid_year.clone(), area.clone());
 
-    let result = list_users(&metadata, &canonical_bid_years, &bid_year, &area, &state);
+    let actor = create_test_admin();
+    let operator = create_test_admin_operator();
+    let result = list_users(
+        &metadata,
+        &canonical_bid_years,
+        &bid_year,
+        &area,
+        &state,
+        &actor,
+        &operator,
+    );
 
     assert!(result.is_err());
     let err = result.unwrap_err();

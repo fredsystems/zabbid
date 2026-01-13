@@ -187,6 +187,8 @@ pub struct UserInfo {
     pub is_exhausted: bool,
     /// Whether leave balance is overdrawn.
     pub is_overdrawn: bool,
+    /// Target-specific capabilities for this user instance.
+    pub capabilities: UserCapabilities,
 }
 
 /// Bootstrap status summary for a single bid year.
@@ -299,6 +301,8 @@ pub struct WhoAmIResponse {
     pub role: String,
     /// Whether the operator is disabled.
     pub is_disabled: bool,
+    /// Global capabilities for this operator.
+    pub capabilities: GlobalCapabilities,
 }
 
 /// API request to create a new operator.
@@ -346,6 +350,8 @@ pub struct OperatorInfo {
     pub created_at: String,
     /// Last login timestamp (ISO 8601, optional).
     pub last_login_at: Option<String>,
+    /// Target-specific capabilities for this operator instance.
+    pub capabilities: OperatorCapabilities,
 }
 
 /// API request to change an operator's own password.
@@ -887,4 +893,102 @@ pub struct ImportCsvUsersResponse {
     pub failed_count: usize,
     /// Per-row import results.
     pub results: Vec<CsvImportRowResult>,
+}
+
+// ========================================================================
+// Phase 22.3: Capability Model
+// ========================================================================
+
+/// Represents whether a specific action is permitted.
+///
+/// This enum provides better type safety than raw booleans and serializes
+/// to JSON as true/false for API compatibility.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Capability {
+    /// The action is permitted.
+    Allowed,
+    /// The action is not permitted.
+    Denied,
+}
+
+impl Capability {
+    /// Returns true if the capability is allowed.
+    #[must_use]
+    pub const fn is_allowed(self) -> bool {
+        matches!(self, Self::Allowed)
+    }
+
+    /// Creates a capability from a boolean value.
+    #[must_use]
+    pub const fn from_bool(value: bool) -> Self {
+        if value { Self::Allowed } else { Self::Denied }
+    }
+}
+
+impl serde::Serialize for Capability {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_bool(matches!(self, Self::Allowed))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Capability {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let b = bool::deserialize(deserializer)?;
+        Ok(Self::from_bool(b))
+    }
+}
+
+/// Global capabilities for an authenticated operator.
+///
+/// These are operator-level permissions that determine what classes of
+/// actions an operator is allowed to perform. These depend on operator
+/// role, disabled state, and system-wide state.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GlobalCapabilities {
+    /// Whether the operator can create new operators.
+    pub can_create_operator: Capability,
+    /// Whether the operator can create bid years.
+    pub can_create_bid_year: Capability,
+    /// Whether the operator can create areas.
+    pub can_create_area: Capability,
+    /// Whether the operator can create users.
+    pub can_create_user: Capability,
+    /// Whether the operator can modify users.
+    pub can_modify_users: Capability,
+    /// Whether the operator can perform bootstrap actions.
+    pub can_bootstrap: Capability,
+}
+
+/// Target-specific capabilities for an operator instance.
+///
+/// These are entity-level permissions that determine what actions can be
+/// performed on this specific operator. These depend on domain invariants
+/// such as the "last active admin" rule.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OperatorCapabilities {
+    /// Whether this operator can be disabled.
+    pub can_disable: Capability,
+    /// Whether this operator can be deleted.
+    pub can_delete: Capability,
+}
+
+/// Target-specific capabilities for a user instance.
+///
+/// These are entity-level permissions that determine what actions can be
+/// performed on this specific user. These depend on domain invariants
+/// such as whether the user has bid data or is locked by bidding start.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UserCapabilities {
+    /// Whether this user can be deleted.
+    pub can_delete: Capability,
+    /// Whether this user can be moved to a different area.
+    pub can_move_area: Capability,
+    /// Whether this user's seniority data can be edited.
+    pub can_edit_seniority: Capability,
 }

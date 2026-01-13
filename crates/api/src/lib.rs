@@ -14,6 +14,7 @@
 #![allow(deprecated)]
 
 mod auth;
+mod capabilities;
 mod csv_preview;
 mod error;
 mod handlers;
@@ -38,20 +39,26 @@ pub use password_policy::{PasswordPolicy, PasswordPolicyError};
 pub use request_response::{
     AreaCompletenessInfo, AreaInfo, AreaStatusInfo, BidYearCompletenessInfo, BidYearInfo,
     BidYearStatusInfo, BlockingReason, BootstrapAuthStatusResponse, BootstrapLoginRequest,
-    BootstrapLoginResponse, BootstrapStatusResponse, ChangePasswordRequest, ChangePasswordResponse,
-    CreateAreaRequest, CreateAreaResponse, CreateBidYearRequest, CreateBidYearResponse,
-    CreateFirstAdminRequest, CreateFirstAdminResponse, CreateOperatorRequest,
-    CreateOperatorResponse, CsvImportRowResult, CsvImportRowStatus, CsvRowPreview, CsvRowStatus,
-    DeleteOperatorRequest, DeleteOperatorResponse, DisableOperatorRequest, DisableOperatorResponse,
-    EnableOperatorRequest, EnableOperatorResponse, GetActiveBidYearResponse,
-    GetBootstrapCompletenessResponse, GetLeaveAvailabilityRequest, GetLeaveAvailabilityResponse,
-    ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse,
-    ListBidYearsResponse, ListOperatorsResponse, ListUsersRequest, ListUsersResponse, LoginRequest,
-    LoginResponse, OperatorInfo, PreviewCsvUsersRequest, PreviewCsvUsersResponse,
+    BootstrapLoginResponse, BootstrapStatusResponse, Capability, ChangePasswordRequest,
+    ChangePasswordResponse, CreateAreaRequest, CreateAreaResponse, CreateBidYearRequest,
+    CreateBidYearResponse, CreateFirstAdminRequest, CreateFirstAdminResponse,
+    CreateOperatorRequest, CreateOperatorResponse, CsvImportRowResult, CsvImportRowStatus,
+    CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
+    DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
+    GetActiveBidYearResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityRequest,
+    GetLeaveAvailabilityResponse, GlobalCapabilities, ImportCsvUsersRequest,
+    ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
+    ListOperatorsResponse, ListUsersRequest, ListUsersResponse, LoginRequest, LoginResponse,
+    OperatorCapabilities, OperatorInfo, PreviewCsvUsersRequest, PreviewCsvUsersResponse,
     RegisterUserRequest, RegisterUserResponse, ResetPasswordRequest, ResetPasswordResponse,
     SetActiveBidYearRequest, SetActiveBidYearResponse, SetExpectedAreaCountRequest,
     SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
-    UpdateUserRequest, UpdateUserResponse, UserInfo, WhoAmIResponse,
+    UpdateUserRequest, UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
+};
+
+// Re-export public functions from capabilities module
+pub use capabilities::{
+    compute_global_capabilities, compute_operator_capabilities, compute_user_capabilities,
 };
 
 // Re-export public functions from handlers module

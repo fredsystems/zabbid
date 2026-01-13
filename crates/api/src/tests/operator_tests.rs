@@ -7,6 +7,7 @@
 
 use crate::auth::{AuthenticatedActor, Role};
 use crate::error::ApiError;
+use crate::tests::helpers::create_test_bidder_operator;
 use crate::{
     DeleteOperatorRequest, DeleteOperatorResponse, DisableOperatorRequest, DisableOperatorResponse,
     EnableOperatorRequest, EnableOperatorResponse, ListOperatorsResponse, create_operator,
@@ -36,10 +37,11 @@ fn create_test_cause() -> Cause {
 
 #[test]
 fn test_list_operators_requires_admin() {
-    let persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
     let bidder = create_test_bidder();
+    let bidder_operator = create_test_bidder_operator();
 
-    let result = list_operators(&persistence, &bidder);
+    let result = list_operators(&mut persistence, &bidder, &bidder_operator);
 
     assert!(result.is_err());
     match result.unwrap_err() {
@@ -56,14 +58,19 @@ fn test_list_operators_succeeds_for_admin() {
     let admin = create_test_admin();
 
     // Create some operators
-    persistence
+    let admin_operator_id = persistence
         .create_operator("admin1", "Admin One", "password", "Admin")
         .unwrap();
+    let admin_operator = persistence
+        .get_operator_by_id(admin_operator_id)
+        .unwrap()
+        .unwrap();
+
     persistence
         .create_operator("bidder1", "Bidder One", "password", "Bidder")
         .unwrap();
 
-    let result = list_operators(&persistence, &admin);
+    let result = list_operators(&mut persistence, &admin, &admin_operator);
 
     assert!(result.is_ok());
     let response: ListOperatorsResponse = result.unwrap();

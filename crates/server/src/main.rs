@@ -736,9 +736,10 @@ async fn handle_list_areas(
 
 /// Handler for GET `/users` endpoint.
 ///
-/// Lists all users for a given bid year and area.
+/// Lists all users for a given bid year and area with user capabilities.
 async fn handle_list_users(
     AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
     Query(query): Query<ListUsersQuery>,
 ) -> Result<Json<ListUsersApiResponse>, HttpError> {
     info!(
@@ -758,8 +759,15 @@ async fn handle_list_users(
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
     drop(persistence);
 
-    let response: ListUsersResponse =
-        list_users(&metadata, &canonical_bid_years, &bid_year, &area, &state)?;
+    let response: ListUsersResponse = list_users(
+        &metadata,
+        &canonical_bid_years,
+        &bid_year,
+        &area,
+        &state,
+        &actor,
+        &operator,
+    )?;
 
     let users: Vec<UserInfoResponse> = response
         .users
@@ -1275,28 +1283,31 @@ async fn handle_logout(
 
 /// Handler for GET `/auth/me` endpoint.
 ///
-/// Returns information about the currently authenticated operator.
+/// Returns information about the currently authenticated operator with global capabilities.
 async fn handle_whoami(
-    session::SessionOperator(_actor, operator): session::SessionOperator,
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
 ) -> Result<Json<zab_bid_api::WhoAmIResponse>, HttpError> {
     info!(login_name = %operator.login_name, "Handling whoami request");
 
-    let response = zab_bid_api::whoami(&operator);
+    let mut persistence = app_state.persistence.lock().await;
+    let response = zab_bid_api::whoami(&mut persistence, &actor, &operator)?;
+    drop(persistence);
 
     Ok(Json(response))
 }
 
 /// Handler for GET `/operators` endpoint.
 ///
-/// Lists all operators (admin only).
+/// Lists all operators with per-operator capabilities (admin only).
 async fn handle_list_operators(
     AxumState(app_state): AxumState<AppState>,
-    session::SessionOperator(actor, _operator): session::SessionOperator,
+    session::SessionOperator(actor, operator): session::SessionOperator,
 ) -> Result<Json<zab_bid_api::ListOperatorsResponse>, HttpError> {
     info!(actor_login = ?actor, "Handling list operators request");
 
-    let persistence = app_state.persistence.lock().await;
-    let response = zab_bid_api::list_operators(&persistence, &actor)?;
+    let mut persistence = app_state.persistence.lock().await;
+    let response = zab_bid_api::list_operators(&mut persistence, &actor, &operator)?;
     drop(persistence);
 
     Ok(Json(response))
