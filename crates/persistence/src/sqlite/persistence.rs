@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+use diesel::dsl::sql;
 use diesel::sql_types::{BigInt, Integer, Nullable, Text};
 use diesel::{RunQueryDsl, SqliteConnection, sql_query};
 use num_traits::ToPrimitive;
@@ -18,6 +19,17 @@ use crate::error::PersistenceError;
 struct LastInsertRowid {
     #[diesel(sql_type = BigInt)]
     last_insert_rowid: i64,
+}
+
+/// Helper function to get the last inserted row ID (Diesel DSL alternative).
+///
+/// `SQLite` doesn't support `RETURNING` clauses, so we must query `last_insert_rowid()`.
+/// This is a justified use of raw SQL as Diesel has no direct API for this.
+///
+/// Note: Currently unused but available for future migrations.
+#[allow(dead_code)]
+fn get_last_insert_rowid(conn: &mut SqliteConnection) -> Result<i64, PersistenceError> {
+    Ok(diesel::select(sql::<BigInt>("last_insert_rowid()")).get_result(conn)?)
 }
 
 /// Persists a transition result (audit event and optionally a full snapshot).

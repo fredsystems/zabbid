@@ -4,7 +4,6 @@
 // https://opensource.org/licenses/MIT.
 
 use diesel::prelude::*;
-use diesel::sql_query;
 use diesel::sqlite::SqliteConnection;
 use time::Date;
 use tracing::info;
@@ -15,95 +14,11 @@ use zab_bid_domain::{
 
 use crate::error::PersistenceError;
 
-// Helper row structs for Diesel queries
+// Helper row struct for PRAGMA queries (justified raw SQL use)
 #[derive(diesel::QueryableByName)]
 struct PragmaRow {
     #[diesel(sql_type = diesel::sql_types::Integer)]
     foreign_keys: i32,
-}
-
-#[derive(diesel::QueryableByName)]
-struct BidYearRow {
-    #[diesel(sql_type = diesel::sql_types::BigInt)]
-    bid_year_id: i64,
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    year: i32,
-}
-
-#[derive(diesel::QueryableByName)]
-struct BidYearMetadataRow {
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    year: i32,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    start_date: String,
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    num_pay_periods: i32,
-}
-
-#[derive(diesel::QueryableByName)]
-struct AreaRow {
-    #[diesel(sql_type = diesel::sql_types::BigInt)]
-    area_id: i64,
-    #[diesel(sql_type = diesel::sql_types::BigInt)]
-    bid_year_id: i64,
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    year: i32,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    code: String,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
-    name: Option<String>,
-}
-
-#[derive(diesel::QueryableByName)]
-struct AreaListRow {
-    #[diesel(sql_type = diesel::sql_types::BigInt)]
-    area_id: i64,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    code: String,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
-    name: Option<String>,
-}
-
-#[derive(diesel::QueryableByName)]
-struct UserRow {
-    #[diesel(sql_type = diesel::sql_types::BigInt)]
-    user_id: i64,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    initials: String,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    name: String,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    user_type: String,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Integer>)]
-    crew: Option<i32>,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    cumulative_natca_bu_date: String,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    natca_bu_date: String,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    eod_faa_date: String,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    service_computation_date: String,
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Integer>)]
-    lottery_value: Option<i32>,
-}
-
-#[derive(diesel::QueryableByName)]
-struct CountRow {
-    #[diesel(sql_type = diesel::sql_types::BigInt)]
-    count: i64,
-}
-
-#[derive(diesel::QueryableByName)]
-struct YearOnlyRow {
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    year: i32,
-}
-
-#[derive(diesel::QueryableByName)]
-struct ExpectedCountRow {
-    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Integer>)]
-    expected_count: Option<i32>,
 }
 
 /// Verifies that foreign key enforcement is enabled.
@@ -121,7 +36,7 @@ struct ExpectedCountRow {
 ///
 /// Returns an error if foreign key enforcement is not enabled.
 pub fn verify_foreign_key_enforcement(conn: &mut SqliteConnection) -> Result<(), PersistenceError> {
-    let foreign_keys_enabled: i32 = sql_query("PRAGMA foreign_keys")
+    let foreign_keys_enabled: i32 = diesel::sql_query("PRAGMA foreign_keys")
         .get_result::<PragmaRow>(conn)?
         .foreign_keys;
 
@@ -157,36 +72,42 @@ pub fn verify_foreign_key_enforcement(conn: &mut SqliteConnection) -> Result<(),
 pub fn get_bootstrap_metadata(
     conn: &mut SqliteConnection,
 ) -> Result<BootstrapMetadata, PersistenceError> {
+    use crate::diesel_schema::bid_years;
+
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Query canonical bid_years table
-    let bid_year_rows: Vec<BidYearRow> = sql_query(
-        "SELECT bid_year_id, year
-         FROM bid_years
-         ORDER BY year ASC",
-    )
-    .load::<BidYearRow>(conn)?;
+    let bid_year_rows: Vec<(i64, i32)> = bid_years::table
+        .select((bid_years::bid_year_id, bid_years::year))
+        .order(bid_years::year.asc())
+        .load::<(i64, i32)>(conn)?;
 
-    for row in bid_year_rows {
-        let year: u16 = u16::try_from(row.year).expect("bid_year value out of u16 range");
-        metadata
-            .bid_years
-            .push(BidYear::with_id(row.bid_year_id, year));
+    for (bid_year_id, year_value) in bid_year_rows {
+        let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
+        metadata.bid_years.push(BidYear::with_id(bid_year_id, year));
     }
 
-    // Query canonical areas table
-    let area_rows: Vec<AreaRow> = sql_query(
-        "SELECT a.area_id, a.bid_year_id, b.year, a.area_code AS code, a.area_name AS name
-         FROM areas a
-         JOIN bid_years b ON a.bid_year_id = b.bid_year_id
-         ORDER BY b.year ASC, a.area_code ASC",
-    )
-    .load::<AreaRow>(conn)?;
+    // Query canonical areas table - need to adjust this section
+    let area_rows: Vec<(i64, i64, i32, String, Option<String>)> = {
+        use crate::diesel_schema::areas;
 
-    for row in area_rows {
-        let year: u16 = u16::try_from(row.year).expect("bid_year value out of u16 range");
-        let bid_year: BidYear = BidYear::with_id(row.bid_year_id, year);
-        let area: Area = Area::with_id(row.area_id, &row.code, row.name);
+        areas::table
+            .inner_join(bid_years::table)
+            .select((
+                areas::area_id,
+                areas::bid_year_id,
+                bid_years::year,
+                areas::area_code,
+                areas::area_name,
+            ))
+            .order((bid_years::year.asc(), areas::area_code.asc()))
+            .load::<(i64, i64, i32, String, Option<String>)>(conn)?
+    };
+
+    for (area_id, bid_year_id_val, year_value, code, name) in area_rows {
+        let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
+        let bid_year: BidYear = BidYear::with_id(bid_year_id_val, year);
+        let area: Area = Area::with_id(area_id, &code, name);
         metadata.areas.push((bid_year, area));
     }
 
@@ -214,19 +135,19 @@ pub fn get_bootstrap_metadata(
 pub fn list_bid_years(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<CanonicalBidYear>, PersistenceError> {
-    let rows: Vec<BidYearMetadataRow> = sql_query(
-        "SELECT year, start_date, num_pay_periods
-         FROM bid_years
-         ORDER BY year ASC",
-    )
-    .load::<BidYearMetadataRow>(conn)?;
+    use crate::diesel_schema::bid_years;
+
+    let rows: Vec<(i32, String, i32)> = bid_years::table
+        .select((
+            bid_years::year,
+            bid_years::start_date,
+            bid_years::num_pay_periods,
+        ))
+        .order(bid_years::year.asc())
+        .load::<(i32, String, i32)>(conn)?;
 
     let mut bid_years: Vec<CanonicalBidYear> = Vec::new();
-    for row in rows {
-        let year_value: i32 = row.year;
-        let start_date_str: String = row.start_date;
-        let num_pay_periods_value: i32 = row.num_pay_periods;
-
+    for (year_value, start_date_str, num_pay_periods_value) in rows {
         let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
         let num_pay_periods: u8 = u8::try_from(num_pay_periods_value).map_err(|_| {
             PersistenceError::ReconstructionError(format!(
@@ -275,6 +196,8 @@ pub fn list_areas(
     conn: &mut SqliteConnection,
     bid_year: &BidYear,
 ) -> Result<Vec<Area>, PersistenceError> {
+    use crate::diesel_schema::areas;
+
     // Phase 23A: Look up the bid_year_id if not already present
     // If the bid year doesn't exist, return an empty list
     let bid_year_id: i64 = match bid_year.bid_year_id() {
@@ -286,18 +209,15 @@ pub fn list_areas(
         },
     };
 
-    let rows: Vec<AreaListRow> = sql_query(
-        "SELECT area_id, area_code AS code, area_name AS name
-         FROM areas
-         WHERE bid_year_id = ?1
-         ORDER BY area_code ASC",
-    )
-    .bind::<diesel::sql_types::BigInt, _>(bid_year_id)
-    .load::<AreaListRow>(conn)?;
+    let rows: Vec<(i64, String, Option<String>)> = areas::table
+        .select((areas::area_id, areas::area_code, areas::area_name))
+        .filter(areas::bid_year_id.eq(bid_year_id))
+        .order(areas::area_code.asc())
+        .load::<(i64, String, Option<String>)>(conn)?;
 
     let areas: Vec<Area> = rows
         .into_iter()
-        .map(|row| Area::with_id(row.area_id, &row.code, row.name))
+        .map(|(area_id, code, name)| Area::with_id(area_id, &code, name))
         .collect();
 
     Ok(areas)
@@ -321,43 +241,76 @@ pub fn list_users(
     bid_year: &BidYear,
     area: &Area,
 ) -> Result<Vec<User>, PersistenceError> {
+    use crate::diesel_schema::users;
+
+    // Type alias for the complex user row tuple
+    type UserRowTuple = (
+        i64,
+        String,
+        String,
+        String,
+        Option<i32>,
+        String,
+        String,
+        String,
+        String,
+        Option<i32>,
+    );
+
     // Phase 23A: Look up the canonical IDs
     let bid_year_id = super::queries::lookup_bid_year_id(conn, bid_year.year())?;
     let area_id = super::queries::lookup_area_id(conn, bid_year_id, area.id())?;
 
-    let rows: Vec<UserRow> = sql_query(
-        "SELECT user_id, initials, name, user_type, crew,
-                cumulative_natca_bu_date, natca_bu_date, eod_faa_date,
-                service_computation_date, lottery_value
-         FROM users
-         WHERE bid_year_id = ?1 AND area_id = ?2
-         ORDER BY initials ASC",
-    )
-    .bind::<diesel::sql_types::BigInt, _>(bid_year_id)
-    .bind::<diesel::sql_types::BigInt, _>(area_id)
-    .load::<UserRow>(conn)?;
+    let rows: Vec<UserRowTuple> = users::table
+        .select((
+            users::user_id,
+            users::initials,
+            users::name,
+            users::user_type,
+            users::crew,
+            users::cumulative_natca_bu_date,
+            users::natca_bu_date,
+            users::eod_faa_date,
+            users::service_computation_date,
+            users::lottery_value,
+        ))
+        .filter(users::bid_year_id.eq(bid_year_id))
+        .filter(users::area_id.eq(area_id))
+        .order(users::initials.asc())
+        .load(conn)?;
 
     let mut users: Vec<User> = Vec::new();
-    for row in rows {
-        let initials: Initials = Initials::new(&row.initials);
-        let user_type: UserType = UserType::parse(&row.user_type)
+    for (
+        user_id,
+        initials_str,
+        name,
+        user_type_str,
+        crew_val,
+        cumulative_natca_bu_date,
+        natca_bu_date,
+        eod_faa_date,
+        service_computation_date,
+        lottery_value,
+    ) in rows
+    {
+        let initials: Initials = Initials::new(&initials_str);
+        let user_type: UserType = UserType::parse(&user_type_str)
             .map_err(|e| PersistenceError::ReconstructionError(e.to_string()))?;
-        let crew: Option<Crew> = row
-            .crew
-            .and_then(|n| u8::try_from(n).ok().and_then(|num| Crew::new(num).ok()));
+        let crew: Option<Crew> =
+            crew_val.and_then(|n| u8::try_from(n).ok().and_then(|num| Crew::new(num).ok()));
         let seniority_data: SeniorityData = SeniorityData::new(
-            row.cumulative_natca_bu_date,
-            row.natca_bu_date,
-            row.eod_faa_date,
-            row.service_computation_date,
-            row.lottery_value.and_then(|v| u32::try_from(v).ok()),
+            cumulative_natca_bu_date,
+            natca_bu_date,
+            eod_faa_date,
+            service_computation_date,
+            lottery_value.and_then(|v| u32::try_from(v).ok()),
         );
 
         let user: User = User::with_id(
-            row.user_id,
+            user_id,
             bid_year.clone(),
             initials,
-            row.name,
+            name,
             area.clone(),
             user_type,
             crew,
@@ -386,12 +339,17 @@ pub fn list_users(
 /// - The database cannot be updated
 /// - The bid year does not exist
 pub fn set_active_bid_year(conn: &mut SqliteConnection, year: u16) -> Result<(), PersistenceError> {
+    use crate::diesel_schema::bid_years;
+
     // First, clear all active flags
-    sql_query("UPDATE bid_years SET is_active = 0").execute(conn)?;
+    diesel::update(bid_years::table)
+        .set(bid_years::is_active.eq(0))
+        .execute(conn)?;
 
     // Then set the specified year as active
-    let rows_affected: usize = sql_query("UPDATE bid_years SET is_active = 1 WHERE year = ?1")
-        .bind::<diesel::sql_types::Integer, _>(i32::from(year))
+    let rows_affected: usize = diesel::update(bid_years::table)
+        .filter(bid_years::year.eq(i32::from(year)))
+        .set(bid_years::is_active.eq(1))
         .execute(conn)?;
 
     if rows_affected == 0 {
@@ -413,12 +371,16 @@ pub fn set_active_bid_year(conn: &mut SqliteConnection, year: u16) -> Result<(),
 ///
 /// Returns an error if the database cannot be queried.
 pub fn get_active_bid_year(conn: &mut SqliteConnection) -> Result<Option<u16>, PersistenceError> {
-    let result: Result<YearOnlyRow, diesel::result::Error> =
-        sql_query("SELECT year FROM bid_years WHERE is_active = 1").get_result::<YearOnlyRow>(conn);
+    use crate::diesel_schema::bid_years;
+
+    let result: Result<i32, diesel::result::Error> = bid_years::table
+        .select(bid_years::year)
+        .filter(bid_years::is_active.eq(1))
+        .first::<i32>(conn);
 
     match result {
-        Ok(row) => {
-            let year: u16 = u16::try_from(row.year).expect("bid_year value out of u16 range");
+        Ok(year_value) => {
+            let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
             Ok(Some(year))
         }
         Err(diesel::result::Error::NotFound) => Ok(None),
@@ -444,15 +406,16 @@ pub fn set_expected_area_count(
     year: u16,
     expected_count: u32,
 ) -> Result<(), PersistenceError> {
-    let rows_affected: usize =
-        sql_query("UPDATE bid_years SET expected_area_count = ?1 WHERE year = ?2")
-            .bind::<diesel::sql_types::Integer, _>(i32::try_from(expected_count).map_err(|_| {
-                PersistenceError::Other(format!(
-                    "expected_count out of i32 range: {expected_count}"
-                ))
-            })?)
-            .bind::<diesel::sql_types::Integer, _>(i32::from(year))
-            .execute(conn)?;
+    use crate::diesel_schema::bid_years;
+
+    let count_i32: i32 = i32::try_from(expected_count).map_err(|_| {
+        PersistenceError::Other(format!("expected_count out of i32 range: {expected_count}"))
+    })?;
+
+    let rows_affected: usize = diesel::update(bid_years::table)
+        .filter(bid_years::year.eq(i32::from(year)))
+        .set(bid_years::expected_area_count.eq(count_i32))
+        .execute(conn)?;
 
     if rows_affected == 0 {
         return Err(PersistenceError::NotFound(format!(
@@ -483,19 +446,21 @@ pub fn set_expected_user_count(
     area: &Area,
     expected_count: u32,
 ) -> Result<(), PersistenceError> {
+    use crate::diesel_schema::areas;
+
     // Phase 23A: Look up the canonical IDs
     let bid_year_id = super::queries::lookup_bid_year_id(conn, bid_year.year())?;
     let area_id = super::queries::lookup_area_id(conn, bid_year_id, area.id())?;
 
-    let rows_affected: usize = sql_query(
-        "UPDATE areas SET expected_user_count = ?1 WHERE bid_year_id = ?2 AND area_id = ?3",
-    )
-    .bind::<diesel::sql_types::Integer, _>(i32::try_from(expected_count).map_err(|_| {
+    let count_i32: i32 = i32::try_from(expected_count).map_err(|_| {
         PersistenceError::Other(format!("expected_count out of i32 range: {expected_count}"))
-    })?)
-    .bind::<diesel::sql_types::BigInt, _>(bid_year_id)
-    .bind::<diesel::sql_types::BigInt, _>(area_id)
-    .execute(conn)?;
+    })?;
+
+    let rows_affected: usize = diesel::update(areas::table)
+        .filter(areas::bid_year_id.eq(bid_year_id))
+        .filter(areas::area_id.eq(area_id))
+        .set(areas::expected_user_count.eq(count_i32))
+        .execute(conn)?;
 
     if rows_affected == 0 {
         return Err(PersistenceError::NotFound(format!(
@@ -522,13 +487,15 @@ pub fn get_expected_area_count(
     conn: &mut SqliteConnection,
     year: u16,
 ) -> Result<Option<u32>, PersistenceError> {
-    let result: Result<ExpectedCountRow, diesel::result::Error> =
-        sql_query("SELECT expected_area_count AS expected_count FROM bid_years WHERE year = ?1")
-            .bind::<diesel::sql_types::Integer, _>(i32::from(year))
-            .get_result::<ExpectedCountRow>(conn);
+    use crate::diesel_schema::bid_years;
+
+    let result: Result<Option<i32>, diesel::result::Error> = bid_years::table
+        .select(bid_years::expected_area_count)
+        .filter(bid_years::year.eq(i32::from(year)))
+        .first::<Option<i32>>(conn);
 
     match result {
-        Ok(row) => Ok(row.expected_count.and_then(|c| u32::try_from(c).ok())),
+        Ok(opt_count) => Ok(opt_count.and_then(|c| u32::try_from(c).ok())),
         Err(diesel::result::Error::NotFound) => Ok(None),
         Err(e) => Err(PersistenceError::from(e)),
     }
@@ -550,18 +517,20 @@ pub fn get_expected_user_count(
     bid_year: &BidYear,
     area: &Area,
 ) -> Result<Option<u32>, PersistenceError> {
+    use crate::diesel_schema::areas;
+
     // Phase 23A: Look up the canonical IDs
     let bid_year_id = super::queries::lookup_bid_year_id(conn, bid_year.year())?;
     let area_id = super::queries::lookup_area_id(conn, bid_year_id, area.id())?;
 
-    let result: Result<ExpectedCountRow, diesel::result::Error> =
-        sql_query("SELECT expected_user_count AS expected_count FROM areas WHERE bid_year_id = ?1 AND area_id = ?2")
-            .bind::<diesel::sql_types::BigInt, _>(bid_year_id)
-            .bind::<diesel::sql_types::BigInt, _>(area_id)
-            .get_result::<ExpectedCountRow>(conn);
+    let result: Result<Option<i32>, diesel::result::Error> = areas::table
+        .select(areas::expected_user_count)
+        .filter(areas::bid_year_id.eq(bid_year_id))
+        .filter(areas::area_id.eq(area_id))
+        .first::<Option<i32>>(conn);
 
     match result {
-        Ok(row) => Ok(row.expected_count.and_then(|c| u32::try_from(c).ok())),
+        Ok(opt_count) => Ok(opt_count.and_then(|c| u32::try_from(c).ok())),
         Err(diesel::result::Error::NotFound) => Ok(None),
         Err(e) => Err(PersistenceError::from(e)),
     }
@@ -581,13 +550,15 @@ pub fn get_actual_area_count(
     conn: &mut SqliteConnection,
     year: u16,
 ) -> Result<usize, PersistenceError> {
+    use crate::diesel_schema::areas;
+
     // Phase 23A: Look up the canonical ID
     let bid_year_id = super::queries::lookup_bid_year_id(conn, year)?;
 
-    let count: i64 = sql_query("SELECT COUNT(*) as count FROM areas WHERE bid_year_id = ?1")
-        .bind::<diesel::sql_types::BigInt, _>(bid_year_id)
-        .get_result::<CountRow>(conn)?
-        .count;
+    let count: i64 = areas::table
+        .filter(areas::bid_year_id.eq(bid_year_id))
+        .count()
+        .get_result(conn)?;
 
     Ok(usize::try_from(count).expect("count out of usize range"))
 }
@@ -608,16 +579,17 @@ pub fn get_actual_user_count(
     bid_year: &BidYear,
     area: &Area,
 ) -> Result<usize, PersistenceError> {
+    use crate::diesel_schema::users;
+
     // Phase 23A: Look up the canonical IDs
     let bid_year_id = super::queries::lookup_bid_year_id(conn, bid_year.year())?;
     let area_id = super::queries::lookup_area_id(conn, bid_year_id, area.id())?;
 
-    let count: i64 =
-        sql_query("SELECT COUNT(*) as count FROM users WHERE bid_year_id = ?1 AND area_id = ?2")
-            .bind::<diesel::sql_types::BigInt, _>(bid_year_id)
-            .bind::<diesel::sql_types::BigInt, _>(area_id)
-            .get_result::<CountRow>(conn)?
-            .count;
+    let count: i64 = users::table
+        .filter(users::bid_year_id.eq(bid_year_id))
+        .filter(users::area_id.eq(area_id))
+        .count()
+        .get_result(conn)?;
 
     Ok(usize::try_from(count).expect("count out of usize range"))
 }

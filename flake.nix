@@ -111,6 +111,7 @@
                 cargo-llvm-cov
                 sqlite
                 nodejs
+                diesel-cli
               ]
               ++ (chk.passthru.devPackages or [ ])
               ++ chk.enabledPackages;

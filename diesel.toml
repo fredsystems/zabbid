@@ -6,6 +6,7 @@
 [print_schema]
 file = "crates/persistence/src/diesel_schema.rs"
 custom_type_derives = ["diesel::query_builder::QueryId"]
+sqlite_integer_primary_key_is_bigint = true
 
 [migrations_directory]
 dir = "crates/persistence/migrations"

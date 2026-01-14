@@ -15,12 +15,14 @@
 
 mod data_models;
 mod diesel_migrations;
+mod diesel_schema;
 mod error;
 mod sqlite;
 
 #[cfg(test)]
 mod tests;
 
+use diesel::prelude::*;
 use diesel::{RunQueryDsl, SqliteConnection};
 use std::path::Path;
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
@@ -82,6 +84,7 @@ impl SqlitePersistence {
         let mut conn: SqliteConnection = diesel_migrations::initialize_database(path_str)?;
 
         // Enable WAL mode for better read concurrency
+        // NOTE: PRAGMA is raw SQL (justified - Diesel has no PRAGMA DSL)
         diesel::sql_query("PRAGMA journal_mode = WAL")
             .execute(&mut conn)
             .map_err(|e| PersistenceError::QueryFailed(e.to_string()))?;
@@ -890,35 +893,34 @@ impl SqlitePersistence {
         service_computation_date: &str,
         lottery_value: Option<u32>,
     ) -> Result<(), PersistenceError> {
+        use crate::diesel_schema::users;
+
         let crew_i32: Option<i32> = crew.map(i32::from);
         let lottery_i32: Option<i32> = lottery_value.and_then(|v| i32::try_from(v).ok());
 
-        let rows_affected: usize = diesel::sql_query(
-            "UPDATE users SET
-                initials = ?1,
-                name = ?2,
-                area_id = ?3,
-                user_type = ?4,
-                crew = ?5,
-                cumulative_natca_bu_date = ?6,
-                natca_bu_date = ?7,
-                eod_faa_date = ?8,
-                service_computation_date = ?9,
-                lottery_value = ?10
-             WHERE user_id = ?11",
-        )
-        .bind::<diesel::sql_types::Text, _>(initials.value())
-        .bind::<diesel::sql_types::Text, _>(name)
-        .bind::<diesel::sql_types::Text, _>(area.id())
-        .bind::<diesel::sql_types::Text, _>(user_type)
-        .bind::<diesel::sql_types::Nullable<diesel::sql_types::Integer>, _>(crew_i32)
-        .bind::<diesel::sql_types::Text, _>(cumulative_natca_bu_date)
-        .bind::<diesel::sql_types::Text, _>(natca_bu_date)
-        .bind::<diesel::sql_types::Text, _>(eod_faa_date)
-        .bind::<diesel::sql_types::Text, _>(service_computation_date)
-        .bind::<diesel::sql_types::Nullable<diesel::sql_types::Integer>, _>(lottery_i32)
-        .bind::<diesel::sql_types::BigInt, _>(user_id)
-        .execute(&mut self.conn)?;
+        // Area must have a canonical ID to update a user
+        let area_id: i64 = area.area_id().ok_or_else(|| {
+            PersistenceError::Other(format!(
+                "Area '{}' has no canonical area_id",
+                area.area_code()
+            ))
+        })?;
+
+        let rows_affected: usize = diesel::update(users::table)
+            .filter(users::user_id.eq(user_id))
+            .set((
+                users::initials.eq(initials.value()),
+                users::name.eq(name),
+                users::area_id.eq(area_id),
+                users::user_type.eq(user_type),
+                users::crew.eq(crew_i32),
+                users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
+                users::natca_bu_date.eq(natca_bu_date),
+                users::eod_faa_date.eq(eod_faa_date),
+                users::service_computation_date.eq(service_computation_date),
+                users::lottery_value.eq(lottery_i32),
+            ))
+            .execute(&mut self.conn)?;
 
         if rows_affected == 0 {
             return Err(PersistenceError::NotFound(format!(
@@ -943,15 +945,15 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the bid year is not found or the query fails.
     pub fn get_bid_year_id(&mut self, year: u16) -> Result<i64, PersistenceError> {
-        use crate::sqlite::queries::BidYearIdRow;
+        use crate::diesel_schema::bid_years;
 
-        let result: Result<BidYearIdRow, diesel::result::Error> =
-            diesel::sql_query("SELECT bid_year_id FROM bid_years WHERE year = ?1")
-                .bind::<diesel::sql_types::Integer, _>(i32::from(year))
-                .get_result::<BidYearIdRow>(&mut self.conn);
+        let result: Result<i64, diesel::result::Error> = bid_years::table
+            .select(bid_years::bid_year_id)
+            .filter(bid_years::year.eq(i32::from(year)))
+            .first::<i64>(&mut self.conn);
 
         match result {
-            Ok(row) => Ok(row.bid_year_id),
+            Ok(bid_year_id) => Ok(bid_year_id),
             Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
                 "Bid year {year} not found"
             ))),
@@ -974,18 +976,17 @@ impl SqlitePersistence {
         bid_year_id: i64,
         area_code: &str,
     ) -> Result<i64, PersistenceError> {
-        use crate::sqlite::queries::AreaIdRow;
+        use crate::diesel_schema::areas;
 
         let normalized_code: String = area_code.to_uppercase();
-        let result: Result<AreaIdRow, diesel::result::Error> = diesel::sql_query(
-            "SELECT area_id FROM areas WHERE bid_year_id = ?1 AND area_code = ?2",
-        )
-        .bind::<diesel::sql_types::BigInt, _>(bid_year_id)
-        .bind::<diesel::sql_types::Text, _>(&normalized_code)
-        .get_result::<AreaIdRow>(&mut self.conn);
+        let result: Result<i64, diesel::result::Error> = areas::table
+            .select(areas::area_id)
+            .filter(areas::bid_year_id.eq(bid_year_id))
+            .filter(areas::area_code.eq(&normalized_code))
+            .first::<i64>(&mut self.conn);
 
         match result {
-            Ok(row) => Ok(row.area_id),
+            Ok(area_id) => Ok(area_id),
             Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
                 "Area {area_code} not found"
             ))),
@@ -1010,19 +1011,18 @@ impl SqlitePersistence {
         area_id: i64,
         initials: &str,
     ) -> Result<i64, PersistenceError> {
-        use crate::sqlite::queries::UserIdRow;
+        use crate::diesel_schema::users;
 
         let normalized_initials: String = initials.to_uppercase();
-        let result: Result<UserIdRow, diesel::result::Error> = diesel::sql_query(
-            "SELECT user_id FROM users WHERE bid_year_id = ?1 AND area_id = ?2 AND initials = ?3",
-        )
-        .bind::<diesel::sql_types::BigInt, _>(bid_year_id)
-        .bind::<diesel::sql_types::BigInt, _>(area_id)
-        .bind::<diesel::sql_types::Text, _>(&normalized_initials)
-        .get_result::<UserIdRow>(&mut self.conn);
+        let result: Result<i64, diesel::result::Error> = users::table
+            .select(users::user_id)
+            .filter(users::bid_year_id.eq(bid_year_id))
+            .filter(users::area_id.eq(area_id))
+            .filter(users::initials.eq(&normalized_initials))
+            .first::<i64>(&mut self.conn);
 
         match result {
-            Ok(row) => Ok(row.user_id),
+            Ok(user_id) => Ok(user_id),
             Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
                 "User {initials} not found"
             ))),
