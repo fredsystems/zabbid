@@ -71,9 +71,18 @@ impl std::fmt::Display for PersistenceError {
 
 impl std::error::Error for PersistenceError {}
 
-impl From<rusqlite::Error> for PersistenceError {
-    fn from(err: rusqlite::Error) -> Self {
-        Self::DatabaseError(err.to_string())
+impl From<diesel::result::Error> for PersistenceError {
+    fn from(err: diesel::result::Error) -> Self {
+        match err {
+            diesel::result::Error::NotFound => Self::NotFound("Record not found".to_string()),
+            _ => Self::DatabaseError(err.to_string()),
+        }
+    }
+}
+
+impl From<diesel::ConnectionError> for PersistenceError {
+    fn from(err: diesel::ConnectionError) -> Self {
+        Self::DatabaseConnectionFailed(err.to_string())
     }
 }
 

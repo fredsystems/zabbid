@@ -235,7 +235,7 @@ fn parse_csv_row(
 fn validate_user_against_metadata(
     user: &User,
     metadata: &BootstrapMetadata,
-    persistence: &SqlitePersistence,
+    persistence: &mut SqlitePersistence,
     seen_initials: &HashSet<String>,
 ) -> Vec<String> {
     let mut errors: Vec<String> = Vec::new();
@@ -315,7 +315,7 @@ pub fn preview_csv_users(
     csv_content: &str,
     bid_year: &BidYear,
     metadata: &BootstrapMetadata,
-    persistence: &SqlitePersistence,
+    persistence: &mut SqlitePersistence,
 ) -> Result<CsvPreviewResult, ApiError> {
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
@@ -539,7 +539,7 @@ mod tests {
             .expect("Failed to get metadata");
 
         let result: Result<CsvPreviewResult, ApiError> =
-            preview_csv_users(csv, &bid_year, &metadata, &persistence);
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence);
         assert!(result.is_err());
         match result {
             Err(ApiError::InvalidCsvFormat { reason }) => {
@@ -562,7 +562,7 @@ mod tests {
             .expect("Failed to get metadata");
 
         let result: CsvPreviewResult =
-            preview_csv_users(csv, &bid_year, &metadata, &persistence).expect("valid CSV");
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
 
         assert_eq!(result.total_rows, 1);
         assert_eq!(result.valid_count, 1);
@@ -590,7 +590,7 @@ mod tests {
             .expect("Failed to get metadata");
 
         let result: CsvPreviewResult =
-            preview_csv_users(csv, &bid_year, &metadata, &persistence).expect("valid CSV");
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
 
         assert_eq!(result.valid_count, 1);
     }
@@ -608,7 +608,7 @@ mod tests {
             .expect("Failed to get metadata");
 
         let result: CsvPreviewResult =
-            preview_csv_users(csv, &bid_year, &metadata, &persistence).expect("valid CSV");
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
 
         assert_eq!(result.valid_count, 1);
     }
@@ -626,7 +626,7 @@ mod tests {
             .expect("Failed to get metadata");
 
         let result: CsvPreviewResult =
-            preview_csv_users(csv, &bid_year, &metadata, &persistence).expect("valid CSV");
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
 
         assert_eq!(result.invalid_count, 1);
         let row: &CsvRowResult = &result.rows[0];
@@ -647,7 +647,7 @@ mod tests {
             .expect("Failed to get metadata");
 
         let result: CsvPreviewResult =
-            preview_csv_users(csv, &bid_year, &metadata, &persistence).expect("valid CSV");
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
 
         assert_eq!(result.invalid_count, 1);
         let row: &CsvRowResult = &result.rows[0];
@@ -668,7 +668,7 @@ mod tests {
             .expect("Failed to get metadata");
 
         let result: CsvPreviewResult =
-            preview_csv_users(csv, &bid_year, &metadata, &persistence).expect("valid CSV");
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
 
         assert_eq!(result.invalid_count, 1);
         let row: &CsvRowResult = &result.rows[0];
@@ -688,7 +688,7 @@ mod tests {
             .expect("Failed to get metadata");
 
         let result: CsvPreviewResult =
-            preview_csv_users(csv, &bid_year, &metadata, &persistence).expect("valid CSV");
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
 
         assert_eq!(result.invalid_count, 1);
         let row: &CsvRowResult = &result.rows[0];
@@ -709,7 +709,7 @@ mod tests {
             .expect("Failed to get metadata");
 
         let result: CsvPreviewResult =
-            preview_csv_users(csv, &bid_year, &metadata, &persistence).expect("valid CSV");
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
 
         assert_eq!(result.total_rows, 2);
         // First occurrence is valid, second is invalid
@@ -739,7 +739,7 @@ mod tests {
             .expect("Failed to get metadata");
 
         let result: CsvPreviewResult =
-            preview_csv_users(csv, &bid_year, &metadata, &persistence).expect("valid CSV");
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
 
         assert_eq!(result.total_rows, 3);
         assert_eq!(result.valid_count, 2);
@@ -759,7 +759,7 @@ mod tests {
             .expect("Failed to get metadata");
 
         let result: CsvPreviewResult =
-            preview_csv_users(csv, &bid_year, &metadata, &persistence).expect("valid CSV");
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
 
         assert_eq!(result.invalid_count, 1);
         let row: &CsvRowResult = &result.rows[0];

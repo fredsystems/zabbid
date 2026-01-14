@@ -47,6 +47,7 @@ pub struct StateData {
 /// Contains: (`event_id`, `bid_year_id`, `area_id`, `year`, `area_code`,
 /// `actor_operator_id`, `actor_login_name`, `actor_display_name`,
 /// `actor_json`, `cause_json`, `action_json`, `before_json`, `after_json`)
+#[allow(dead_code)]
 pub type AuditEventRow = (
     i64,         // event_id
     i64,         // bid_year_id

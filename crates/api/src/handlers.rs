@@ -73,7 +73,7 @@ pub struct RegisterUserResult {
 /// Returns an error if:
 /// - No active bid year is set
 /// - Database query fails
-fn resolve_active_bid_year(persistence: &SqlitePersistence) -> Result<BidYear, ApiError> {
+fn resolve_active_bid_year(persistence: &mut SqlitePersistence) -> Result<BidYear, ApiError> {
     let active_year: Option<u16> =
         persistence
             .get_active_bid_year()
@@ -129,7 +129,7 @@ pub struct ApiResult<T> {
 /// - Any field validation fails
 /// - The initials are already in use within the bid year
 pub fn register_user(
-    persistence: &SqlitePersistence,
+    persistence: &mut SqlitePersistence,
     metadata: &BootstrapMetadata,
     state: &State,
     request: RegisterUserRequest,
@@ -226,7 +226,7 @@ pub fn register_user(
 /// - The actor is not authorized (not an Admin)
 /// - The command execution fails
 pub fn checkpoint(
-    persistence: &SqlitePersistence,
+    persistence: &mut SqlitePersistence,
     metadata: &BootstrapMetadata,
     state: &State,
     authenticated_actor: &AuthenticatedActor,
@@ -277,7 +277,7 @@ pub fn checkpoint(
 /// - The actor is not authorized (not an Admin)
 /// - The command execution fails
 pub fn finalize(
-    persistence: &SqlitePersistence,
+    persistence: &mut SqlitePersistence,
     metadata: &BootstrapMetadata,
     state: &State,
     authenticated_actor: &AuthenticatedActor,
@@ -329,7 +329,7 @@ pub fn finalize(
 /// - The actor is not authorized (not an Admin)
 /// - The command execution fails
 pub fn rollback(
-    persistence: &SqlitePersistence,
+    persistence: &mut SqlitePersistence,
     metadata: &BootstrapMetadata,
     state: &State,
     target_event_id: i64,
@@ -443,7 +443,7 @@ pub fn create_bid_year(
 /// - The bid year does not exist
 /// - The area already exists in the bid year
 pub fn create_area(
-    persistence: &SqlitePersistence,
+    persistence: &mut SqlitePersistence,
     metadata: &BootstrapMetadata,
     request: &CreateAreaRequest,
     authenticated_actor: &AuthenticatedActor,
@@ -1923,7 +1923,7 @@ pub fn reset_password(
 ///
 /// Returns an error if database operations fail.
 pub fn check_bootstrap_status(
-    persistence: &SqlitePersistence,
+    persistence: &mut SqlitePersistence,
 ) -> Result<crate::BootstrapAuthStatusResponse, ApiError> {
     let operator_count: i64 = persistence
         .count_operators()
@@ -1966,7 +1966,7 @@ pub fn check_bootstrap_status(
 ///
 /// Panics if the system time is before the Unix epoch.
 pub fn bootstrap_login(
-    persistence: &SqlitePersistence,
+    persistence: &mut SqlitePersistence,
     request: &crate::BootstrapLoginRequest,
 ) -> Result<crate::BootstrapLoginResponse, ApiError> {
     // Check if we're in bootstrap mode
@@ -2167,7 +2167,7 @@ pub fn set_active_bid_year(
 ///
 /// Returns an error if database operations fail.
 pub fn get_active_bid_year(
-    persistence: &SqlitePersistence,
+    persistence: &mut SqlitePersistence,
     metadata: &BootstrapMetadata,
 ) -> Result<GetActiveBidYearResponse, ApiError> {
     let year: Option<u16> = persistence
@@ -2540,7 +2540,7 @@ pub fn update_user(
 /// Returns an error if database operations fail.
 #[allow(clippy::too_many_lines)]
 pub fn get_bootstrap_completeness(
-    persistence: &SqlitePersistence,
+    persistence: &mut SqlitePersistence,
     metadata: &BootstrapMetadata,
 ) -> Result<GetBootstrapCompletenessResponse, ApiError> {
     let active_bid_year: Option<u16> =
@@ -2735,7 +2735,7 @@ pub fn get_bootstrap_completeness(
 /// - The CSV format is invalid
 pub fn preview_csv_users(
     metadata: &BootstrapMetadata,
-    persistence: &SqlitePersistence,
+    persistence: &mut SqlitePersistence,
     request: &PreviewCsvUsersRequest,
     authenticated_actor: &AuthenticatedActor,
 ) -> Result<PreviewCsvUsersResponse, ApiError> {

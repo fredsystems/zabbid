@@ -434,7 +434,7 @@ async fn handle_create_bid_year(
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
     // Get current bootstrap metadata
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     drop(persistence);
 
@@ -538,7 +538,7 @@ async fn handle_create_area(
 
     // Execute command via API
     let bootstrap_result: BootstrapResult = create_area(
-        &persistence,
+        &mut persistence,
         &metadata,
         &create_request,
         &actor,
@@ -612,7 +612,7 @@ async fn handle_list_bid_years(
 ) -> Result<Json<ListBidYearsResponse>, HttpError> {
     info!("Handling list_bid_years request");
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
         persistence.list_bid_years()?;
@@ -651,7 +651,7 @@ async fn handle_list_areas(
         "Handling list_areas request"
     );
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
     // Resolve bid_year_id to BidYear from metadata
@@ -694,7 +694,7 @@ async fn handle_list_users(
 ) -> Result<Json<ListUsersResponse>, HttpError> {
     info!(area_id = query.area_id, "Handling list_users request");
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
     // Resolve area_id to Area and BidYear from metadata
@@ -739,7 +739,7 @@ async fn handle_get_leave_availability(
         "Handling get_leave_availability request"
     );
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
     // Find the user by user_id across all areas
@@ -857,7 +857,7 @@ async fn handle_register_user(
 
     // Execute command via API
     let result: ApiResult<RegisterUserResult> = register_user(
-        &persistence,
+        &mut persistence,
         &metadata,
         &state,
         register_request,
@@ -964,8 +964,14 @@ async fn handle_checkpoint(
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
 
     // Execute command via API (persistence passed for active bid year resolution)
-    let result: TransitionResult =
-        checkpoint(&persistence, &metadata, &state, &actor, &operator, cause)?;
+    let result: TransitionResult = checkpoint(
+        &mut persistence,
+        &metadata,
+        &state,
+        &actor,
+        &operator,
+        cause,
+    )?;
 
     // Persist the transition
     let event_id: i64 = persistence.persist_transition(
@@ -1028,8 +1034,14 @@ async fn handle_finalize(
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
 
     // Execute command via API (persistence passed for active bid year resolution)
-    let result: TransitionResult =
-        finalize(&persistence, &metadata, &state, &actor, &operator, cause)?;
+    let result: TransitionResult = finalize(
+        &mut persistence,
+        &metadata,
+        &state,
+        &actor,
+        &operator,
+        cause,
+    )?;
 
     // Persist the transition
     let event_id: i64 = persistence.persist_transition(
@@ -1097,7 +1109,7 @@ async fn handle_rollback(
 
     // Execute command via API (persistence passed for active bid year resolution)
     let result: TransitionResult = rollback(
-        &persistence,
+        &mut persistence,
         &metadata,
         &state,
         target_event_id,
@@ -1146,7 +1158,7 @@ async fn handle_get_current_state(
         "Handling get_current_state request"
     );
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
     // Resolve area_id to Area and BidYear from metadata
@@ -1184,7 +1196,7 @@ async fn handle_get_historical_state(
         "Handling get_historical_state request"
     );
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
     // Resolve area_id to Area and BidYear from metadata
@@ -1219,7 +1231,7 @@ async fn handle_get_audit_timeline(
         "Handling get_audit_timeline request"
     );
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
     // Resolve area_id to Area and BidYear from metadata
@@ -1250,7 +1262,7 @@ async fn handle_get_audit_event(
 ) -> Result<Json<AuditEventResponse>, HttpError> {
     info!(event_id = event_id, "Handling get_audit_event request");
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let event: AuditEvent = persistence.get_audit_event(event_id)?;
     drop(persistence);
 
@@ -1267,7 +1279,7 @@ async fn handle_get_bootstrap_status(
 ) -> Result<Json<BootstrapStatusResponse>, HttpError> {
     info!("Handling get_bootstrap_status request");
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let area_counts: Vec<(u16, usize)> = persistence.count_areas_by_bid_year()?;
     let user_counts_by_year: Vec<(u16, usize)> = persistence.count_users_by_bid_year()?;
@@ -1664,8 +1676,8 @@ async fn handle_bootstrap_status(
 ) -> Result<Json<zab_bid_api::BootstrapAuthStatusResponse>, HttpError> {
     info!("Handling bootstrap status check");
 
-    let persistence = app_state.persistence.lock().await;
-    let response = zab_bid_api::check_bootstrap_status(&persistence)?;
+    let mut persistence = app_state.persistence.lock().await;
+    let response = zab_bid_api::check_bootstrap_status(&mut persistence)?;
     drop(persistence);
 
     Ok(Json(response))
@@ -1680,8 +1692,8 @@ async fn handle_bootstrap_login(
 ) -> Result<Json<zab_bid_api::BootstrapLoginResponse>, HttpError> {
     info!("Handling bootstrap login request");
 
-    let persistence = app_state.persistence.lock().await;
-    let response = zab_bid_api::bootstrap_login(&persistence, &req)?;
+    let mut persistence = app_state.persistence.lock().await;
+    let response = zab_bid_api::bootstrap_login(&mut persistence, &req)?;
     drop(persistence);
 
     info!("Bootstrap login successful");
@@ -1723,7 +1735,7 @@ async fn handle_set_active_bid_year(
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
     // Get current bootstrap metadata
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     drop(persistence);
 
@@ -1768,9 +1780,9 @@ async fn handle_get_active_bid_year(
 ) -> Result<Json<GetActiveBidYearResponse>, HttpError> {
     info!("Handling get_active_bid_year request");
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    let response: GetActiveBidYearResponse = get_active_bid_year(&persistence, &metadata)?;
+    let response: GetActiveBidYearResponse = get_active_bid_year(&mut persistence, &metadata)?;
     drop(persistence);
 
     Ok(Json(response))
@@ -1794,7 +1806,7 @@ async fn handle_set_expected_area_count(
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
     // Get current bootstrap metadata
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     drop(persistence);
 
@@ -1842,7 +1854,7 @@ async fn handle_set_expected_user_count(
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
     // Get current bootstrap metadata
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     drop(persistence);
 
@@ -1965,10 +1977,10 @@ async fn handle_get_bootstrap_completeness(
 ) -> Result<Json<GetBootstrapCompletenessResponse>, HttpError> {
     info!("Handling get_bootstrap_completeness request");
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let response: GetBootstrapCompletenessResponse =
-        get_bootstrap_completeness(&persistence, &metadata)?;
+        get_bootstrap_completeness(&mut persistence, &metadata)?;
     drop(persistence);
 
     Ok(Json(response))
@@ -1989,7 +2001,7 @@ async fn handle_preview_csv_users(
     );
 
     // Get bootstrap metadata
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
     // Build API request
@@ -1999,7 +2011,7 @@ async fn handle_preview_csv_users(
 
     // Execute preview via API (no persistence mutations)
     let response: PreviewCsvUsersResponse =
-        preview_csv_users(&metadata, &persistence, &preview_request, &actor)?;
+        preview_csv_users(&metadata, &mut persistence, &preview_request, &actor)?;
 
     drop(persistence);
 

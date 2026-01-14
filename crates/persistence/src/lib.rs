@@ -21,7 +21,7 @@ mod sqlite;
 #[cfg(test)]
 mod tests;
 
-use rusqlite::Connection;
+use diesel::{RunQueryDsl, SqliteConnection};
 use std::path::Path;
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_audit::AuditEvent;
@@ -32,14 +32,13 @@ pub use error::PersistenceError;
 
 /// Persistence adapter for audit events and state snapshots.
 pub struct SqlitePersistence {
-    pub(crate) conn: Connection,
+    pub(crate) conn: SqliteConnection,
 }
 
 impl SqlitePersistence {
     /// Creates a new persistence adapter with an in-memory database.
     ///
-    /// Uses a shared in-memory database so that Diesel migrations and
-    /// rusqlite queries can operate on the same database instance.
+    /// Uses a shared in-memory database via Diesel.
     ///
     /// # Errors
     ///
@@ -55,18 +54,12 @@ impl SqlitePersistence {
         let db_name = format!("memdb_{nanos}");
         let shared_memory_url = format!("file:{db_name}?mode=memory&cache=shared");
 
-        // Initialize database with Diesel migrations using the same shared memory URL
-        let _diesel_conn = diesel_migrations::initialize_database(&shared_memory_url)
-            .map_err(|e| PersistenceError::MigrationFailed(e.to_string()))?;
-
-        // Now open with rusqlite using the same shared memory URL
-        let conn: Connection = Connection::open(&shared_memory_url)?;
-
-        // Enable foreign key constraints
-        conn.pragma_update(None, "foreign_keys", "ON")?;
+        // Initialize database with Diesel migrations
+        let mut conn: SqliteConnection =
+            diesel_migrations::initialize_database(&shared_memory_url)?;
 
         // Verify foreign key enforcement is active
-        sqlite::verify_foreign_key_enforcement(&conn)?;
+        sqlite::verify_foreign_key_enforcement(&mut conn)?;
 
         Ok(Self { conn })
     }
@@ -86,19 +79,15 @@ impl SqlitePersistence {
         })?;
 
         // Initialize database with Diesel migrations
-        let _diesel_conn = diesel_migrations::initialize_database(path_str)?;
-
-        // Now open with rusqlite for runtime queries
-        let conn: Connection = Connection::open(path)?;
+        let mut conn: SqliteConnection = diesel_migrations::initialize_database(path_str)?;
 
         // Enable WAL mode for better read concurrency
-        conn.pragma_update(None, "journal_mode", "WAL")?;
-
-        // Enable foreign key constraints
-        conn.pragma_update(None, "foreign_keys", "ON")?;
+        diesel::sql_query("PRAGMA journal_mode = WAL")
+            .execute(&mut conn)
+            .map_err(|e| PersistenceError::QueryFailed(e.to_string()))?;
 
         // Verify foreign key enforcement is active
-        sqlite::verify_foreign_key_enforcement(&conn)?;
+        sqlite::verify_foreign_key_enforcement(&mut conn)?;
 
         Ok(Self { conn })
     }
@@ -111,8 +100,8 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if foreign key enforcement is not enabled.
-    pub fn verify_foreign_key_enforcement(&self) -> Result<(), PersistenceError> {
-        sqlite::verify_foreign_key_enforcement(&self.conn)
+    pub fn verify_foreign_key_enforcement(&mut self) -> Result<(), PersistenceError> {
+        sqlite::verify_foreign_key_enforcement(&mut self.conn)
     }
 
     /// Persists a transition result (audit event and optionally a full snapshot).
@@ -134,10 +123,9 @@ impl SqlitePersistence {
         result: &TransitionResult,
         should_snapshot: bool,
     ) -> Result<i64, PersistenceError> {
-        let tx = self.conn.transaction()?;
-        let event_id: i64 = sqlite::persist_transition(&tx, result, should_snapshot)?;
-        tx.commit()?;
-        Ok(event_id)
+        use diesel::Connection;
+        self.conn
+            .transaction(|conn| sqlite::persist_transition(conn, result, should_snapshot))
     }
 
     /// Persists a standalone audit event.
@@ -157,10 +145,9 @@ impl SqlitePersistence {
     ///
     /// Returns an error if persistence fails.
     pub fn persist_audit_event(&mut self, event: &AuditEvent) -> Result<i64, PersistenceError> {
-        let tx = self.conn.transaction()?;
-        let event_id: i64 = sqlite::persist_audit_event(&tx, event)?;
-        tx.commit()?;
-        Ok(event_id)
+        use diesel::Connection;
+        self.conn
+            .transaction(|conn| sqlite::persist_audit_event(conn, event))
     }
 
     /// Persists a bootstrap result (audit event for bid year/area creation).
@@ -177,10 +164,9 @@ impl SqlitePersistence {
     ///
     /// Returns an error if persistence fails. No partial writes occur.
     pub fn persist_bootstrap(&mut self, result: &BootstrapResult) -> Result<i64, PersistenceError> {
-        let tx = self.conn.transaction()?;
-        let event_id: i64 = sqlite::persist_bootstrap(&tx, result)?;
-        tx.commit()?;
-        Ok(event_id)
+        use diesel::Connection;
+        self.conn
+            .transaction(|conn| sqlite::persist_bootstrap(conn, result))
     }
 
     /// Retrieves an audit event by ID.
@@ -192,8 +178,8 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the event is not found or cannot be deserialized.
-    pub fn get_audit_event(&self, event_id: i64) -> Result<AuditEvent, PersistenceError> {
-        sqlite::get_audit_event(&self.conn, event_id)
+    pub fn get_audit_event(&mut self, event_id: i64) -> Result<AuditEvent, PersistenceError> {
+        sqlite::get_audit_event(&mut self.conn, event_id)
     }
 
     /// Retrieves the most recent state snapshot for a `(bid_year, area)` scope.
@@ -207,11 +193,11 @@ impl SqlitePersistence {
     ///
     /// Returns an error if no snapshot exists or cannot be deserialized.
     pub fn get_latest_snapshot(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<(State, i64), PersistenceError> {
-        sqlite::get_latest_snapshot(&self.conn, bid_year, area)
+        sqlite::get_latest_snapshot(&mut self.conn, bid_year, area)
     }
 
     /// Retrieves all audit events for a `(bid_year, area)` scope after a given event ID.
@@ -226,12 +212,12 @@ impl SqlitePersistence {
     ///
     /// Returns an error if events cannot be retrieved or deserialized.
     pub fn get_events_after(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
         after_event_id: i64,
     ) -> Result<Vec<AuditEvent>, PersistenceError> {
-        sqlite::get_events_after(&self.conn, bid_year, area, after_event_id)
+        sqlite::get_events_after(&mut self.conn, bid_year, area, after_event_id)
     }
 
     /// Retrieves the current effective state for a given `(bid_year, area)` scope.
@@ -247,11 +233,11 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn get_current_state(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<State, PersistenceError> {
-        sqlite::get_current_state(&self.conn, bid_year, area)
+        sqlite::get_current_state(&mut self.conn, bid_year, area)
     }
 
     /// Retrieves the effective state for a given `(bid_year, area)` scope at a specific timestamp.
@@ -273,12 +259,12 @@ impl SqlitePersistence {
     ///
     /// Returns an error if no snapshot exists before the timestamp.
     pub fn get_historical_state(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
         timestamp: &str,
     ) -> Result<State, PersistenceError> {
-        sqlite::get_historical_state(&self.conn, bid_year, area, timestamp)
+        sqlite::get_historical_state(&mut self.conn, bid_year, area, timestamp)
     }
 
     /// Retrieves the ordered audit event timeline for a given `(bid_year, area)` scope.
@@ -295,11 +281,11 @@ impl SqlitePersistence {
     ///
     /// Returns an error if events cannot be retrieved or deserialized.
     pub fn get_audit_timeline(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<Vec<AuditEvent>, PersistenceError> {
-        sqlite::get_audit_timeline(&self.conn, bid_year, area)
+        sqlite::get_audit_timeline(&mut self.conn, bid_year, area)
     }
 
     /// Retrieves all global audit events (events with no bid year or area scope).
@@ -312,8 +298,8 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if events cannot be retrieved or deserialized.
-    pub fn get_global_audit_events(&self) -> Result<Vec<AuditEvent>, PersistenceError> {
-        sqlite::get_global_audit_events(&self.conn)
+    pub fn get_global_audit_events(&mut self) -> Result<Vec<AuditEvent>, PersistenceError> {
+        sqlite::get_global_audit_events(&mut self.conn)
     }
 
     /// Reconstructs bootstrap metadata from canonical tables.
@@ -329,8 +315,8 @@ impl SqlitePersistence {
     ///
     /// Panics if a bid year value from the database is outside the valid `u16` range.
     /// This should not occur in normal operation as bid years are validated on creation.
-    pub fn get_bootstrap_metadata(&self) -> Result<BootstrapMetadata, PersistenceError> {
-        sqlite::get_bootstrap_metadata(&self.conn)
+    pub fn get_bootstrap_metadata(&mut self) -> Result<BootstrapMetadata, PersistenceError> {
+        sqlite::get_bootstrap_metadata(&mut self.conn)
     }
 
     /// Lists all bid years that have been created with their canonical metadata.
@@ -347,8 +333,8 @@ impl SqlitePersistence {
     ///
     /// Panics if a bid year value from the database cannot be converted to `u16`.
     /// This should never happen in practice as the schema enforces valid ranges.
-    pub fn list_bid_years(&self) -> Result<Vec<CanonicalBidYear>, PersistenceError> {
-        sqlite::list_bid_years(&self.conn)
+    pub fn list_bid_years(&mut self) -> Result<Vec<CanonicalBidYear>, PersistenceError> {
+        sqlite::list_bid_years(&mut self.conn)
     }
 
     /// Lists all areas for a given bid year.
@@ -362,8 +348,8 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
-    pub fn list_areas(&self, bid_year: &BidYear) -> Result<Vec<Area>, PersistenceError> {
-        sqlite::list_areas(&self.conn, bid_year)
+    pub fn list_areas(&mut self, bid_year: &BidYear) -> Result<Vec<Area>, PersistenceError> {
+        sqlite::list_areas(&mut self.conn, bid_year)
     }
 
     /// Lists all users for a given `(bid_year, area)` scope.
@@ -379,11 +365,11 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn list_users(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<Vec<User>, PersistenceError> {
-        sqlite::list_users(&self.conn, bid_year, area)
+        sqlite::list_users(&mut self.conn, bid_year, area)
     }
 
     /// Counts users per area for a given bid year.
@@ -398,10 +384,10 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn count_users_by_area(
-        &self,
+        &mut self,
         bid_year: &BidYear,
     ) -> Result<Vec<(String, usize)>, PersistenceError> {
-        sqlite::count_users_by_area(&self.conn, bid_year)
+        sqlite::count_users_by_area(&mut self.conn, bid_year)
     }
 
     /// Counts areas per bid year.
@@ -411,8 +397,8 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
-    pub fn count_areas_by_bid_year(&self) -> Result<Vec<(u16, usize)>, PersistenceError> {
-        sqlite::count_areas_by_bid_year(&self.conn)
+    pub fn count_areas_by_bid_year(&mut self) -> Result<Vec<(u16, usize)>, PersistenceError> {
+        sqlite::count_areas_by_bid_year(&mut self.conn)
     }
 
     /// Counts total users per bid year across all areas.
@@ -422,8 +408,8 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
-    pub fn count_users_by_bid_year(&self) -> Result<Vec<(u16, usize)>, PersistenceError> {
-        sqlite::count_users_by_bid_year(&self.conn)
+    pub fn count_users_by_bid_year(&mut self) -> Result<Vec<(u16, usize)>, PersistenceError> {
+        sqlite::count_users_by_bid_year(&mut self.conn)
     }
 
     /// Counts users per (`bid_year`, `area_id`) combination.
@@ -434,9 +420,9 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn count_users_by_bid_year_and_area(
-        &self,
+        &mut self,
     ) -> Result<Vec<(u16, String, usize)>, PersistenceError> {
-        sqlite::count_users_by_bid_year_and_area(&self.conn)
+        sqlite::count_users_by_bid_year_and_area(&mut self.conn)
     }
 
     /// Determines if a given action requires a full snapshot.
@@ -478,7 +464,7 @@ impl SqlitePersistence {
         password: &str,
         role: &str,
     ) -> Result<i64, PersistenceError> {
-        sqlite::create_operator(&self.conn, login_name, display_name, password, role)
+        sqlite::create_operator(&mut self.conn, login_name, display_name, password, role)
     }
 
     /// Retrieves an operator by login name.
@@ -494,10 +480,10 @@ impl SqlitePersistence {
     /// Returns an error if the database query fails.
     /// Returns `Ok(None)` if the operator is not found.
     pub fn get_operator_by_login(
-        &self,
+        &mut self,
         login_name: &str,
     ) -> Result<Option<OperatorData>, PersistenceError> {
-        sqlite::get_operator_by_login(&self.conn, login_name)
+        sqlite::get_operator_by_login(&mut self.conn, login_name)
     }
 
     /// Retrieves an operator by ID.
@@ -511,10 +497,10 @@ impl SqlitePersistence {
     /// Returns an error if the database query fails.
     /// Returns `Ok(None)` if the operator is not found.
     pub fn get_operator_by_id(
-        &self,
+        &mut self,
         operator_id: i64,
     ) -> Result<Option<OperatorData>, PersistenceError> {
-        sqlite::get_operator_by_id(&self.conn, operator_id)
+        sqlite::get_operator_by_id(&mut self.conn, operator_id)
     }
 
     /// Updates the last login timestamp for an operator.
@@ -527,7 +513,7 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database update fails.
     pub fn update_last_login(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
-        sqlite::update_last_login(&self.conn, operator_id)
+        sqlite::update_last_login(&mut self.conn, operator_id)
     }
 
     /// Disables an operator.
@@ -542,7 +528,7 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database update fails.
     pub fn disable_operator(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
-        sqlite::disable_operator(&self.conn, operator_id)
+        sqlite::disable_operator(&mut self.conn, operator_id)
     }
 
     /// Re-enables a disabled operator.
@@ -555,7 +541,7 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database update fails.
     pub fn enable_operator(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
-        sqlite::enable_operator(&self.conn, operator_id)
+        sqlite::enable_operator(&mut self.conn, operator_id)
     }
 
     /// Deletes an operator.
@@ -571,7 +557,7 @@ impl SqlitePersistence {
     /// Returns `PersistenceError::OperatorReferenced` if the operator is referenced
     /// by audit events. Returns other errors if the database delete fails.
     pub fn delete_operator(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
-        sqlite::delete_operator(&self.conn, operator_id)
+        sqlite::delete_operator(&mut self.conn, operator_id)
     }
 
     /// Lists all operators.
@@ -579,8 +565,8 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    pub fn list_operators(&self) -> Result<Vec<OperatorData>, PersistenceError> {
-        sqlite::list_operators(&self.conn)
+    pub fn list_operators(&mut self) -> Result<Vec<OperatorData>, PersistenceError> {
+        sqlite::list_operators(&mut self.conn)
     }
 
     /// Checks if an operator is referenced by any audit events.
@@ -592,8 +578,8 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    pub fn is_operator_referenced(&self, operator_id: i64) -> Result<bool, PersistenceError> {
-        sqlite::is_operator_referenced(&self.conn, operator_id)
+    pub fn is_operator_referenced(&mut self, operator_id: i64) -> Result<bool, PersistenceError> {
+        sqlite::is_operator_referenced(&mut self.conn, operator_id)
     }
 
     /// Counts the total number of operators.
@@ -601,8 +587,8 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    pub fn count_operators(&self) -> Result<i64, PersistenceError> {
-        sqlite::count_operators(&self.conn)
+    pub fn count_operators(&mut self) -> Result<i64, PersistenceError> {
+        sqlite::count_operators(&mut self.conn)
     }
 
     /// Counts the number of active admin operators.
@@ -614,8 +600,8 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    pub fn count_active_admin_operators(&self) -> Result<i64, PersistenceError> {
-        sqlite::count_active_admin_operators(&self.conn)
+    pub fn count_active_admin_operators(&mut self) -> Result<i64, PersistenceError> {
+        sqlite::count_active_admin_operators(&mut self.conn)
     }
 
     /// Verifies a password against a stored hash.
@@ -647,7 +633,7 @@ impl SqlitePersistence {
         operator_id: i64,
         new_password: &str,
     ) -> Result<(), PersistenceError> {
-        sqlite::update_password(&self.conn, operator_id, new_password)
+        sqlite::update_password(&mut self.conn, operator_id, new_password)
     }
 
     /// Deletes all sessions for a specific operator.
@@ -665,7 +651,7 @@ impl SqlitePersistence {
         &mut self,
         operator_id: i64,
     ) -> Result<usize, PersistenceError> {
-        sqlite::delete_sessions_for_operator(&self.conn, operator_id)
+        sqlite::delete_sessions_for_operator(&mut self.conn, operator_id)
     }
 
     /// Creates a new session for an operator.
@@ -685,7 +671,7 @@ impl SqlitePersistence {
         operator_id: i64,
         expires_at: &str,
     ) -> Result<i64, PersistenceError> {
-        sqlite::create_session(&self.conn, session_token, operator_id, expires_at)
+        sqlite::create_session(&mut self.conn, session_token, operator_id, expires_at)
     }
 
     /// Retrieves a session by token.
@@ -699,10 +685,10 @@ impl SqlitePersistence {
     /// Returns an error if the database query fails.
     /// Returns `Ok(None)` if the session is not found.
     pub fn get_session_by_token(
-        &self,
+        &mut self,
         session_token: &str,
     ) -> Result<Option<SessionData>, PersistenceError> {
-        sqlite::get_session_by_token(&self.conn, session_token)
+        sqlite::get_session_by_token(&mut self.conn, session_token)
     }
 
     /// Updates the last activity timestamp for a session.
@@ -715,7 +701,7 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database update fails.
     pub fn update_session_activity(&mut self, session_id: i64) -> Result<(), PersistenceError> {
-        sqlite::update_session_activity(&self.conn, session_id)
+        sqlite::update_session_activity(&mut self.conn, session_id)
     }
 
     /// Deletes a session by token.
@@ -730,7 +716,7 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database delete fails.
     pub fn delete_session(&mut self, session_token: &str) -> Result<(), PersistenceError> {
-        sqlite::delete_session(&self.conn, session_token)
+        sqlite::delete_session(&mut self.conn, session_token)
     }
 
     /// Deletes all expired sessions.
@@ -741,7 +727,7 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database delete fails.
     pub fn delete_expired_sessions(&mut self) -> Result<usize, PersistenceError> {
-        sqlite::delete_expired_sessions(&self.conn)
+        sqlite::delete_expired_sessions(&mut self.conn)
     }
 
     // ========================================================================
@@ -758,7 +744,7 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database cannot be updated or the bid year does not exist.
     pub fn set_active_bid_year(&mut self, year: u16) -> Result<(), PersistenceError> {
-        sqlite::set_active_bid_year(&self.conn, year)
+        sqlite::set_active_bid_year(&mut self.conn, year)
     }
 
     /// Gets the currently active bid year, if any.
@@ -766,8 +752,8 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
-    pub fn get_active_bid_year(&self) -> Result<Option<u16>, PersistenceError> {
-        sqlite::get_active_bid_year(&self.conn)
+    pub fn get_active_bid_year(&mut self) -> Result<Option<u16>, PersistenceError> {
+        sqlite::get_active_bid_year(&mut self.conn)
     }
 
     /// Sets the expected area count for a bid year.
@@ -785,7 +771,7 @@ impl SqlitePersistence {
         year: u16,
         expected_count: u32,
     ) -> Result<(), PersistenceError> {
-        sqlite::set_expected_area_count(&self.conn, year, expected_count)
+        sqlite::set_expected_area_count(&mut self.conn, year, expected_count)
     }
 
     /// Gets the expected area count for a bid year.
@@ -797,8 +783,8 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
-    pub fn get_expected_area_count(&self, year: u16) -> Result<Option<u32>, PersistenceError> {
-        sqlite::get_expected_area_count(&self.conn, year)
+    pub fn get_expected_area_count(&mut self, year: u16) -> Result<Option<u32>, PersistenceError> {
+        sqlite::get_expected_area_count(&mut self.conn, year)
     }
 
     /// Sets the expected user count for an area.
@@ -818,7 +804,7 @@ impl SqlitePersistence {
         area: &Area,
         expected_count: u32,
     ) -> Result<(), PersistenceError> {
-        sqlite::set_expected_user_count(&self.conn, bid_year, area, expected_count)
+        sqlite::set_expected_user_count(&mut self.conn, bid_year, area, expected_count)
     }
 
     /// Gets the expected user count for an area.
@@ -832,11 +818,11 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn get_expected_user_count(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<Option<u32>, PersistenceError> {
-        sqlite::get_expected_user_count(&self.conn, bid_year, area)
+        sqlite::get_expected_user_count(&mut self.conn, bid_year, area)
     }
 
     /// Gets the actual area count for a bid year.
@@ -848,8 +834,8 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
-    pub fn get_actual_area_count(&self, year: u16) -> Result<usize, PersistenceError> {
-        sqlite::get_actual_area_count(&self.conn, year)
+    pub fn get_actual_area_count(&mut self, year: u16) -> Result<usize, PersistenceError> {
+        sqlite::get_actual_area_count(&mut self.conn, year)
     }
 
     /// Gets the actual user count for an area.
@@ -863,11 +849,11 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn get_actual_user_count(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<usize, PersistenceError> {
-        sqlite::get_actual_user_count(&self.conn, bid_year, area)
+        sqlite::get_actual_user_count(&mut self.conn, bid_year, area)
     }
 
     /// Updates an existing user's information using `user_id` as the canonical identifier.
@@ -907,7 +893,7 @@ impl SqlitePersistence {
         let crew_i32: Option<i32> = crew.map(i32::from);
         let lottery_i32: Option<i32> = lottery_value.and_then(|v| i32::try_from(v).ok());
 
-        let rows_affected: usize = self.conn.execute(
+        let rows_affected: usize = diesel::sql_query(
             "UPDATE users SET
                 initials = ?1,
                 name = ?2,
@@ -920,20 +906,19 @@ impl SqlitePersistence {
                 service_computation_date = ?9,
                 lottery_value = ?10
              WHERE user_id = ?11",
-            rusqlite::params![
-                initials.value(),
-                name,
-                area.id(),
-                user_type,
-                crew_i32,
-                cumulative_natca_bu_date,
-                natca_bu_date,
-                eod_faa_date,
-                service_computation_date,
-                lottery_i32,
-                user_id,
-            ],
-        )?;
+        )
+        .bind::<diesel::sql_types::Text, _>(initials.value())
+        .bind::<diesel::sql_types::Text, _>(name)
+        .bind::<diesel::sql_types::Text, _>(area.id())
+        .bind::<diesel::sql_types::Text, _>(user_type)
+        .bind::<diesel::sql_types::Nullable<diesel::sql_types::Integer>, _>(crew_i32)
+        .bind::<diesel::sql_types::Text, _>(cumulative_natca_bu_date)
+        .bind::<diesel::sql_types::Text, _>(natca_bu_date)
+        .bind::<diesel::sql_types::Text, _>(eod_faa_date)
+        .bind::<diesel::sql_types::Text, _>(service_computation_date)
+        .bind::<diesel::sql_types::Nullable<diesel::sql_types::Integer>, _>(lottery_i32)
+        .bind::<diesel::sql_types::BigInt, _>(user_id)
+        .execute(&mut self.conn)?;
 
         if rows_affected == 0 {
             return Err(PersistenceError::NotFound(format!(
@@ -957,19 +942,21 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the bid year is not found or the query fails.
-    pub fn get_bid_year_id(&self, year: u16) -> Result<i64, PersistenceError> {
-        self.conn
-            .query_row(
-                "SELECT bid_year_id FROM bid_years WHERE year = ?1",
-                [year],
-                |row| row.get(0),
-            )
-            .map_err(|e| match e {
-                rusqlite::Error::QueryReturnedNoRows => {
-                    PersistenceError::NotFound(format!("Bid year {year} not found"))
-                }
-                _ => PersistenceError::from(e),
-            })
+    pub fn get_bid_year_id(&mut self, year: u16) -> Result<i64, PersistenceError> {
+        use crate::sqlite::queries::BidYearIdRow;
+
+        let result: Result<BidYearIdRow, diesel::result::Error> =
+            diesel::sql_query("SELECT bid_year_id FROM bid_years WHERE year = ?1")
+                .bind::<diesel::sql_types::Integer, _>(i32::from(year))
+                .get_result::<BidYearIdRow>(&mut self.conn);
+
+        match result {
+            Ok(row) => Ok(row.bid_year_id),
+            Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
+                "Bid year {year} not found"
+            ))),
+            Err(e) => Err(PersistenceError::from(e)),
+        }
     }
 
     /// Queries the canonical `area_id` for a given bid year and area code.
@@ -982,20 +969,28 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the area is not found or the query fails.
-    pub fn get_area_id(&self, bid_year_id: i64, area_code: &str) -> Result<i64, PersistenceError> {
+    pub fn get_area_id(
+        &mut self,
+        bid_year_id: i64,
+        area_code: &str,
+    ) -> Result<i64, PersistenceError> {
+        use crate::sqlite::queries::AreaIdRow;
+
         let normalized_code: String = area_code.to_uppercase();
-        self.conn
-            .query_row(
-                "SELECT area_id FROM areas WHERE bid_year_id = ?1 AND area_code = ?2",
-                rusqlite::params![bid_year_id, normalized_code],
-                |row| row.get(0),
-            )
-            .map_err(|e| match e {
-                rusqlite::Error::QueryReturnedNoRows => {
-                    PersistenceError::NotFound(format!("Area {area_code} not found"))
-                }
-                _ => PersistenceError::from(e),
-            })
+        let result: Result<AreaIdRow, diesel::result::Error> = diesel::sql_query(
+            "SELECT area_id FROM areas WHERE bid_year_id = ?1 AND area_code = ?2",
+        )
+        .bind::<diesel::sql_types::BigInt, _>(bid_year_id)
+        .bind::<diesel::sql_types::Text, _>(&normalized_code)
+        .get_result::<AreaIdRow>(&mut self.conn);
+
+        match result {
+            Ok(row) => Ok(row.area_id),
+            Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
+                "Area {area_code} not found"
+            ))),
+            Err(e) => Err(PersistenceError::from(e)),
+        }
     }
 
     /// Queries the canonical `user_id` for a given bid year, area, and initials.
@@ -1010,23 +1005,28 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the user is not found or the query fails.
     pub fn get_user_id(
-        &self,
+        &mut self,
         bid_year_id: i64,
         area_id: i64,
         initials: &str,
     ) -> Result<i64, PersistenceError> {
+        use crate::sqlite::queries::UserIdRow;
+
         let normalized_initials: String = initials.to_uppercase();
-        self.conn
-            .query_row(
-                "SELECT user_id FROM users WHERE bid_year_id = ?1 AND area_id = ?2 AND initials = ?3",
-                rusqlite::params![bid_year_id, area_id, normalized_initials],
-                |row| row.get(0),
-            )
-            .map_err(|e| match e {
-                rusqlite::Error::QueryReturnedNoRows => {
-                    PersistenceError::NotFound(format!("User {initials} not found"))
-                }
-                _ => PersistenceError::from(e),
-            })
+        let result: Result<UserIdRow, diesel::result::Error> = diesel::sql_query(
+            "SELECT user_id FROM users WHERE bid_year_id = ?1 AND area_id = ?2 AND initials = ?3",
+        )
+        .bind::<diesel::sql_types::BigInt, _>(bid_year_id)
+        .bind::<diesel::sql_types::BigInt, _>(area_id)
+        .bind::<diesel::sql_types::Text, _>(&normalized_initials)
+        .get_result::<UserIdRow>(&mut self.conn);
+
+        match result {
+            Ok(row) => Ok(row.user_id),
+            Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
+                "User {initials} not found"
+            ))),
+            Err(e) => Err(PersistenceError::from(e)),
+        }
     }
 }

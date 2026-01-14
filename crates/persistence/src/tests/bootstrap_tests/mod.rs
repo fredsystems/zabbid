@@ -134,7 +134,7 @@ fn test_persist_bootstrap_area() {
 
 #[test]
 fn test_get_bootstrap_metadata_empty() {
-    let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
 
     assert_eq!(metadata.bid_years.len(), 0);
@@ -342,7 +342,7 @@ fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
 
 #[test]
 fn test_list_bid_years_empty() {
-    let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     let bid_years: Vec<CanonicalBidYear> = persistence.list_bid_years().unwrap();
 
     assert_eq!(bid_years.len(), 0);
@@ -396,7 +396,7 @@ fn test_list_bid_years() {
 
 #[test]
 fn test_list_areas_empty() {
-    let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     let areas: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
 
     assert_eq!(areas.len(), 0);
@@ -588,6 +588,15 @@ fn test_bootstrap_persistence_is_deterministic() {
 
 #[test]
 fn test_bootstrap_read_operations_do_not_mutate() {
+    use diesel::prelude::*;
+    use diesel::sql_query;
+
+    #[derive(diesel::QueryableByName)]
+    struct CountRow {
+        #[diesel(sql_type = diesel::sql_types::BigInt)]
+        count: i64,
+    }
+
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
@@ -608,10 +617,10 @@ fn test_bootstrap_read_operations_do_not_mutate() {
     persistence.persist_bootstrap(&result).unwrap();
 
     // Get initial event count
-    let initial_count: i64 = persistence
-        .conn
-        .query_row("SELECT COUNT(*) FROM audit_events", [], |row| row.get(0))
-        .unwrap();
+    let initial_count: i64 = sql_query("SELECT COUNT(*) as count FROM audit_events")
+        .get_result::<CountRow>(&mut persistence.conn)
+        .unwrap()
+        .count;
 
     // Perform multiple reads
     let _metadata1: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
@@ -622,10 +631,10 @@ fn test_bootstrap_read_operations_do_not_mutate() {
     let _areas2: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
 
     // Verify event count unchanged
-    let final_count: i64 = persistence
-        .conn
-        .query_row("SELECT COUNT(*) FROM audit_events", [], |row| row.get(0))
-        .unwrap();
+    let final_count: i64 = sql_query("SELECT COUNT(*) as count FROM audit_events")
+        .get_result::<CountRow>(&mut persistence.conn)
+        .unwrap()
+        .count;
 
     assert_eq!(initial_count, final_count);
 }

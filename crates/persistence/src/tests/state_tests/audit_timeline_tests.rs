@@ -76,7 +76,7 @@ fn test_get_audit_timeline_returns_events_in_order() {
 
 #[test]
 fn test_get_audit_timeline_empty_for_nonexistent_scope() {
-    let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
 
     // Retrieve timeline for non-existent scope
     let timeline: Vec<AuditEvent> = persistence

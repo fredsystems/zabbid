@@ -6,7 +6,7 @@
 mod bootstrap;
 mod operators;
 mod persistence;
-mod queries;
+pub mod queries;
 mod schema;
 
 pub use bootstrap::{

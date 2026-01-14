@@ -5,11 +5,63 @@
 
 //! Operator and session persistence functions.
 
-use rusqlite::{Connection, OptionalExtension, params};
+use diesel::sql_types::{BigInt, Integer, Nullable, Text};
+use diesel::{RunQueryDsl, SqliteConnection, sql_query};
 use tracing::{debug, info};
 
 use crate::data_models::{OperatorData, SessionData};
 use crate::error::PersistenceError;
+
+// Helper structs for Diesel query results
+#[derive(diesel::QueryableByName)]
+struct LastInsertRowid {
+    #[diesel(sql_type = BigInt)]
+    last_insert_rowid: i64,
+}
+
+#[derive(diesel::QueryableByName)]
+struct OperatorRow {
+    #[diesel(sql_type = BigInt)]
+    operator_id: i64,
+    #[diesel(sql_type = Text)]
+    login_name: String,
+    #[diesel(sql_type = Text)]
+    display_name: String,
+    #[diesel(sql_type = Text)]
+    password_hash: String,
+    #[diesel(sql_type = Text)]
+    role: String,
+    #[diesel(sql_type = Integer)]
+    is_disabled: i32,
+    #[diesel(sql_type = Text)]
+    created_at: String,
+    #[diesel(sql_type = Nullable<Text>)]
+    disabled_at: Option<String>,
+    #[diesel(sql_type = Nullable<Text>)]
+    last_login_at: Option<String>,
+}
+
+#[derive(diesel::QueryableByName)]
+struct SessionRow {
+    #[diesel(sql_type = BigInt)]
+    session_id: i64,
+    #[diesel(sql_type = BigInt)]
+    operator_id: i64,
+    #[diesel(sql_type = Text)]
+    session_token: String,
+    #[diesel(sql_type = Text)]
+    created_at: String,
+    #[diesel(sql_type = Text)]
+    expires_at: String,
+    #[diesel(sql_type = Text)]
+    last_activity_at: String,
+}
+
+#[derive(diesel::QueryableByName)]
+struct CountRow {
+    #[diesel(sql_type = BigInt)]
+    count: i64,
+}
 
 /// Creates a new operator.
 ///
@@ -27,7 +79,7 @@ use crate::error::PersistenceError;
 /// Returns an error if the operator cannot be created or if the login name
 /// already exists.
 pub fn create_operator(
-    conn: &Connection,
+    conn: &mut SqliteConnection,
     login_name: &str,
     display_name: &str,
     password: &str,
@@ -44,13 +96,20 @@ pub fn create_operator(
     let password_hash: String = bcrypt::hash(password, bcrypt::DEFAULT_COST)
         .map_err(|e| PersistenceError::Other(format!("Failed to hash password: {e}")))?;
 
-    conn.execute(
+    sql_query(
         "INSERT INTO operators (login_name, display_name, password_hash, role)
          VALUES (?1, ?2, ?3, ?4)",
-        params![normalized_login, display_name, password_hash, role],
-    )?;
+    )
+    .bind::<Text, _>(&normalized_login)
+    .bind::<Text, _>(display_name)
+    .bind::<Text, _>(&password_hash)
+    .bind::<Text, _>(role)
+    .execute(conn)?;
 
-    let operator_id: i64 = conn.last_insert_rowid();
+    let operator_id: i64 = sql_query("SELECT last_insert_rowid() as last_insert_rowid")
+        .get_result::<LastInsertRowid>(conn)?
+        .last_insert_rowid;
+
     info!("Created operator with ID: {}", operator_id);
 
     Ok(operator_id)
@@ -70,37 +129,37 @@ pub fn create_operator(
 /// Returns an error if the database query fails.
 /// Returns `Ok(None)` if the operator is not found.
 pub fn get_operator_by_login(
-    conn: &Connection,
+    conn: &mut SqliteConnection,
     login_name: &str,
 ) -> Result<Option<OperatorData>, PersistenceError> {
     let normalized_login: String = login_name.to_uppercase();
 
     debug!("Looking up operator by login_name: {}", normalized_login);
 
-    let result: Option<OperatorData> = conn
-        .query_row(
-            "SELECT operator_id, login_name, display_name, password_hash, role, is_disabled,
-                    created_at, disabled_at, last_login_at
-             FROM operators
-             WHERE login_name = ?1",
-            params![normalized_login],
-            |row| {
-                Ok(OperatorData {
-                    operator_id: row.get(0)?,
-                    login_name: row.get(1)?,
-                    display_name: row.get(2)?,
-                    password_hash: row.get(3)?,
-                    role: row.get(4)?,
-                    is_disabled: row.get::<_, i32>(5)? != 0,
-                    created_at: row.get(6)?,
-                    disabled_at: row.get(7)?,
-                    last_login_at: row.get(8)?,
-                })
-            },
-        )
-        .optional()?;
+    let result: Result<OperatorRow, diesel::result::Error> = sql_query(
+        "SELECT operator_id, login_name, display_name, password_hash, role, is_disabled,
+                created_at, disabled_at, last_login_at
+         FROM operators
+         WHERE login_name = ?1",
+    )
+    .bind::<diesel::sql_types::Text, _>(&normalized_login)
+    .get_result::<OperatorRow>(conn);
 
-    Ok(result)
+    match result {
+        Ok(row) => Ok(Some(OperatorData {
+            operator_id: row.operator_id,
+            login_name: row.login_name,
+            display_name: row.display_name,
+            password_hash: row.password_hash,
+            role: row.role,
+            is_disabled: row.is_disabled != 0,
+            created_at: row.created_at,
+            disabled_at: row.disabled_at,
+            last_login_at: row.last_login_at,
+        })),
+        Err(diesel::result::Error::NotFound) => Ok(None),
+        Err(e) => Err(PersistenceError::from(e)),
+    }
 }
 
 /// Retrieves an operator by ID.
@@ -115,35 +174,35 @@ pub fn get_operator_by_login(
 /// Returns an error if the database query fails.
 /// Returns `Ok(None)` if the operator is not found.
 pub fn get_operator_by_id(
-    conn: &Connection,
+    conn: &mut SqliteConnection,
     operator_id: i64,
 ) -> Result<Option<OperatorData>, PersistenceError> {
     debug!("Looking up operator by ID: {}", operator_id);
 
-    let result: Option<OperatorData> = conn
-        .query_row(
-            "SELECT operator_id, login_name, display_name, password_hash, role, is_disabled,
-                    created_at, disabled_at, last_login_at
-             FROM operators
-             WHERE operator_id = ?1",
-            params![operator_id],
-            |row| {
-                Ok(OperatorData {
-                    operator_id: row.get(0)?,
-                    login_name: row.get(1)?,
-                    display_name: row.get(2)?,
-                    password_hash: row.get(3)?,
-                    role: row.get(4)?,
-                    is_disabled: row.get::<_, i32>(5)? != 0,
-                    created_at: row.get(6)?,
-                    disabled_at: row.get(7)?,
-                    last_login_at: row.get(8)?,
-                })
-            },
-        )
-        .optional()?;
+    let result: Result<OperatorRow, diesel::result::Error> = sql_query(
+        "SELECT operator_id, login_name, display_name, password_hash, role, is_disabled,
+                created_at, disabled_at, last_login_at
+         FROM operators
+         WHERE operator_id = ?1",
+    )
+    .bind::<diesel::sql_types::BigInt, _>(operator_id)
+    .get_result::<OperatorRow>(conn);
 
-    Ok(result)
+    match result {
+        Ok(row) => Ok(Some(OperatorData {
+            operator_id: row.operator_id,
+            login_name: row.login_name,
+            display_name: row.display_name,
+            password_hash: row.password_hash,
+            role: row.role,
+            is_disabled: row.is_disabled != 0,
+            created_at: row.created_at,
+            disabled_at: row.disabled_at,
+            last_login_at: row.last_login_at,
+        })),
+        Err(diesel::result::Error::NotFound) => Ok(None),
+        Err(e) => Err(PersistenceError::from(e)),
+    }
 }
 
 /// Updates the last login timestamp for an operator.
@@ -156,13 +215,15 @@ pub fn get_operator_by_id(
 /// # Errors
 ///
 /// Returns an error if the database update fails.
-pub fn update_last_login(conn: &Connection, operator_id: i64) -> Result<(), PersistenceError> {
+pub fn update_last_login(
+    conn: &mut SqliteConnection,
+    operator_id: i64,
+) -> Result<(), PersistenceError> {
     debug!("Updating last_login_at for operator ID: {}", operator_id);
 
-    conn.execute(
-        "UPDATE operators SET last_login_at = CURRENT_TIMESTAMP WHERE operator_id = ?1",
-        params![operator_id],
-    )?;
+    sql_query("UPDATE operators SET last_login_at = CURRENT_TIMESTAMP WHERE operator_id = ?1")
+        .bind::<diesel::sql_types::BigInt, _>(operator_id)
+        .execute(conn)?;
 
     Ok(())
 }
@@ -179,15 +240,19 @@ pub fn update_last_login(conn: &Connection, operator_id: i64) -> Result<(), Pers
 /// # Errors
 ///
 /// Returns an error if the database update fails.
-pub fn disable_operator(conn: &Connection, operator_id: i64) -> Result<(), PersistenceError> {
+pub fn disable_operator(
+    conn: &mut SqliteConnection,
+    operator_id: i64,
+) -> Result<(), PersistenceError> {
     info!("Disabling operator ID: {}", operator_id);
 
-    conn.execute(
+    sql_query(
         "UPDATE operators
          SET is_disabled = 1, disabled_at = CURRENT_TIMESTAMP
          WHERE operator_id = ?1",
-        params![operator_id],
-    )?;
+    )
+    .bind::<diesel::sql_types::BigInt, _>(operator_id)
+    .execute(conn)?;
 
     Ok(())
 }
@@ -204,15 +269,19 @@ pub fn disable_operator(conn: &Connection, operator_id: i64) -> Result<(), Persi
 /// # Errors
 ///
 /// Returns an error if the database update fails.
-pub fn enable_operator(conn: &Connection, operator_id: i64) -> Result<(), PersistenceError> {
+pub fn enable_operator(
+    conn: &mut SqliteConnection,
+    operator_id: i64,
+) -> Result<(), PersistenceError> {
     info!("Re-enabling operator ID: {}", operator_id);
 
-    conn.execute(
+    sql_query(
         "UPDATE operators
          SET is_disabled = 0, disabled_at = NULL
          WHERE operator_id = ?1",
-        params![operator_id],
-    )?;
+    )
+    .bind::<diesel::sql_types::BigInt, _>(operator_id)
+    .execute(conn)?;
 
     Ok(())
 }
@@ -231,7 +300,10 @@ pub fn enable_operator(conn: &Connection, operator_id: i64) -> Result<(), Persis
 ///
 /// Returns `PersistenceError::OperatorReferenced` if the operator is referenced
 /// by audit events. Returns other errors if the database delete fails.
-pub fn delete_operator(conn: &Connection, operator_id: i64) -> Result<(), PersistenceError> {
+pub fn delete_operator(
+    conn: &mut SqliteConnection,
+    operator_id: i64,
+) -> Result<(), PersistenceError> {
     info!("Attempting to delete operator ID: {}", operator_id);
 
     // Check if operator is referenced by audit events
@@ -240,10 +312,9 @@ pub fn delete_operator(conn: &Connection, operator_id: i64) -> Result<(), Persis
     }
 
     // Attempt deletion
-    let rows_affected: usize = conn.execute(
-        "DELETE FROM operators WHERE operator_id = ?1",
-        params![operator_id],
-    )?;
+    let rows_affected: usize = sql_query("DELETE FROM operators WHERE operator_id = ?1")
+        .bind::<diesel::sql_types::BigInt, _>(operator_id)
+        .execute(conn)?;
 
     if rows_affected == 0 {
         return Err(PersistenceError::OperatorNotFound(format!(
@@ -268,7 +339,7 @@ pub fn delete_operator(conn: &Connection, operator_id: i64) -> Result<(), Persis
 ///
 /// Returns an error if the session cannot be created.
 pub fn create_session(
-    conn: &Connection,
+    conn: &mut SqliteConnection,
     session_token: &str,
     operator_id: i64,
     expires_at: &str,
@@ -278,15 +349,20 @@ pub fn create_session(
         operator_id, expires_at
     );
 
-    conn.execute(
+    sql_query(
         "INSERT INTO sessions (session_token, operator_id, expires_at)
          VALUES (?1, ?2, ?3)",
-        params![session_token, operator_id, expires_at],
-    )?;
+    )
+    .bind::<diesel::sql_types::Text, _>(session_token)
+    .bind::<diesel::sql_types::BigInt, _>(operator_id)
+    .bind::<diesel::sql_types::Text, _>(expires_at)
+    .execute(conn)?;
 
-    let session_id: i64 = conn.last_insert_rowid();
+    let session_id: i64 = sql_query("SELECT last_insert_rowid() as last_insert_rowid")
+        .get_result::<LastInsertRowid>(conn)?
+        .last_insert_rowid;
+
     debug!("Created session with ID: {}", session_id);
-
     Ok(session_id)
 }
 
@@ -302,32 +378,32 @@ pub fn create_session(
 /// Returns an error if the database query fails.
 /// Returns `Ok(None)` if the session is not found.
 pub fn get_session_by_token(
-    conn: &Connection,
+    conn: &mut SqliteConnection,
     session_token: &str,
 ) -> Result<Option<SessionData>, PersistenceError> {
     debug!("Looking up session by token");
 
-    let result: Option<SessionData> = conn
-        .query_row(
-            "SELECT session_id, session_token, operator_id, created_at,
-                    last_activity_at, expires_at
-             FROM sessions
-             WHERE session_token = ?1",
-            params![session_token],
-            |row| {
-                Ok(SessionData {
-                    session_id: row.get(0)?,
-                    session_token: row.get(1)?,
-                    operator_id: row.get(2)?,
-                    created_at: row.get(3)?,
-                    last_activity_at: row.get(4)?,
-                    expires_at: row.get(5)?,
-                })
-            },
-        )
-        .optional()?;
+    let result: Result<SessionRow, diesel::result::Error> = sql_query(
+        "SELECT session_id, session_token, operator_id, created_at,
+                last_activity_at, expires_at
+         FROM sessions
+         WHERE session_token = ?1",
+    )
+    .bind::<diesel::sql_types::Text, _>(session_token)
+    .get_result::<SessionRow>(conn);
 
-    Ok(result)
+    match result {
+        Ok(row) => Ok(Some(SessionData {
+            session_id: row.session_id,
+            session_token: row.session_token,
+            operator_id: row.operator_id,
+            created_at: row.created_at,
+            last_activity_at: row.last_activity_at,
+            expires_at: row.expires_at,
+        })),
+        Err(diesel::result::Error::NotFound) => Ok(None),
+        Err(e) => Err(PersistenceError::from(e)),
+    }
 }
 
 /// Updates the last activity timestamp for a session.
@@ -340,13 +416,15 @@ pub fn get_session_by_token(
 /// # Errors
 ///
 /// Returns an error if the database update fails.
-pub fn update_session_activity(conn: &Connection, session_id: i64) -> Result<(), PersistenceError> {
+pub fn update_session_activity(
+    conn: &mut SqliteConnection,
+    session_id: i64,
+) -> Result<(), PersistenceError> {
     debug!("Updating last_activity_at for session ID: {}", session_id);
 
-    conn.execute(
-        "UPDATE sessions SET last_activity_at = CURRENT_TIMESTAMP WHERE session_id = ?1",
-        params![session_id],
-    )?;
+    sql_query("UPDATE sessions SET last_activity_at = CURRENT_TIMESTAMP WHERE session_id = ?1")
+        .bind::<diesel::sql_types::BigInt, _>(session_id)
+        .execute(conn)?;
 
     Ok(())
 }
@@ -363,13 +441,15 @@ pub fn update_session_activity(conn: &Connection, session_id: i64) -> Result<(),
 /// # Errors
 ///
 /// Returns an error if the database delete fails.
-pub fn delete_session(conn: &Connection, session_token: &str) -> Result<(), PersistenceError> {
+pub fn delete_session(
+    conn: &mut SqliteConnection,
+    session_token: &str,
+) -> Result<(), PersistenceError> {
     debug!("Deleting session by token");
 
-    conn.execute(
-        "DELETE FROM sessions WHERE session_token = ?1",
-        params![session_token],
-    )?;
+    sql_query("DELETE FROM sessions WHERE session_token = ?1")
+        .bind::<diesel::sql_types::Text, _>(session_token)
+        .execute(conn)?;
 
     Ok(())
 }
@@ -385,13 +465,11 @@ pub fn delete_session(conn: &Connection, session_token: &str) -> Result<(), Pers
 /// # Errors
 ///
 /// Returns an error if the database delete fails.
-pub fn delete_expired_sessions(conn: &Connection) -> Result<usize, PersistenceError> {
+pub fn delete_expired_sessions(conn: &mut SqliteConnection) -> Result<usize, PersistenceError> {
     debug!("Deleting expired sessions");
 
-    let rows_affected: usize = conn.execute(
-        "DELETE FROM sessions WHERE expires_at < CURRENT_TIMESTAMP",
-        [],
-    )?;
+    let rows_affected: usize =
+        sql_query("DELETE FROM sessions WHERE expires_at < CURRENT_TIMESTAMP").execute(conn)?;
 
     info!("Deleted {} expired sessions", rows_affected);
     Ok(rows_affected)
@@ -408,7 +486,7 @@ pub fn delete_expired_sessions(conn: &Connection) -> Result<usize, PersistenceEr
 ///
 /// Returns an error if the database query fails.
 pub fn is_operator_referenced(
-    conn: &Connection,
+    conn: &mut SqliteConnection,
     operator_id: i64,
 ) -> Result<bool, PersistenceError> {
     debug!(
@@ -416,11 +494,11 @@ pub fn is_operator_referenced(
         operator_id
     );
 
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM audit_events WHERE actor_operator_id = ?1",
-        params![operator_id],
-        |row| row.get(0),
-    )?;
+    let count: i64 =
+        sql_query("SELECT COUNT(*) as count FROM audit_events WHERE actor_operator_id = ?1")
+            .bind::<diesel::sql_types::BigInt, _>(operator_id)
+            .get_result::<CountRow>(conn)?
+            .count;
 
     Ok(count > 0)
 }
@@ -434,34 +512,31 @@ pub fn is_operator_referenced(
 /// # Errors
 ///
 /// Returns an error if the database query fails.
-pub fn list_operators(conn: &Connection) -> Result<Vec<OperatorData>, PersistenceError> {
+pub fn list_operators(conn: &mut SqliteConnection) -> Result<Vec<OperatorData>, PersistenceError> {
     debug!("Listing all operators");
 
-    let mut stmt = conn.prepare(
+    let rows: Vec<OperatorRow> = sql_query(
         "SELECT operator_id, login_name, display_name, password_hash, role, is_disabled,
                 created_at, disabled_at, last_login_at
          FROM operators
          ORDER BY login_name ASC",
-    )?;
+    )
+    .load::<OperatorRow>(conn)?;
 
-    let rows = stmt.query_map([], |row| {
-        Ok(OperatorData {
-            operator_id: row.get(0)?,
-            login_name: row.get(1)?,
-            display_name: row.get(2)?,
-            password_hash: row.get(3)?,
-            role: row.get(4)?,
-            is_disabled: row.get::<_, i32>(5)? != 0,
-            created_at: row.get(6)?,
-            disabled_at: row.get(7)?,
-            last_login_at: row.get(8)?,
+    let operators: Vec<OperatorData> = rows
+        .into_iter()
+        .map(|row| OperatorData {
+            operator_id: row.operator_id,
+            login_name: row.login_name,
+            display_name: row.display_name,
+            password_hash: row.password_hash,
+            role: row.role,
+            is_disabled: row.is_disabled != 0,
+            created_at: row.created_at,
+            disabled_at: row.disabled_at,
+            last_login_at: row.last_login_at,
         })
-    })?;
-
-    let mut operators: Vec<OperatorData> = Vec::new();
-    for row_result in rows {
-        operators.push(row_result?);
-    }
+        .collect();
 
     Ok(operators)
 }
@@ -493,7 +568,7 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, Pers
 ///
 /// Returns an error if the password cannot be hashed or the update fails.
 pub fn update_password(
-    conn: &Connection,
+    conn: &mut SqliteConnection,
     operator_id: i64,
     new_password: &str,
 ) -> Result<(), PersistenceError> {
@@ -503,10 +578,10 @@ pub fn update_password(
     let password_hash: String = bcrypt::hash(new_password, bcrypt::DEFAULT_COST)
         .map_err(|e| PersistenceError::Other(format!("Failed to hash password: {e}")))?;
 
-    conn.execute(
-        "UPDATE operators SET password_hash = ?1 WHERE operator_id = ?2",
-        params![password_hash, operator_id],
-    )?;
+    sql_query("UPDATE operators SET password_hash = ?1 WHERE operator_id = ?2")
+        .bind::<diesel::sql_types::Text, _>(&password_hash)
+        .bind::<diesel::sql_types::BigInt, _>(operator_id)
+        .execute(conn)?;
 
     info!("Password updated for operator ID: {}", operator_id);
     Ok(())
@@ -525,15 +600,14 @@ pub fn update_password(
 ///
 /// Returns an error if the database delete fails.
 pub fn delete_sessions_for_operator(
-    conn: &Connection,
+    conn: &mut SqliteConnection,
     operator_id: i64,
 ) -> Result<usize, PersistenceError> {
     info!("Deleting all sessions for operator ID: {}", operator_id);
 
-    let rows_affected: usize = conn.execute(
-        "DELETE FROM sessions WHERE operator_id = ?1",
-        params![operator_id],
-    )?;
+    let rows_affected: usize = sql_query("DELETE FROM sessions WHERE operator_id = ?1")
+        .bind::<diesel::sql_types::BigInt, _>(operator_id)
+        .execute(conn)?;
 
     info!(
         "Deleted {} sessions for operator ID: {}",
@@ -551,10 +625,12 @@ pub fn delete_sessions_for_operator(
 /// # Errors
 ///
 /// Returns an error if the database query fails.
-pub fn count_operators(conn: &Connection) -> Result<i64, PersistenceError> {
+pub fn count_operators(conn: &mut SqliteConnection) -> Result<i64, PersistenceError> {
     debug!("Counting operators");
 
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM operators", [], |row| row.get(0))?;
+    let count: i64 = sql_query("SELECT COUNT(*) as count FROM operators")
+        .get_result::<CountRow>(conn)?
+        .count;
 
     debug!("Total operators: {}", count);
     Ok(count)
@@ -573,14 +649,14 @@ pub fn count_operators(conn: &Connection) -> Result<i64, PersistenceError> {
 /// # Errors
 ///
 /// Returns an error if the database query fails.
-pub fn count_active_admin_operators(conn: &Connection) -> Result<i64, PersistenceError> {
+pub fn count_active_admin_operators(conn: &mut SqliteConnection) -> Result<i64, PersistenceError> {
     debug!("Counting active admin operators");
 
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM operators WHERE role = 'Admin' AND is_disabled = 0",
-        [],
-        |row| row.get(0),
-    )?;
+    let count: i64 = sql_query(
+        "SELECT COUNT(*) as count FROM operators WHERE role = 'Admin' AND is_disabled = 0",
+    )
+    .get_result::<CountRow>(conn)?
+    .count;
 
     debug!("Active admin operators: {}", count);
     Ok(count)

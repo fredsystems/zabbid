@@ -144,7 +144,7 @@ fn test_get_current_state_after_snapshot_with_user() {
 
 #[test]
 fn test_get_current_state_no_snapshot_returns_error() {
-    let persistence: SqlitePersistence = create_bootstrapped_persistence();
+    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
 
     // Try to retrieve current state with no users added yet
     // With canonical tables (Phase 7), an empty state is valid (no users yet)
