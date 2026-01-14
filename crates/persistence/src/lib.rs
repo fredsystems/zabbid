@@ -11,8 +11,10 @@
     clippy::correctness,
     clippy::all
 )]
+#![allow(clippy::multiple_crate_versions)]
 
 mod data_models;
+mod diesel_migrations;
 mod error;
 mod sqlite;
 
@@ -36,14 +38,36 @@ pub struct SqlitePersistence {
 impl SqlitePersistence {
     /// Creates a new persistence adapter with an in-memory database.
     ///
+    /// Uses a shared in-memory database so that Diesel migrations and
+    /// rusqlite queries can operate on the same database instance.
+    ///
     /// # Errors
     ///
     /// Returns an error if the database cannot be initialized.
     pub fn new_in_memory() -> Result<Self, PersistenceError> {
-        let conn: Connection = Connection::open_in_memory()?;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        // Create a unique shared in-memory database name per call so tests are isolated.
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| PersistenceError::InitializationError(e.to_string()))?
+            .as_nanos();
+        let db_name = format!("memdb_{nanos}");
+        let shared_memory_url = format!("file:{db_name}?mode=memory&cache=shared");
+
+        // Initialize database with Diesel migrations using the same shared memory URL
+        let _diesel_conn = diesel_migrations::initialize_database(&shared_memory_url)
+            .map_err(|e| PersistenceError::MigrationFailed(e.to_string()))?;
+
+        // Now open with rusqlite using the same shared memory URL
+        let conn: Connection = Connection::open(&shared_memory_url)?;
+
         // Enable foreign key constraints
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        sqlite::initialize_schema(&conn)?;
+
+        // Verify foreign key enforcement is active
+        sqlite::verify_foreign_key_enforcement(&conn)?;
+
         Ok(Self { conn })
     }
 
@@ -57,14 +81,25 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database cannot be opened or initialized.
     pub fn new_with_file<P: AsRef<Path>>(path: P) -> Result<Self, PersistenceError> {
+        let path_str = path.as_ref().to_str().ok_or_else(|| {
+            PersistenceError::InitializationError("Invalid database path".to_string())
+        })?;
+
+        // Initialize database with Diesel migrations
+        let _diesel_conn = diesel_migrations::initialize_database(path_str)?;
+
+        // Now open with rusqlite for runtime queries
         let conn: Connection = Connection::open(path)?;
+
         // Enable WAL mode for better read concurrency
         conn.pragma_update(None, "journal_mode", "WAL")?;
+
         // Enable foreign key constraints
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        sqlite::initialize_schema(&conn)?;
+
         // Verify foreign key enforcement is active
         sqlite::verify_foreign_key_enforcement(&conn)?;
+
         Ok(Self { conn })
     }
 

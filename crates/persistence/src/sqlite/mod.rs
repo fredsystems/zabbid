@@ -29,4 +29,3 @@ pub use queries::{
     get_events_after, get_global_audit_events, get_historical_state, get_latest_snapshot,
     should_snapshot,
 };
-pub use schema::initialize_schema;

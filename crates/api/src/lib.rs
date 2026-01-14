@@ -12,6 +12,7 @@
     clippy::all
 )]
 #![allow(deprecated)]
+#![allow(clippy::multiple_crate_versions)]
 
 mod auth;
 mod capabilities;
