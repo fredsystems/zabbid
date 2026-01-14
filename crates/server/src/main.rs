@@ -165,6 +165,8 @@ struct ListUsersQuery {
 /// Bid year information for API responses.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct BidYearInfoApiResponse {
+    /// The canonical numeric identifier.
+    bid_year_id: i64,
     /// The year value.
     year: u16,
     /// The start date (ISO 8601).
@@ -189,6 +191,8 @@ struct ListBidYearsApiResponse {
 /// API response for listing areas.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ListAreasApiResponse {
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
     /// The bid year.
     bid_year: u16,
     /// The list of areas with metadata.
@@ -198,8 +202,12 @@ struct ListAreasApiResponse {
 /// Area information response for API.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct AreaInfoResponse {
-    /// The area identifier.
-    area_id: String,
+    /// The canonical area identifier.
+    area_id: i64,
+    /// The area code (display value).
+    area_code: String,
+    /// The area name (optional).
+    area_name: Option<String>,
     /// The number of users in this area.
     user_count: usize,
 }
@@ -207,10 +215,14 @@ struct AreaInfoResponse {
 /// API response for listing users.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ListUsersApiResponse {
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
     /// The bid year.
     bid_year: u16,
-    /// The area.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
+    /// The area code (display value).
+    area_code: String,
     /// The list of users.
     users: Vec<UserInfoResponse>,
 }
@@ -220,6 +232,10 @@ struct ListUsersApiResponse {
 struct UserInfoResponse {
     /// Canonical internal identifier.
     user_id: i64,
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
+    /// The canonical area identifier.
+    area_id: i64,
     /// The user's initials.
     initials: String,
     /// The user's name.
@@ -258,8 +274,12 @@ struct LeaveAvailabilityQuery {
 /// API response for leave availability.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LeaveAvailabilityApiResponse {
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
     /// The bid year.
     bid_year: u16,
+    /// The user's canonical identifier.
+    user_id: i64,
     /// The user's initials.
     initials: String,
     /// Total hours earned.
@@ -298,8 +318,12 @@ struct WriteResponse {
 struct RegisterUserApiResponse {
     /// Success indicator.
     success: bool,
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
     /// The bid year the user was registered for.
     bid_year: u16,
+    /// The user's canonical identifier.
+    user_id: i64,
     /// The user's initials.
     initials: String,
     /// The user's name.
@@ -342,10 +366,14 @@ struct AuditTimelineQuery {
 /// Serializable representation of State for JSON responses.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct StateResponse {
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
     /// The bid year.
     bid_year: u16,
-    /// The area.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
+    /// The area code.
+    area_code: String,
     /// The users in this state.
     users: Vec<UserResponse>,
 }
@@ -663,6 +691,7 @@ async fn handle_list_bid_years(
     info!("Handling list_bid_years request");
 
     let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
         persistence.list_bid_years()?;
 
@@ -671,7 +700,7 @@ async fn handle_list_bid_years(
     let user_counts: Vec<(u16, usize)> = persistence.count_users_by_bid_year()?;
     drop(persistence);
 
-    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years)?;
+    let response: ListBidYearsResponse = list_bid_years(&metadata, &canonical_bid_years)?;
 
     // Convert to API response format with ISO 8601 date strings and counts
     let api_bid_years: Vec<BidYearInfoApiResponse> = response
@@ -687,6 +716,7 @@ async fn handle_list_bid_years(
                 .find(|(year, _)| *year == info.year)
                 .map_or(0, |(_, count)| *count);
             BidYearInfoApiResponse {
+                bid_year_id: info.bid_year_id,
                 year: info.year,
                 start_date: info.start_date.to_string(),
                 num_pay_periods: info.num_pay_periods,
@@ -731,16 +761,19 @@ async fn handle_list_areas(
         .map(|area_info| {
             let user_count: usize = user_counts
                 .iter()
-                .find(|(area_id, _)| area_id == &area_info.area_id)
+                .find(|(area_code, _)| area_code == &area_info.area_code)
                 .map_or(0, |(_, count)| *count);
             AreaInfoResponse {
                 area_id: area_info.area_id,
+                area_code: area_info.area_code,
+                area_name: area_info.area_name,
                 user_count,
             }
         })
         .collect();
 
     Ok(Json(ListAreasApiResponse {
+        bid_year_id: response.bid_year_id,
         bid_year: response.bid_year,
         areas: areas_with_counts,
     }))

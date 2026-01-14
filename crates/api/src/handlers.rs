@@ -470,23 +470,40 @@ pub fn create_area(
 ///
 /// # Arguments
 ///
+/// * `metadata` - The current bootstrap metadata with bid year IDs
 /// * `canonical_bid_years` - The list of canonical bid years from persistence
 ///
 /// # Returns
 ///
-/// A response containing all bid years with canonical metadata.
+/// A response containing all bid years with canonical metadata and IDs.
 ///
 /// # Errors
 ///
 /// Returns an error if end date derivation fails due to date arithmetic overflow.
 pub fn list_bid_years(
+    metadata: &BootstrapMetadata,
     canonical_bid_years: &[CanonicalBidYear],
 ) -> Result<ListBidYearsResponse, ApiError> {
     let bid_years: Result<Vec<BidYearInfo>, ApiError> = canonical_bid_years
         .iter()
         .map(|c| {
             let end_date: time::Date = c.end_date().map_err(translate_domain_error)?;
+
+            // Extract bid_year_id from metadata by matching the year
+            let bid_year_id: i64 = metadata
+                .bid_years
+                .iter()
+                .find(|by| by.year() == c.year())
+                .and_then(|by| by.bid_year_id())
+                .ok_or_else(|| ApiError::Internal {
+                    message: format!(
+                        "Bid year {} exists in canonical data but has no ID in metadata",
+                        c.year()
+                    ),
+                })?;
+
             Ok(BidYearInfo {
+                bid_year_id,
                 year: c.year(),
                 start_date: c.start_date(),
                 num_pay_periods: c.num_pay_periods(),
@@ -528,17 +545,44 @@ pub fn list_areas(
     // Validate bid year exists before querying
     validate_bid_year_exists(metadata, &bid_year).map_err(translate_domain_error)?;
 
+    // Extract bid_year_id from metadata
+    let bid_year_id: i64 = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == bid_year.year())
+        .and_then(|by| by.bid_year_id())
+        .ok_or_else(|| ApiError::Internal {
+            message: format!(
+                "Bid year {} exists but has no ID in metadata",
+                bid_year.year()
+            ),
+        })?;
+
     let areas: Vec<crate::request_response::AreaInfo> = metadata
         .areas
         .iter()
         .filter(|(by, _)| by.year() == bid_year.year())
-        .map(|(_, area)| crate::request_response::AreaInfo {
-            area_id: area.id().to_string(),
-            user_count: 0, // Will be populated by server layer with actual counts
+        .map(|(_, area)| {
+            // Extract area_id - all persisted areas must have IDs
+            let area_id: i64 = area.area_id().ok_or_else(|| ApiError::Internal {
+                message: format!(
+                    "Area '{}' in bid year {} has no ID",
+                    area.area_code(),
+                    bid_year.year()
+                ),
+            })?;
+
+            Ok(crate::request_response::AreaInfo {
+                area_id,
+                area_code: area.area_code().to_string(),
+                area_name: area.area_name().map(String::from),
+                user_count: 0, // Will be populated by server layer with actual counts
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, ApiError>>()?;
 
     Ok(ListAreasResponse {
+        bid_year_id,
         bid_year: request.bid_year,
         areas,
     })
