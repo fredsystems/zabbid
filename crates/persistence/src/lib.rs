@@ -908,4 +908,90 @@ impl SqlitePersistence {
 
         Ok(())
     }
+
+    // ========================================================================
+    // Canonical ID Lookups (Test Support)
+    // ========================================================================
+
+    /// Queries the canonical `bid_year_id` for a given year.
+    ///
+    /// # Arguments
+    ///
+    /// * `year` - The year to query
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bid year is not found or the query fails.
+    pub fn get_bid_year_id(&self, year: u16) -> Result<i64, PersistenceError> {
+        self.conn
+            .query_row(
+                "SELECT bid_year_id FROM bid_years WHERE year = ?1",
+                [year],
+                |row| row.get(0),
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    PersistenceError::NotFound(format!("Bid year {year} not found"))
+                }
+                _ => PersistenceError::from(e),
+            })
+    }
+
+    /// Queries the canonical `area_id` for a given bid year and area code.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year identifier
+    /// * `area_code` - The area code
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the area is not found or the query fails.
+    pub fn get_area_id(&self, bid_year_id: i64, area_code: &str) -> Result<i64, PersistenceError> {
+        let normalized_code: String = area_code.to_uppercase();
+        self.conn
+            .query_row(
+                "SELECT area_id FROM areas WHERE bid_year_id = ?1 AND area_code = ?2",
+                rusqlite::params![bid_year_id, normalized_code],
+                |row| row.get(0),
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    PersistenceError::NotFound(format!("Area {area_code} not found"))
+                }
+                _ => PersistenceError::from(e),
+            })
+    }
+
+    /// Queries the canonical `user_id` for a given bid year, area, and initials.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year identifier
+    /// * `area_id` - The canonical area identifier
+    /// * `initials` - The user initials
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user is not found or the query fails.
+    pub fn get_user_id(
+        &self,
+        bid_year_id: i64,
+        area_id: i64,
+        initials: &str,
+    ) -> Result<i64, PersistenceError> {
+        let normalized_initials: String = initials.to_uppercase();
+        self.conn
+            .query_row(
+                "SELECT user_id FROM users WHERE bid_year_id = ?1 AND area_id = ?2 AND initials = ?3",
+                rusqlite::params![bid_year_id, area_id, normalized_initials],
+                |row| row.get(0),
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    PersistenceError::NotFound(format!("User {initials} not found"))
+                }
+                _ => PersistenceError::from(e),
+            })
+    }
 }

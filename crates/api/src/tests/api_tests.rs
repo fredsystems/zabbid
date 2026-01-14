@@ -1258,7 +1258,10 @@ fn test_list_areas_empty() {
     // Get metadata from persistence
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
 
-    let request: ListAreasRequest = ListAreasRequest { bid_year: 2026 };
+    // Extract canonical bid_year_id
+    let bid_year_id: i64 = persistence.get_bid_year_id(2026).unwrap();
+
+    let request: ListAreasRequest = ListAreasRequest { bid_year_id };
     let response: ListAreasResponse = list_areas(&metadata, &request).unwrap();
 
     assert_eq!(response.bid_year, 2026);
@@ -1330,7 +1333,10 @@ fn test_list_areas_for_bid_year() {
     // Get metadata from persistence
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
 
-    let request: ListAreasRequest = ListAreasRequest { bid_year: 2026 };
+    // Extract canonical bid_year_id
+    let bid_year_id: i64 = persistence.get_bid_year_id(2026).unwrap();
+
+    let request: ListAreasRequest = ListAreasRequest { bid_year_id };
     let response: ListAreasResponse = list_areas(&metadata, &request).unwrap();
 
     assert_eq!(response.bid_year, 2026);
@@ -1445,13 +1451,21 @@ fn test_list_areas_isolated_by_bid_year() {
     // Get metadata from persistence
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
 
-    let request_2026: ListAreasRequest = ListAreasRequest { bid_year: 2026 };
+    // Extract canonical bid_year_ids
+    let bid_year_id_2026: i64 = persistence.get_bid_year_id(2026).unwrap();
+    let bid_year_id_2027: i64 = persistence.get_bid_year_id(2027).unwrap();
+
+    let request_2026: ListAreasRequest = ListAreasRequest {
+        bid_year_id: bid_year_id_2026,
+    };
     let response_2026: ListAreasResponse = list_areas(&metadata, &request_2026).unwrap();
 
     assert_eq!(response_2026.areas.len(), 1);
     assert_eq!(response_2026.areas[0].user_count, 0);
 
-    let request_2027: ListAreasRequest = ListAreasRequest { bid_year: 2027 };
+    let request_2027: ListAreasRequest = ListAreasRequest {
+        bid_year_id: bid_year_id_2027,
+    };
     let response_2027: ListAreasResponse = list_areas(&metadata, &request_2027).unwrap();
 
     assert_eq!(response_2027.areas.len(), 1);
@@ -1463,7 +1477,8 @@ fn test_list_areas_isolated_by_bid_year() {
 #[test]
 fn test_list_areas_nonexistent_bid_year() {
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
-    let request: ListAreasRequest = ListAreasRequest { bid_year: 9999 };
+    // Use a nonexistent canonical ID
+    let request: ListAreasRequest = ListAreasRequest { bid_year_id: 9999 };
 
     let result = list_areas(&metadata, &request);
 
@@ -1474,7 +1489,7 @@ fn test_list_areas_nonexistent_bid_year() {
             resource_type,
             message,
         } => {
-            assert_eq!(resource_type, "Bid year");
+            assert_eq!(resource_type, "BidYear");
             assert!(message.contains("9999"));
         }
         _ => panic!("Expected ResourceNotFound error"),

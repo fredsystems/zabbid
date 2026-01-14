@@ -86,8 +86,8 @@ struct RegisterUserApiRequest {
     initials: String,
     /// The user's name.
     name: String,
-    /// The user's area identifier.
-    area: String,
+    /// The user's area canonical ID.
+    area_id: i64,
     /// The user's type classification.
     user_type: String,
     /// The user's crew identifier.
@@ -111,10 +111,8 @@ struct AdminActionRequest {
     cause_id: String,
     /// The cause description.
     cause_description: String,
-    /// The bid year scope.
-    bid_year: u16,
-    /// The area scope.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
     /// The target event ID (only for rollback).
     #[serde(skip_serializing_if = "Option::is_none")]
     target_event_id: Option<i64>,
@@ -149,28 +147,22 @@ struct CreateAreaApiRequest {
 /// Query parameters for listing areas.
 #[derive(Debug, Deserialize)]
 struct ListAreasQuery {
-    /// The bid year.
-    bid_year: u16,
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
 }
 
 /// Query parameters for listing users.
 #[derive(Debug, Deserialize)]
 struct ListUsersQuery {
-    /// The bid year.
-    bid_year: u16,
-    /// The area.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
 }
 
 /// Query parameters for leave availability.
 #[derive(Debug, Clone, Deserialize)]
 struct LeaveAvailabilityQuery {
-    /// The bid year.
-    bid_year: u16,
-    /// The area.
-    area: String,
-    /// The user's initials.
-    initials: String,
+    /// The canonical user identifier.
+    user_id: i64,
 }
 
 /// API response for write operations.
@@ -189,19 +181,15 @@ struct WriteResponse {
 /// Query parameters for current state endpoint.
 #[derive(Debug, Deserialize)]
 struct CurrentStateQuery {
-    /// The bid year.
-    bid_year: u16,
-    /// The area.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
 }
 
 /// Query parameters for historical state endpoint.
 #[derive(Debug, Deserialize)]
 struct HistoricalStateQuery {
-    /// The bid year.
-    bid_year: u16,
-    /// The area.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
     /// The timestamp (ISO 8601 format).
     timestamp: String,
 }
@@ -209,10 +197,8 @@ struct HistoricalStateQuery {
 /// Query parameters for audit timeline endpoint.
 #[derive(Debug, Deserialize)]
 struct AuditTimelineQuery {
-    /// The bid year.
-    bid_year: u16,
-    /// The area.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
 }
 
 /// Serializable representation of State for JSON responses.
@@ -611,18 +597,30 @@ async fn handle_list_areas(
     AxumState(app_state): AxumState<AppState>,
     Query(query): Query<ListAreasQuery>,
 ) -> Result<Json<ListAreasResponse>, HttpError> {
-    info!(bid_year = query.bid_year, "Handling list_areas request");
+    info!(
+        bid_year_id = query.bid_year_id,
+        "Handling list_areas request"
+    );
 
     let persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    let bid_year: BidYear = BidYear::new(query.bid_year);
+
+    // Resolve bid_year_id to BidYear from metadata
+    let bid_year: &zab_bid_domain::BidYear = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.bid_year_id() == Some(query.bid_year_id))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Bid year with ID {} not found", query.bid_year_id),
+        })?;
 
     // Get user counts per area
-    let user_counts: Vec<(String, usize)> = persistence.count_users_by_area(&bid_year)?;
+    let user_counts: Vec<(String, usize)> = persistence.count_users_by_area(bid_year)?;
     drop(persistence);
 
     let request: ListAreasRequest = ListAreasRequest {
-        bid_year: query.bid_year,
+        bid_year_id: query.bid_year_id,
     };
     let mut response: ListAreasResponse = list_areas(&metadata, &request)?;
 
@@ -645,17 +643,22 @@ async fn handle_list_users(
     session::SessionOperator(actor, operator): session::SessionOperator,
     Query(query): Query<ListUsersQuery>,
 ) -> Result<Json<ListUsersResponse>, HttpError> {
-    info!(
-        bid_year = query.bid_year,
-        area = %query.area,
-        "Handling list_users request"
-    );
+    info!(area_id = query.area_id, "Handling list_users request");
 
     let persistence = app_state.persistence.lock().await;
-    let bid_year: BidYear = BidYear::new(query.bid_year);
-    let area: Area = Area::new(&query.area);
-
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(query.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", query.area_id),
+        })?;
+
     let canonical_bid_years: Vec<CanonicalBidYear> = persistence.list_bid_years()?;
     let state: State = persistence
         .get_current_state(&bid_year, &area)
@@ -683,32 +686,46 @@ async fn handle_get_leave_availability(
     Query(query): Query<LeaveAvailabilityQuery>,
 ) -> Result<Json<GetLeaveAvailabilityResponse>, HttpError> {
     info!(
-        bid_year = query.bid_year,
-        area = %query.area,
-        initials = %query.initials,
+        user_id = query.user_id,
         "Handling get_leave_availability request"
     );
 
     let persistence = app_state.persistence.lock().await;
-    let bid_year: BidYear = BidYear::new(query.bid_year);
-    let area: Area = Area::new(&query.area);
-    let initials: Initials = Initials::new(&query.initials);
-
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
-    // Get canonical bid year for accrual calculation
+    // Find the user by user_id across all areas
     let canonical_bid_years: Vec<CanonicalBidYear> = persistence.list_bid_years()?;
-    let canonical_bid_year: &CanonicalBidYear = canonical_bid_years
-        .iter()
-        .find(|by| by.year() == query.bid_year)
-        .ok_or_else(|| {
-            PersistenceError::DatabaseError(format!("Bid year {} not found", query.bid_year))
-        })?;
 
-    let state: State = persistence
-        .get_current_state(&bid_year, &area)
-        .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
+    // Search all states to find the user
+    let mut found_user: Option<(BidYear, Area, Initials, &CanonicalBidYear, State)> = None;
+
+    for (bid_year_domain, area_domain) in &metadata.areas {
+        if let Ok(state) = persistence.get_current_state(bid_year_domain, area_domain)
+            && let Some(user) = state
+                .users
+                .iter()
+                .find(|u| u.user_id == Some(query.user_id))
+            && let Some(canonical_by) = canonical_bid_years
+                .iter()
+                .find(|cby| cby.year() == bid_year_domain.year())
+        {
+            found_user = Some((
+                bid_year_domain.clone(),
+                area_domain.clone(),
+                user.initials.clone(),
+                canonical_by,
+                state,
+            ));
+            break;
+        }
+    }
     drop(persistence);
+
+    let (_bid_year, area, initials, canonical_bid_year, state) =
+        found_user.ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("User with ID {} not found", query.user_id),
+        })?;
 
     let response: GetLeaveAvailabilityResponse =
         get_leave_availability(&metadata, canonical_bid_year, &area, &initials, &state)?;
@@ -749,6 +766,7 @@ async fn handle_register_user(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
+        area_id = req.area_id,
         initials = %req.initials,
         "Handling register_user request"
     );
@@ -759,23 +777,26 @@ async fn handle_register_user(
     let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
-    // Resolve active bid year from persistence
-    let active_year_opt: Option<u16> = persistence.get_active_bid_year()?;
-    let active_year: u16 = active_year_opt.ok_or_else(|| HttpError {
-        status: StatusCode::BAD_REQUEST,
-        message: String::from("No active bid year is set"),
-    })?;
-    let bid_year: BidYear = BidYear::new(active_year);
-    let area: Area = Area::new(&req.area);
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(req.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", req.area_id),
+        })?;
+
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
 
-    // Build API request (bid_year no longer needed in request)
+    // Build API request
     let register_request: RegisterUserRequest = RegisterUserRequest {
         initials: req.initials,
         name: req.name,
-        area: req.area.clone(),
+        area: area.area_code().to_string(),
         user_type: req.user_type,
         crew: req.crew,
         cumulative_natca_bu_date: req.cumulative_natca_bu_date,
@@ -841,7 +862,7 @@ async fn handle_register_user(
     // Broadcast live event
     app_state.live_events.broadcast(&LiveEvent::UserRegistered {
         bid_year: result.response.bid_year,
-        area: req.area.clone(),
+        area: area.area_code().to_string(),
         initials: result.response.initials.clone(),
     });
 
@@ -868,8 +889,7 @@ async fn handle_checkpoint(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        bid_year = req.bid_year,
-        area = %req.area,
+        area_id = req.area_id,
         "Handling checkpoint request"
     );
 
@@ -878,8 +898,18 @@ async fn handle_checkpoint(
     // Get bootstrap metadata and current state
     let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    let bid_year: BidYear = BidYear::new(req.bid_year);
-    let area: Area = Area::new(&req.area);
+
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(req.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", req.area_id),
+        })?;
+
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
@@ -901,8 +931,8 @@ async fn handle_checkpoint(
     app_state
         .live_events
         .broadcast(&LiveEvent::CheckpointCreated {
-            bid_year: req.bid_year,
-            area: req.area.clone(),
+            bid_year: bid_year.year(),
+            area: area.area_code().to_string(),
         });
 
     Ok(Json(WriteResponse {
@@ -923,8 +953,7 @@ async fn handle_finalize(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        bid_year = req.bid_year,
-        area = %req.area,
+        area_id = req.area_id,
         "Handling finalize request"
     );
 
@@ -933,8 +962,18 @@ async fn handle_finalize(
     // Get bootstrap metadata and current state
     let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    let bid_year: BidYear = BidYear::new(req.bid_year);
-    let area: Area = Area::new(&req.area);
+
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(req.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", req.area_id),
+        })?;
+
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
@@ -954,8 +993,8 @@ async fn handle_finalize(
 
     // Broadcast live event
     app_state.live_events.broadcast(&LiveEvent::RoundFinalized {
-        bid_year: req.bid_year,
-        area: req.area.clone(),
+        bid_year: bid_year.year(),
+        area: area.area_code().to_string(),
     });
 
     Ok(Json(WriteResponse {
@@ -976,8 +1015,7 @@ async fn handle_rollback(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        bid_year = req.bid_year,
-        area = %req.area,
+        area_id = req.area_id,
         target_event_id = ?req.target_event_id,
         "Handling rollback request"
     );
@@ -992,8 +1030,18 @@ async fn handle_rollback(
     // Get bootstrap metadata and current state
     let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    let bid_year: BidYear = BidYear::new(req.bid_year);
-    let area: Area = Area::new(&req.area);
+
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(req.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", req.area_id),
+        })?;
+
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
@@ -1024,8 +1072,8 @@ async fn handle_rollback(
 
     // Broadcast live event
     app_state.live_events.broadcast(&LiveEvent::RolledBack {
-        bid_year: req.bid_year,
-        area: req.area.clone(),
+        bid_year: bid_year.year(),
+        area: area.area_code().to_string(),
     });
 
     Ok(Json(WriteResponse {
@@ -1045,16 +1093,24 @@ async fn handle_get_current_state(
     Query(params): Query<CurrentStateQuery>,
 ) -> Result<Json<StateResponse>, HttpError> {
     info!(
-        bid_year = params.bid_year,
-        area = %params.area,
+        area_id = params.area_id,
         "Handling get_current_state request"
     );
 
-    let bid_year: BidYear = BidYear::new(params.bid_year);
-    let area: Area = Area::new(&params.area);
-
     let persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(params.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", params.area_id),
+        })?;
+
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
@@ -1074,17 +1130,25 @@ async fn handle_get_historical_state(
     Query(params): Query<HistoricalStateQuery>,
 ) -> Result<Json<StateResponse>, HttpError> {
     info!(
-        bid_year = params.bid_year,
-        area = %params.area,
+        area_id = params.area_id,
         timestamp = %params.timestamp,
         "Handling get_historical_state request"
     );
 
-    let bid_year: BidYear = BidYear::new(params.bid_year);
-    let area: Area = Area::new(&params.area);
-
     let persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(params.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", params.area_id),
+        })?;
+
     let state: State = persistence.get_historical_state(&bid_year, &area, &params.timestamp)?;
     drop(persistence);
 
@@ -1102,15 +1166,24 @@ async fn handle_get_audit_timeline(
     Query(params): Query<AuditTimelineQuery>,
 ) -> Result<Json<Vec<AuditEventResponse>>, HttpError> {
     info!(
-        bid_year = params.bid_year,
-        area = %params.area,
+        area_id = params.area_id,
         "Handling get_audit_timeline request"
     );
 
-    let bid_year: BidYear = BidYear::new(params.bid_year);
-    let area: Area = Area::new(&params.area);
-
     let persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(params.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", params.area_id),
+        })?;
+
     let events: Vec<AuditEvent> = persistence.get_audit_timeline(&bid_year, &area)?;
     drop(persistence);
 
@@ -1452,8 +1525,8 @@ struct SetActiveBidYearApiRequest {
     cause_id: String,
     /// The cause description.
     cause_description: String,
-    /// The bid year to set as active.
-    year: u16,
+    /// The canonical bid year identifier to set as active.
+    bid_year_id: i64,
 }
 
 /// Request body for set expected area count endpoint.
@@ -1474,8 +1547,8 @@ struct SetExpectedUserCountApiRequest {
     cause_id: String,
     /// The cause description.
     cause_description: String,
-    /// The area identifier.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
     /// The expected number of users.
     expected_count: u32,
 }
@@ -1493,8 +1566,8 @@ struct UpdateUserApiRequest {
     initials: String,
     /// The user's name.
     name: String,
-    /// The user's area.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
     /// The user's type classification (CPC, CPC-IT, Dev-R, Dev-D).
     user_type: String,
     /// The user's crew number (1-7, optional).
@@ -1594,7 +1667,7 @@ async fn handle_set_active_bid_year(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        year = req.year,
+        bid_year_id = req.bid_year_id,
         "Handling set_active_bid_year request"
     );
 
@@ -1606,7 +1679,9 @@ async fn handle_set_active_bid_year(
     drop(persistence);
 
     // Build API request
-    let set_request: SetActiveBidYearRequest = SetActiveBidYearRequest { year: req.year };
+    let set_request: SetActiveBidYearRequest = SetActiveBidYearRequest {
+        bid_year_id: req.bid_year_id,
+    };
 
     // Execute command via API
     let mut persistence = app_state.persistence.lock().await;
@@ -1620,12 +1695,18 @@ async fn handle_set_active_bid_year(
     )?;
     drop(persistence);
 
-    info!(year = req.year, "Successfully set active bid year");
+    info!(
+        year = response.year,
+        bid_year_id = response.bid_year_id,
+        "Successfully set active bid year"
+    );
 
     // Broadcast live event
     app_state
         .live_events
-        .broadcast(&LiveEvent::BidYearActivated { year: req.year });
+        .broadcast(&LiveEvent::BidYearActivated {
+            year: response.year,
+        });
 
     Ok(Json(response))
 }
@@ -1704,7 +1785,7 @@ async fn handle_set_expected_user_count(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        area = %req.area,
+        area_id = req.area_id,
         expected_count = req.expected_count,
         "Handling set_expected_user_count request"
     );
@@ -1718,7 +1799,7 @@ async fn handle_set_expected_user_count(
 
     // Build API request
     let set_request: SetExpectedUserCountRequest = SetExpectedUserCountRequest {
-        area: req.area.clone(),
+        area_id: req.area_id,
         expected_count: req.expected_count,
     };
 
@@ -1735,7 +1816,8 @@ async fn handle_set_expected_user_count(
     drop(persistence);
 
     info!(
-        area = %req.area,
+        area_id = response.area_id,
+        area = %response.area_code,
         expected_count = req.expected_count,
         "Successfully set expected user count"
     );
@@ -1754,6 +1836,7 @@ async fn handle_update_user(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
+        area_id = req.area_id,
         initials = %req.initials,
         "Handling update_user request"
     );
@@ -1764,14 +1847,17 @@ async fn handle_update_user(
     let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
-    // Resolve active bid year from persistence
-    let active_year_opt: Option<u16> = persistence.get_active_bid_year()?;
-    let active_year: u16 = active_year_opt.ok_or_else(|| HttpError {
-        status: StatusCode::BAD_REQUEST,
-        message: String::from("No active bid year is set"),
-    })?;
-    let bid_year_ref = BidYear::new(active_year);
-    let area_ref = Area::new(&req.area);
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year_ref, area_ref) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(req.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", req.area_id),
+        })?;
+
     let state: State = persistence.get_current_state(&bid_year_ref, &area_ref)?;
 
     // Build API request (bid_year no longer needed in request)
@@ -1779,7 +1865,7 @@ async fn handle_update_user(
         user_id: req.user_id,
         initials: req.initials.clone(),
         name: req.name.clone(),
-        area: req.area.clone(),
+        area_id: req.area_id,
         user_type: req.user_type.clone(),
         crew: req.crew,
         cumulative_natca_bu_date: req.cumulative_natca_bu_date.clone(),
@@ -1815,7 +1901,7 @@ async fn handle_update_user(
             .as_ref()
             .expect("UpdateUser event must have bid year")
             .year(),
-        area: req.area.clone(),
+        area: area_ref.area_code().to_string(),
         initials: req.initials.clone(),
     });
 
@@ -1904,21 +1990,31 @@ async fn handle_import_csv_users(
     let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
-    // Resolve active bid year from persistence
+    // Resolve active bid year from metadata
     let active_year_opt: Option<u16> = persistence.get_active_bid_year()?;
     let active_year: u16 = active_year_opt.ok_or_else(|| HttpError {
         status: StatusCode::BAD_REQUEST,
         message: String::from("No active bid year is set"),
     })?;
-    let bid_year: BidYear = BidYear::new(active_year);
+
+    let bid_year: BidYear = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == active_year)
+        .cloned()
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("Active year {active_year} not found in metadata"),
+        })?;
 
     // We need a state instance for the import handler signature
     // Use the first area if available, or create a dummy one
-    let state: State = if let Some((_, first_area)) = metadata.areas.first() {
+    let state: State = if let Some((by, first_area)) = metadata.areas.first() {
         persistence
-            .get_current_state(&bid_year, first_area)
-            .unwrap_or_else(|_| State::new(bid_year.clone(), first_area.clone()))
+            .get_current_state(by, first_area)
+            .unwrap_or_else(|_| State::new(by.clone(), first_area.clone()))
     } else {
+        // Fallback: create dummy area (should not happen in practice)
         State::new(bid_year, Area::new("DUMMY"))
     };
 

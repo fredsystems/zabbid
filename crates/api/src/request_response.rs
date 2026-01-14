@@ -134,8 +134,8 @@ pub struct ListBidYearsResponse {
 /// API request to list areas for a bid year.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListAreasRequest {
-    /// The bid year to list areas for.
-    pub bid_year: u16,
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
 }
 
 /// Information about a single area.
@@ -162,13 +162,11 @@ pub struct ListAreasResponse {
     pub areas: Vec<AreaInfo>,
 }
 
-/// API request to list users for a bid year and area.
+/// API request to list users for an area.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListUsersRequest {
-    /// The bid year.
-    pub bid_year: u16,
-    /// The area identifier.
-    pub area: String,
+    /// The canonical area identifier.
+    pub area_id: i64,
 }
 
 /// API response for listing users.
@@ -261,12 +259,8 @@ pub struct BootstrapStatusResponse {
 /// API request to get leave availability for a user.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetLeaveAvailabilityRequest {
-    /// The bid year.
-    pub bid_year: u16,
-    /// The area identifier.
-    pub area: String,
-    /// The user's initials.
-    pub initials: String,
+    /// The canonical user identifier.
+    pub user_id: i64,
 }
 
 /// API response for leave availability.
@@ -535,8 +529,8 @@ pub struct CreateFirstAdminResponse {
 /// API request to set the active bid year.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SetActiveBidYearRequest {
-    /// The year to mark as active.
-    pub year: u16,
+    /// The canonical bid year identifier to mark as active.
+    pub bid_year_id: i64,
 }
 
 /// API response for setting the active bid year.
@@ -582,8 +576,8 @@ pub struct SetExpectedAreaCountResponse {
 /// API request to set the expected user count for an area in the active bid year.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SetExpectedUserCountRequest {
-    /// The area identifier.
-    pub area: String,
+    /// The canonical area identifier.
+    pub area_id: i64,
     /// The expected number of users.
     pub expected_count: u32,
 }
@@ -614,8 +608,8 @@ pub struct UpdateUserRequest {
     pub initials: String,
     /// The user's name.
     pub name: String,
-    /// The user's area identifier.
-    pub area: String,
+    /// The canonical area identifier.
+    pub area_id: i64,
     /// The user's type classification (CPC, CPC-IT, Dev-R, Dev-D).
     pub user_type: String,
     /// The user's crew number (1-7, optional).

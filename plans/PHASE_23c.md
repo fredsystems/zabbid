@@ -87,8 +87,41 @@ or changing domain rules.
 - Display fields are presentation-only
 - All tests pass:
   - `cargo test --workspace`
+    I'm stopping as requested.
+
+  Current Status Summary
+  Work Completed
+  API Layer (request_response.rs):
+
+  ✅ Updated all response types to include bid_year_id and area_id fields
+  ✅ Changed AreaInfo to use numeric area_id instead of string, added area_code and area_name
+  ✅ All completeness and blocking reason types updated with canonical IDs
+  Server Layer (main.rs):
+
+  ✅ Updated parallel response types to include canonical ID fields
+  ✅ Updated handle_list_bid_years to pass metadata and populate bid_year_id
+  ✅ Updated handle_list_areas to populate bid_year_id, area_id, area_code, area_name
+  API Handlers (handlers.rs):
+
+  ✅ Updated list_bid_years() to extract bid_year_id from metadata
+  ✅ Updated list_areas() to extract bid_year_id and area_id from metadata
+  Critical Issue - Build is Broken
+  Domain Layer (bid_year.rs):
+
+  ❌ CanonicalBidYear has a partially-applied change that breaks compilation
+  The struct and constructor still require bid_year_id parameter, but this is architecturally wrong
+  This needs to be fully reverted before the code will compile
+  What Needs to Happen Next
+  Immediate: Revert CanonicalBidYear to its original metadata-only structure (no bid_year_id field, 3-parameter constructor)
+  Continue updating remaining handlers in both API and Server layers to populate canonical IDs
+  Update all create/register/update handlers to include IDs in their responses
+  Update UI types and logic
+  Update tests
+  Run full test suite
+  The approach of extracting IDs from BootstrapMetadata (which contains Vec<BidYear> with IDs) is correct and working for the two handlers I updated. This pattern should be continued for all remaining handlers.
   - `cargo xtask ci`
   - `pre-commit run --all-files`
+
 - No UI regressions or behavior changes observed
 
 ---
