@@ -234,7 +234,7 @@ export function BootstrapCompleteness({
             .filter((area) => area.bid_year === completeness.active_bid_year)
             .map((area) => (
               <AreaItem
-                key={`${area.bid_year}-${area.area}`}
+                key={`${area.bid_year}-${area.area_code}`}
                 area={area}
                 isAdmin={isAdmin}
                 sessionToken={sessionToken}
@@ -264,9 +264,9 @@ export function BootstrapCompleteness({
               .filter((area) => area.bid_year === completeness.active_bid_year)
               .map((area) => (
                 <UserManagementForArea
-                  key={`users-${area.bid_year}-${area.area}`}
-                  bidYear={area.bid_year}
-                  areaId={area.area}
+                  key={`users-${area.bid_year}-${area.area_id}`}
+                  areaId={area.area_id}
+                  areaCode={area.area_code}
                   isAdmin={isAdmin}
                   sessionToken={sessionToken}
                   onError={setError}
@@ -368,7 +368,7 @@ function BidYearItem({
     try {
       setSettingActive(true);
       onError("");
-      await setActiveBidYear(sessionToken, bidYear.year);
+      await setActiveBidYear(sessionToken, bidYear.bid_year_id);
       await onRefresh();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -535,12 +535,17 @@ function CreateBidYearForm({
     try {
       setCreating(true);
       onError("");
-      await createBidYear(sessionToken, yearNum, startDate, payPeriodsNum);
+      const createdBidYear = await createBidYear(
+        sessionToken,
+        yearNum,
+        startDate,
+        payPeriodsNum,
+      );
 
       // If this is the first bid year, automatically set it as active
       if (!hasExistingBidYears || !hasActiveBidYear) {
         try {
-          await setActiveBidYear(sessionToken, yearNum);
+          await setActiveBidYear(sessionToken, createdBidYear.bid_year_id);
         } catch (err) {
           console.warn("Failed to set newly created bid year as active:", err);
         }
@@ -604,6 +609,7 @@ function CreateBidYearForm({
           onChange={(e) => setYear(e.target.value)}
           disabled={creating}
           placeholder="e.g., 2026"
+          autoFocus
         />
       </div>
       <div className="form-row">
@@ -710,7 +716,7 @@ function AreaItem({
     try {
       setSaving(true);
       onError("");
-      await setExpectedUserCountApi(sessionToken, area.area, count);
+      await setExpectedUserCountApi(sessionToken, area.area_id, count);
       await onRefresh();
       setIsEditing(false);
     } catch (err) {
@@ -735,7 +741,7 @@ function AreaItem({
       <div className="item-header">
         <div className="item-title-group">
           <h4>
-            {area.area}{" "}
+            {area.area_code}{" "}
             <span className="area-year">(Year {area.bid_year})</span>
           </h4>
           {area.is_complete ? (
@@ -768,11 +774,13 @@ function AreaItem({
         ) : (
           <div className="item-edit-form">
             <div className="form-row">
-              <label htmlFor={`expected-user-${area.bid_year}-${area.area}`}>
+              <label
+                htmlFor={`expected-user-${area.bid_year}-${area.area_code}`}
+              >
                 Expected Users:
               </label>
               <input
-                id={`expected-user-${area.bid_year}-${area.area}`}
+                id={`expected-user-${area.bid_year}-${area.area_code}`}
                 type="number"
                 min="0"
                 value={expectedUserCount}
@@ -851,13 +859,20 @@ function CreateAreaForm({
     try {
       setCreating(true);
       onError("");
-      await createArea(sessionToken, areaId);
+      const createdArea = await createArea(sessionToken, areaId);
+
+      // Refresh to ensure the backend has the latest metadata
+      await onRefresh();
 
       // If expected user count is provided, set it immediately
       if (expectedUserCount) {
         const count = Number.parseInt(expectedUserCount, 10);
         if (!Number.isNaN(count) && count >= 0) {
-          await setExpectedUserCountApi(sessionToken, areaId, count);
+          await setExpectedUserCountApi(
+            sessionToken,
+            createdArea.area_id,
+            count,
+          );
         }
       }
 
@@ -900,6 +915,7 @@ function CreateAreaForm({
           onChange={(e) => setAreaId(e.target.value)}
           disabled={creating}
           placeholder="e.g., ZAB"
+          autoFocus
         />
       </div>
       <div className="form-row">
@@ -947,16 +963,16 @@ function CreateAreaForm({
 // ============================================================================
 
 interface UserManagementForAreaProps {
-  bidYear: number;
-  areaId: string;
+  areaId: number;
+  areaCode: string;
   isAdmin: boolean;
   sessionToken: string | null;
   onError: (error: string) => void;
 }
 
 function UserManagementForArea({
-  bidYear,
   areaId,
+  areaCode,
   isAdmin,
   sessionToken,
   onError,
@@ -977,7 +993,6 @@ function UserManagementForArea({
         setLoading(true);
         const response: ListUsersResponse = await listUsers(
           sessionToken,
-          bidYear,
           areaId,
         );
         setUsers(response.users);
@@ -990,7 +1005,7 @@ function UserManagementForArea({
     };
 
     void loadUsers();
-  }, [bidYear, areaId, sessionToken]);
+  }, [areaId, sessionToken]);
 
   const refreshUsers = async () => {
     if (!sessionToken) {
@@ -1000,11 +1015,7 @@ function UserManagementForArea({
 
     try {
       setLoading(true);
-      const response: ListUsersResponse = await listUsers(
-        sessionToken,
-        bidYear,
-        areaId,
-      );
+      const response: ListUsersResponse = await listUsers(sessionToken, areaId);
       setUsers(response.users);
     } catch (err) {
       console.error("Failed to load users:", err);
@@ -1018,7 +1029,7 @@ function UserManagementForArea({
     <div className="area-user-management">
       <div className="area-user-header">
         <h4>
-          {areaId} - {users.length} user{users.length !== 1 ? "s" : ""}
+          {areaCode} - {users.length} user{users.length !== 1 ? "s" : ""}
         </h4>
       </div>
 
@@ -1034,7 +1045,7 @@ function UserManagementForArea({
             <UserItem
               key={user.user_id}
               user={user}
-              areaId={areaId}
+              areaId={areaCode}
               isAdmin={isAdmin}
               sessionToken={sessionToken}
               onRefresh={refreshUsers}
@@ -1050,13 +1061,14 @@ function UserManagementForArea({
           onClick={() => setShowCreateForm(true)}
           className="btn-create"
         >
-          + Add User to {areaId}
+          + Add User to {areaCode}
         </button>
       )}
 
       {isAdmin && showCreateForm && (
         <CreateUserForm
           areaId={areaId}
+          areaCode={areaCode}
           sessionToken={sessionToken}
           onSuccess={() => {
             setShowCreateForm(false);
@@ -1142,7 +1154,8 @@ function UserItem({
 // ============================================================================
 
 interface CreateUserFormProps {
-  areaId: string;
+  areaId: number;
+  areaCode: string;
   sessionToken: string | null;
   onSuccess: () => void;
   onCancel: () => void;
@@ -1151,6 +1164,7 @@ interface CreateUserFormProps {
 
 function CreateUserForm({
   areaId,
+  areaCode,
   sessionToken,
   onSuccess,
   onCancel,
@@ -1189,6 +1203,7 @@ function CreateUserForm({
         initials,
         name,
         areaId,
+        areaCode,
         userType,
         crewNum,
         cumulativeNatcaBuDate,
@@ -1222,6 +1237,7 @@ function CreateUserForm({
           onChange={(e) => setInitials(e.target.value.toUpperCase())}
           disabled={creating}
           placeholder="e.g., ABC"
+          autoFocus
         />
       </div>
 
@@ -1510,12 +1526,13 @@ function renderBlockingReason(reason: BlockingReason): string {
       return `Area count mismatch for bid year ${bid_year}: expected ${expected}, got ${actual}`;
     }
     if ("ExpectedUserCountNotSet" in reason) {
-      const { bid_year, area } = reason.ExpectedUserCountNotSet;
-      return `Expected user count not set for area ${area} in bid year ${bid_year}`;
+      const { bid_year, area_code } = reason.ExpectedUserCountNotSet;
+      return `Expected user count not set for area ${area_code} in bid year ${bid_year}`;
     }
     if ("UserCountMismatch" in reason) {
-      const { bid_year, area, expected, actual } = reason.UserCountMismatch;
-      return `User count mismatch for area ${area} in bid year ${bid_year}: expected ${expected}, got ${actual}`;
+      const { bid_year, area_code, expected, actual } =
+        reason.UserCountMismatch;
+      return `User count mismatch for area ${area_code} in bid year ${bid_year}: expected ${expected}, got ${actual}`;
     }
   }
   return "Unknown blocking reason";

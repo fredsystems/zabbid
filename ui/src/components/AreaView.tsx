@@ -22,19 +22,35 @@ interface AreaViewProps {
 }
 
 export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
-  const { year } = useParams<{ year: string }>();
+  const { bidYearId } = useParams<{ bidYearId: string }>();
   const navigate = useNavigate();
+  const [bidYearIdNum, setBidYearIdNum] = useState<number | null>(null);
+  const [bidYear, setBidYear] = useState<number | null>(null);
   const [areas, setAreas] = useState<AreaInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const previousConnectionState = useRef<ConnectionState | null>(null);
 
-  const bidYear = year ? parseInt(year, 10) : null;
+  // Parse and validate bidYearId on mount
+  useEffect(() => {
+    if (!bidYearId) {
+      setError("Invalid bid year ID");
+      setLoading(false);
+      return;
+    }
+
+    const parsed = parseInt(bidYearId, 10);
+    if (Number.isNaN(parsed)) {
+      setError("Invalid bid year ID");
+      setLoading(false);
+      return;
+    }
+
+    setBidYearIdNum(parsed);
+  }, [bidYearId]);
 
   useEffect(() => {
-    if (!bidYear) {
-      setError("Invalid bid year");
-      setLoading(false);
+    if (bidYearIdNum === null) {
       return;
     }
 
@@ -42,8 +58,9 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
       try {
         setLoading(true);
         setError(null);
-        const response = await listAreas(bidYear);
+        const response = await listAreas(bidYearIdNum);
         setAreas(response.areas);
+        setBidYear(response.bid_year);
       } catch (err) {
         if (err instanceof NetworkError) {
           setError(
@@ -58,7 +75,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
     };
 
     void loadAreas();
-  }, [bidYear]);
+  }, [bidYearIdNum]);
 
   // Auto-refresh when connection is restored
   useEffect(() => {
@@ -72,14 +89,15 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
     const wasNotConnected = previousConnectionState.current !== "connected";
     const nowConnected = connectionState === "connected";
 
-    if (wasNotConnected && nowConnected && bidYear) {
+    if (wasNotConnected && nowConnected && bidYearIdNum !== null) {
       console.log("[AreaView] Connection established, refreshing data");
       const loadAreas = async () => {
         try {
           setLoading(true);
           setError(null);
-          const response = await listAreas(bidYear);
+          const response = await listAreas(bidYearIdNum);
           setAreas(response.areas);
+          setBidYear(response.bid_year);
         } catch (err) {
           if (err instanceof NetworkError) {
             setError(
@@ -98,12 +116,14 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
     }
 
     previousConnectionState.current = connectionState;
-  }, [connectionState, bidYear]);
+  }, [connectionState, bidYearIdNum]);
 
   // Refresh when relevant live events occur
   useEffect(() => {
-    if (!lastEvent || !bidYear) return;
+    if (!lastEvent || bidYearIdNum === null || bidYear === null) return;
 
+    // Events contain display values (bid_year as number, area as string)
+    // We compare against the fetched bidYear value
     if (
       (lastEvent.type === "area_created" && lastEvent.bid_year === bidYear) ||
       (lastEvent.type === "user_registered" && lastEvent.bid_year === bidYear)
@@ -111,8 +131,9 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
       console.log("[AreaView] Relevant event received, refreshing data");
       const loadAreas = async () => {
         try {
-          const response = await listAreas(bidYear);
+          const response = await listAreas(bidYearIdNum);
           setAreas(response.areas);
+          setBidYear(response.bid_year);
         } catch (err) {
           // Silently fail on live event refresh - connection state will show the issue
           console.error("Failed to refresh after live event:", err);
@@ -120,13 +141,13 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
       };
       void loadAreas();
     }
-  }, [lastEvent, bidYear]);
+  }, [lastEvent, bidYearIdNum, bidYear]);
 
-  if (!bidYear) {
+  if (bidYearIdNum === null) {
     return (
       <div className="error">
-        <h2>Invalid Bid Year</h2>
-        <p>The bid year parameter is missing or invalid.</p>
+        <h2>Invalid Bid Year ID</h2>
+        <p>The bid year ID parameter is missing or invalid.</p>
         <button type="button" onClick={() => navigate("/admin")}>
           Back to Overview
         </button>
@@ -159,7 +180,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
   return (
     <div className="area-view">
       <div className="view-header">
-        <h2>Areas for Bid Year {bidYear}</h2>
+        <h2>Areas for Bid Year {bidYear ?? bidYearIdNum}</h2>
         <button type="button" onClick={() => navigate("/admin")}>
           Back to Overview
         </button>
@@ -168,8 +189,8 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
       {areas.length === 0 && (
         <div className="info-message">
           <p>
-            No areas configured for bid year {bidYear}. Use the API or CLI to
-            create areas.
+            No areas configured for bid year {bidYear ?? bidYearIdNum}. Use the
+            API or CLI to create areas.
           </p>
         </div>
       )}
@@ -180,7 +201,10 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
             <div key={area.area_id} className="data-card">
               <div className="card-header">
                 <div>
-                  <h3 className="card-title">Area {area.area_id}</h3>
+                  <h3 className="card-title">Area {area.area_code}</h3>
+                  {area.area_name && (
+                    <p className="card-subtitle">{area.area_name}</p>
+                  )}
                   <p className="card-subtitle">
                     {area.user_count} {area.user_count === 1 ? "user" : "users"}
                   </p>
@@ -196,9 +220,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
 
               <div className="card-footer">
                 <Link
-                  to={`/admin/bid-year/${bidYear}/area/${encodeURIComponent(
-                    area.area_id,
-                  )}/users`}
+                  to={`/admin/bid-year/${bidYearIdNum}/areas/${area.area_id}/users`}
                 >
                   View Users
                 </Link>

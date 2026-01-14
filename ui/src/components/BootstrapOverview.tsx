@@ -206,7 +206,7 @@ export function BootstrapOverview({
                 </div>
                 <div className="card-footer">
                   <Link
-                    to={`/admin/bid-year/${year.year}/areas`}
+                    to={`/admin/bid-year/${year.bid_year_id}/areas`}
                     className="btn-view"
                   >
                     View Areas

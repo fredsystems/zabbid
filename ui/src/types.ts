@@ -84,6 +84,35 @@ export interface ListBidYearsResponse {
 }
 
 /**
+ * Response for creating a new bid year.
+ */
+export interface CreateBidYearResponse {
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The created bid year (display value) */
+  year: number;
+  /** The start date of the bid year */
+  start_date: string;
+  /** The number of pay periods */
+  num_pay_periods: number;
+  /** The derived end date of the bid year (inclusive) */
+  end_date: string;
+  /** Success message */
+  message: string;
+}
+export interface CreateAreaResponse {
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year (display value) */
+  bid_year: number;
+  /** The canonical area identifier */
+  area_id: number;
+  /** The area code (display value) */
+  area_code: string;
+  /** A success message */
+  message: string;
+}
+/**
  * Information about a single area.
  */
 export interface AreaInfo {
@@ -295,7 +324,7 @@ export type BlockingReason =
         bid_year_id: number;
         bid_year: number;
         area_id: number;
-        area: string;
+        area_code: string;
       };
     }
   | {
@@ -303,7 +332,7 @@ export type BlockingReason =
         bid_year_id: number;
         bid_year: number;
         area_id: number;
-        area: string;
+        area_code: string;
         expected: number;
         actual: number;
       };
@@ -340,7 +369,7 @@ export interface AreaCompletenessInfo {
   /** The canonical area identifier */
   area_id: number;
   /** The area code (display value) */
-  area: string;
+  area_code: string;
   /** Expected user count, if set */
   expected_user_count: number | null;
   /** Actual user count */

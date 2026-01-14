@@ -899,6 +899,8 @@ pub fn count_users_by_area(
 ///
 /// Returns a vector of tuples containing (`bid_year`, `area_count`).
 ///
+/// Phase 23A: Updated to use `bid_year_id` with JOIN.
+///
 /// # Arguments
 ///
 /// * `conn` - The database connection
@@ -908,10 +910,11 @@ pub fn count_users_by_area(
 /// Returns an error if the database cannot be queried or if conversions fail.
 pub fn count_areas_by_bid_year(conn: &Connection) -> Result<Vec<(u16, usize)>, PersistenceError> {
     let mut stmt = conn.prepare(
-        "SELECT bid_year, COUNT(*) as area_count
-         FROM areas
-         GROUP BY bid_year
-         ORDER BY bid_year ASC",
+        "SELECT b.year, COUNT(*) as area_count
+         FROM areas a
+         JOIN bid_years b ON a.bid_year_id = b.bid_year_id
+         GROUP BY b.year
+         ORDER BY b.year ASC",
     )?;
 
     let rows = stmt.query_map([], |row| Ok((row.get::<_, i32>(0)?, row.get::<_, i64>(1)?)))?;

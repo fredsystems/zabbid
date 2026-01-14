@@ -31,18 +31,18 @@ use tokio::sync::Mutex;
 use tracing::{error, info};
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_api::{
-    ApiError, ApiResult, BootstrapStatusResponse, CreateAreaRequest, CreateBidYearRequest,
-    CsvImportRowStatus, GetActiveBidYearResponse, GetBootstrapCompletenessResponse,
-    GetLeaveAvailabilityResponse, ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest,
-    ListAreasResponse, ListBidYearsResponse, ListUsersResponse, PreviewCsvUsersRequest,
-    PreviewCsvUsersResponse, RegisterUserRequest, RegisterUserResponse, RegisterUserResult,
-    SetActiveBidYearRequest, SetActiveBidYearResponse, SetExpectedAreaCountRequest,
-    SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
-    UpdateUserRequest, UpdateUserResponse, checkpoint, create_area, create_bid_year, finalize,
-    get_active_bid_year, get_bootstrap_completeness, get_bootstrap_status, get_current_state,
-    get_historical_state, get_leave_availability, import_csv_users, list_areas, list_bid_years,
-    list_users, preview_csv_users, register_user, rollback, set_active_bid_year,
-    set_expected_area_count, set_expected_user_count, update_user,
+    ApiError, ApiResult, BootstrapStatusResponse, CreateAreaRequest, CreateAreaResponse,
+    CreateBidYearRequest, CreateBidYearResponse, CsvImportRowStatus, GetActiveBidYearResponse,
+    GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse, ImportCsvUsersRequest,
+    ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
+    ListUsersResponse, PreviewCsvUsersRequest, PreviewCsvUsersResponse, RegisterUserRequest,
+    RegisterUserResponse, RegisterUserResult, SetActiveBidYearRequest, SetActiveBidYearResponse,
+    SetExpectedAreaCountRequest, SetExpectedAreaCountResponse, SetExpectedUserCountRequest,
+    SetExpectedUserCountResponse, UpdateUserRequest, UpdateUserResponse, checkpoint, create_area,
+    create_bid_year, finalize, get_active_bid_year, get_bootstrap_completeness,
+    get_bootstrap_status, get_current_state, get_historical_state, get_leave_availability,
+    import_csv_users, list_areas, list_bid_years, list_users, preview_csv_users, register_user,
+    rollback, set_active_bid_year, set_expected_area_count, set_expected_user_count, update_user,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials};
@@ -423,7 +423,7 @@ async fn handle_create_bid_year(
     AxumState(app_state): AxumState<AppState>,
     session::SessionOperator(actor, operator): session::SessionOperator,
     Json(req): Json<CreateBidYearApiRequest>,
-) -> Result<Json<WriteResponse>, HttpError> {
+) -> Result<Json<CreateBidYearResponse>, HttpError> {
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
@@ -462,10 +462,25 @@ async fn handle_create_bid_year(
     // Persist the bootstrap result
     let mut persistence = app_state.persistence.lock().await;
     let event_id: i64 = persistence.persist_bootstrap(&bootstrap_result)?;
+
+    // Get updated metadata to retrieve the canonical bid_year_id
+    let updated_metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    #[allow(clippy::redundant_closure_for_method_calls)]
+    let bid_year_id: i64 = updated_metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == req.year)
+        .and_then(|by| by.bid_year_id())
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("Failed to retrieve bid_year_id for year {}", req.year),
+        })?;
+
     drop(persistence);
 
     info!(
         event_id = event_id,
+        bid_year_id = bid_year_id,
         year = req.year,
         "Successfully created bid year"
     );
@@ -475,10 +490,23 @@ async fn handle_create_bid_year(
         .live_events
         .broadcast(&LiveEvent::BidYearCreated { year: req.year });
 
-    Ok(Json(WriteResponse {
-        success: true,
-        message: Some(format!("Created bid year {}", req.year)),
-        event_id: Some(event_id),
+    // Return detailed response
+    let end_date: time::Date = bootstrap_result
+        .canonical_bid_year
+        .as_ref()
+        .and_then(|by| by.end_date().ok())
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Failed to calculate end_date".to_string(),
+        })?;
+
+    Ok(Json(CreateBidYearResponse {
+        bid_year_id,
+        year: req.year,
+        start_date,
+        num_pay_periods: req.num_pay_periods,
+        end_date,
+        message: format!("Created bid year {}", req.year),
     }))
 }
 
@@ -489,7 +517,7 @@ async fn handle_create_area(
     AxumState(app_state): AxumState<AppState>,
     session::SessionOperator(actor, operator): session::SessionOperator,
     Json(req): Json<CreateAreaApiRequest>,
-) -> Result<Json<WriteResponse>, HttpError> {
+) -> Result<Json<CreateAreaResponse>, HttpError> {
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
@@ -520,38 +548,59 @@ async fn handle_create_area(
 
     // Persist the bootstrap result
     let event_id: i64 = persistence.persist_bootstrap(&bootstrap_result)?;
+
+    // Get updated metadata to retrieve the canonical area_id
+    let updated_metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    let bid_year_ref = bootstrap_result
+        .audit_event
+        .bid_year
+        .as_ref()
+        .expect("CreateArea event must have bid year");
+
+    let area_id: i64 = updated_metadata
+        .areas
+        .iter()
+        .filter(|(by, _)| by.year() == bid_year_ref.year())
+        .find(|(_, a)| a.area_code() == req.area_id.to_uppercase())
+        .and_then(|(_, a)| a.area_id())
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("Failed to retrieve area_id for area {}", req.area_id),
+        })?;
+
     drop(persistence);
 
     info!(
         event_id = event_id,
-        area_id = %req.area_id,
+        area_id = area_id,
+        area_code = %req.area_id,
         "Successfully created area"
     );
 
     // Broadcast live event
     app_state.live_events.broadcast(&LiveEvent::AreaCreated {
-        bid_year: bootstrap_result
-            .audit_event
-            .bid_year
-            .as_ref()
-            .expect("CreateArea event must have bid year")
-            .year(),
+        bid_year: bid_year_ref.year(),
         area: req.area_id.clone(),
     });
 
-    Ok(Json(WriteResponse {
-        success: true,
-        message: Some(format!(
+    #[allow(clippy::redundant_closure_for_method_calls)]
+    let bid_year_id: i64 = updated_metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == bid_year_ref.year())
+        .and_then(|by| by.bid_year_id())
+        .expect("Active bid year must have ID");
+
+    Ok(Json(CreateAreaResponse {
+        bid_year_id,
+        bid_year: bid_year_ref.year(),
+        area_id,
+        area_code: req.area_id.clone(),
+        message: format!(
             "Created area '{}' in bid year {}",
             req.area_id,
-            bootstrap_result
-                .audit_event
-                .bid_year
-                .as_ref()
-                .expect("CreateArea event must have bid year")
-                .year()
-        )),
-        event_id: Some(event_id),
+            bid_year_ref.year()
+        ),
     }))
 }
 

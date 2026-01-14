@@ -172,17 +172,17 @@ pub fn apply_bootstrap(
                 Some(format!("Set bid year {year} as active")),
             );
 
-            // Use a placeholder area for global operations
-            let placeholder_area: Area = Area::new("_global");
-            let audit_event: AuditEvent = AuditEvent::new(
+            // SetActiveBidYear is a bid-year-level operation without an area
+            let audit_event: AuditEvent = AuditEvent {
+                event_id: None,
                 actor,
                 cause,
                 action,
                 before,
                 after,
-                bid_year,
-                placeholder_area,
-            );
+                bid_year: Some(bid_year),
+                area: None,
+            };
 
             Ok(BootstrapResult {
                 new_metadata,
@@ -227,17 +227,17 @@ pub fn apply_bootstrap(
                 )),
             );
 
-            // Use a placeholder area for global operations
-            let placeholder_area: Area = Area::new("_global");
-            let audit_event: AuditEvent = AuditEvent::new(
+            // SetExpectedAreaCount is a bid-year-level operation without an area
+            let audit_event: AuditEvent = AuditEvent {
+                event_id: None,
                 actor,
                 cause,
                 action,
                 before,
                 after,
-                bid_year.clone(),
-                placeholder_area,
-            );
+                bid_year: Some(bid_year.clone()),
+                area: None,
+            };
 
             Ok(BootstrapResult {
                 new_metadata,

@@ -34,12 +34,17 @@ export function UserDetailView({
   connectionState,
   lastEvent,
 }: UserDetailViewProps) {
-  const { year, areaId, initials } = useParams<{
-    year: string;
+  const { bidYearId, areaId, userId } = useParams<{
+    bidYearId: string;
     areaId: string;
-    initials: string;
+    userId: string;
   }>();
   const navigate = useNavigate();
+  const [bidYearIdNum, setBidYearIdNum] = useState<number | null>(null);
+  const [areaIdNum, setAreaIdNum] = useState<number | null>(null);
+  const [userIdNum, setUserIdNum] = useState<number | null>(null);
+  const [bidYear, setBidYear] = useState<number | null>(null);
+  const [initials, setInitials] = useState<string | null>(null);
   const [leaveData, setLeaveData] = useState<LeaveAvailabilityResponse | null>(
     null,
   );
@@ -47,12 +52,35 @@ export function UserDetailView({
   const [error, setError] = useState<string | null>(null);
   const previousConnectionState = useRef<ConnectionState | null>(null);
 
-  const bidYear = year ? parseInt(year, 10) : null;
+  // Parse and validate IDs on mount
+  useEffect(() => {
+    if (!bidYearId || !areaId || !userId) {
+      setError("Invalid bid year ID, area ID, or user ID");
+      setLoading(false);
+      return;
+    }
+
+    const parsedBidYearId = parseInt(bidYearId, 10);
+    const parsedAreaId = parseInt(areaId, 10);
+    const parsedUserId = parseInt(userId, 10);
+
+    if (
+      Number.isNaN(parsedBidYearId) ||
+      Number.isNaN(parsedAreaId) ||
+      Number.isNaN(parsedUserId)
+    ) {
+      setError("Invalid bid year ID, area ID, or user ID");
+      setLoading(false);
+      return;
+    }
+
+    setBidYearIdNum(parsedBidYearId);
+    setAreaIdNum(parsedAreaId);
+    setUserIdNum(parsedUserId);
+  }, [bidYearId, areaId, userId]);
 
   useEffect(() => {
-    if (!bidYear || !areaId || !initials) {
-      setError("Invalid parameters");
-      setLoading(false);
+    if (userIdNum === null) {
       return;
     }
 
@@ -60,8 +88,10 @@ export function UserDetailView({
       try {
         setLoading(true);
         setError(null);
-        const response = await getLeaveAvailability(bidYear, areaId, initials);
+        const response = await getLeaveAvailability(userIdNum);
         setLeaveData(response);
+        setBidYear(response.bid_year);
+        setInitials(response.initials);
       } catch (err) {
         if (err instanceof NetworkError) {
           setError(
@@ -78,7 +108,7 @@ export function UserDetailView({
     };
 
     void loadLeaveData();
-  }, [bidYear, areaId, initials]);
+  }, [userIdNum]);
 
   // Auto-refresh when connection is restored
   useEffect(() => {
@@ -92,18 +122,16 @@ export function UserDetailView({
     const wasNotConnected = previousConnectionState.current !== "connected";
     const nowConnected = connectionState === "connected";
 
-    if (wasNotConnected && nowConnected && bidYear && areaId && initials) {
+    if (wasNotConnected && nowConnected && userIdNum !== null) {
       console.log("[UserDetailView] Connection established, refreshing data");
       const loadLeaveData = async () => {
         try {
           setLoading(true);
           setError(null);
-          const response = await getLeaveAvailability(
-            bidYear,
-            areaId,
-            initials,
-          );
+          const response = await getLeaveAvailability(userIdNum);
           setLeaveData(response);
+          setBidYear(response.bid_year);
+          setInitials(response.initials);
         } catch (err) {
           if (err instanceof NetworkError) {
             setError(
@@ -122,31 +150,31 @@ export function UserDetailView({
     }
 
     previousConnectionState.current = connectionState;
-  }, [connectionState, bidYear, areaId, initials]);
+  }, [connectionState, userIdNum]);
 
   // Refresh when relevant live events occur
   useEffect(() => {
-    if (!lastEvent || !bidYear || !areaId || !initials) return;
-
     if (
-      (lastEvent.type === "user_registered" &&
-        lastEvent.bid_year === bidYear &&
-        lastEvent.area === areaId &&
-        lastEvent.initials === initials) ||
-      (lastEvent.type === "user_updated" &&
-        lastEvent.bid_year === bidYear &&
-        lastEvent.area === areaId &&
-        lastEvent.initials === initials)
+      !lastEvent ||
+      userIdNum === null ||
+      bidYear === null ||
+      initials === null
+    )
+      return;
+
+    // Events contain display values (bid_year as number, initials as string)
+    if (
+      lastEvent.type === "user_updated" &&
+      lastEvent.bid_year === bidYear &&
+      lastEvent.initials === initials
     ) {
       console.log("[UserDetailView] Relevant event received, refreshing data");
       const loadLeaveData = async () => {
         try {
-          const response = await getLeaveAvailability(
-            bidYear,
-            areaId,
-            initials,
-          );
+          const response = await getLeaveAvailability(userIdNum);
           setLeaveData(response);
+          setBidYear(response.bid_year);
+          setInitials(response.initials);
         } catch (err) {
           // Silently fail on live event refresh - connection state will show the issue
           console.error("Failed to refresh after live event:", err);
@@ -154,14 +182,14 @@ export function UserDetailView({
       };
       void loadLeaveData();
     }
-  }, [lastEvent, bidYear, areaId, initials]);
+  }, [lastEvent, userIdNum, bidYear, initials]);
 
-  if (!bidYear || !areaId || !initials) {
+  if (bidYearIdNum === null || areaIdNum === null || userIdNum === null) {
     return (
       <div className="error">
         <h2>Invalid Parameters</h2>
         <p>Required parameters are missing or invalid.</p>
-        <button type="button" onClick={() => navigate("/")}>
+        <button type="button" onClick={() => navigate("/admin")}>
           Back to Overview
         </button>
       </div>
@@ -186,9 +214,7 @@ export function UserDetailView({
         <button
           type="button"
           onClick={() =>
-            navigate(
-              `/admin/bid-year/${bidYear}/area/${encodeURIComponent(areaId)}/users`,
-            )
+            navigate(`/admin/bid-year/${bidYearIdNum}/areas/${areaIdNum}/users`)
           }
         >
           Back to User List
@@ -201,13 +227,11 @@ export function UserDetailView({
     return (
       <div className="error">
         <h2>No Data Available</h2>
-        <p>Leave data could not be loaded for user {initials}.</p>
+        <p>Leave data could not be loaded for user {initials ?? userIdNum}.</p>
         <button
           type="button"
           onClick={() =>
-            navigate(
-              `/admin/bid-year/${bidYear}/area/${encodeURIComponent(areaId)}/users`,
-            )
+            navigate(`/admin/bid-year/${bidYearIdNum}/areas/${areaIdNum}/users`)
           }
         >
           Back to User List
@@ -227,9 +251,7 @@ export function UserDetailView({
         <button
           type="button"
           onClick={() =>
-            navigate(
-              `/admin/bid-year/${bidYear}/area/${encodeURIComponent(areaId)}/users`,
-            )
+            navigate(`/admin/bid-year/${bidYearIdNum}/areas/${areaIdNum}/users`)
           }
         >
           Back to User List
