@@ -1,37 +1,48 @@
 # Phase 26
 
-## Phase 26 — Editing Semantics & Late Changes
+## Phase 26 — “No Bid” Area Introduction
 
 ### Goal
 
-Handle real-world late changes without breaking invariants.
+Introduce a canonical safety area to formalize edge cases.
 
 ---
 
-### Editing Rules
+### Behavior
 
-- After bootstrap:
-  - Adding users allowed
-  - Removing users restricted
-- If actual user count exceeds expected:
-  - Expected count auto-increments
-  - Audit event emitted
+- System creates a reserved `No Bid` area per bid year
+- Properties:
+  - `is_no_bid = true`
+- Not visible to unauthenticated users
+- Cannot be deleted
+- Cannot have rounds or limits
 
 ---
 
-### Deletion Rules
+### Automatic Usage
 
-- User deletion allowed only if:
-  - No bids
-  - No leave usage
-  - Only metadata edits exist
-- Otherwise:
-  - User may be disabled only
+- Users with no area → auto-assigned to No Bid
+- Deleting an area → users moved to No Bid
+- CSV import with missing area → No Bid
+
+---
+
+### Bootstrap Rules
+
+- Bootstrap incomplete if:
+  - Any user exists in No Bid
+  - AND user not explicitly reviewed
+
+---
+
+### UI Flags
+
+- Per-user “reviewed” toggle (admin only)
 
 ---
 
 ### Exit Criteria
 
-- Editing rules enforced in domain
-- UI reflects allowed actions
-- No silent state changes
+- No Bid area enforced at domain level
+- Bootstrap completeness depends on No Bid review
+- No bidding logic introduced

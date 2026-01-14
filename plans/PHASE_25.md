@@ -1,48 +1,48 @@
 # Phase 25
 
-## Phase 25 — “No Bid” Area Introduction
+## Phase 25 — Domain State Machine: Bid Year Lifecycle
 
 ### Goal
 
-Introduce a canonical safety area to formalize edge cases.
+Make bid year phases explicit, enforceable, and auditable.
 
 ---
 
-### Behavior
+### New Concepts
 
-- System creates a reserved `No Bid` area per bid year
-- Properties:
-  - `is_no_bid = true`
-- Not visible to unauthenticated users
-- Cannot be deleted
-- Cannot have rounds or limits
+- `BidYearStatus` enum:
+  - `Bootstrapping`
+  - `Active`
+  - `Archived`
 
 ---
 
-### Automatic Usage
+### Rules
 
-- Users with no area → auto-assigned to No Bid
-- Deleting an area → users moved to No Bid
-- CSV import with missing area → No Bid
-
----
-
-### Bootstrap Rules
-
-- Bootstrap incomplete if:
-  - Any user exists in No Bid
-  - AND user not explicitly reviewed
+- Only one bid year may be `Active`
+- Only `Bootstrapping` bid years allow:
+  - area creation
+  - user creation
+  - metadata edits
+- Transition `Bootstrapping → Active` requires:
+  - bootstrap completeness = true
+- Transition emits an audit event
 
 ---
 
-### UI Flags
+### Explicit Locks
 
-- Per-user “reviewed” toggle (admin only)
+- When `Active`:
+  - Editing locked except:
+    - user name
+    - user initials
+- When `Archived`:
+  - No edits allowed
 
 ---
 
 ### Exit Criteria
 
-- No Bid area enforced at domain level
-- Bootstrap completeness depends on No Bid review
-- No bidding logic introduced
+- Bid year status enforced in domain/core
+- UI unchanged
+- Clear audit events for transitions
