@@ -733,6 +733,12 @@ the agent must stop and request guidance.
 
 Correctness and architectural integrity take precedence over completion speed.
 
+## Database Tooling
+
+- Default to Diesel DSL for all persistence queries.
+  Raw SQL is allowed only when the DSL cannot express the query cleanly, safely, or without obscuring intent.
+- Any raw SQL must be narrowly scoped and documented with the reason DSL was rejected.
+
 ## When to Stop
 
 If any of the following are true:
