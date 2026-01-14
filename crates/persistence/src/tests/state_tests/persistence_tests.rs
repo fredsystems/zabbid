@@ -5,8 +5,9 @@
 
 use crate::SqlitePersistence;
 use crate::tests::{
-    create_test_actor, create_test_cause, create_test_metadata, create_test_operator,
-    create_test_pay_periods, create_test_seniority_data, create_test_start_date,
+    create_test_actor, create_test_bid_year_and_area, create_test_cause, create_test_metadata,
+    create_test_operator, create_test_pay_periods, create_test_seniority_data,
+    create_test_start_date,
 };
 use zab_bid::{
     BootstrapMetadata, BootstrapResult, Command, State, TransitionResult, apply, apply_bootstrap,
@@ -175,6 +176,7 @@ fn test_atomic_persistence_failure() {
     // Try to create a new one and verify it works
     persistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
+    create_test_bid_year_and_area(&mut persistence, 2026, "North");
 
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let command: Command = Command::Checkpoint;

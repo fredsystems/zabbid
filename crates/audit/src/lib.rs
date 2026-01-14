@@ -162,9 +162,12 @@ impl StateSnapshot {
 /// - What action was performed (action)
 /// - The state before the transition (before)
 /// - The state after the transition (after)
-/// - The bid year scope (`bid_year`)
-/// - The area scope (`area`)
+/// - The bid year scope (`bid_year`) - optional for global events like operator management
+/// - The area scope (`area`) - optional for global events like operator management
 /// - An optional event ID assigned by persistence (`event_id`)
+///
+/// Phase 23B: `bid_year` and `area` are now optional to support operator-management
+/// and other global audit events that are not scoped to a specific bid year or area.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuditEvent {
     /// Optional event ID assigned when persisted.
@@ -181,9 +184,11 @@ pub struct AuditEvent {
     /// The state after the transition.
     pub after: StateSnapshot,
     /// The bid year this event is scoped to.
-    pub bid_year: BidYear,
+    /// None for global events (e.g., operator management, `CreateBidYear`).
+    pub bid_year: Option<BidYear>,
     /// The area this event is scoped to.
-    pub area: Area,
+    /// None for global events or bid-year-only events.
+    pub area: Option<Area>,
 }
 
 impl AuditEvent {
@@ -219,8 +224,39 @@ impl AuditEvent {
             action,
             before,
             after,
-            bid_year,
-            area,
+            bid_year: Some(bid_year),
+            area: Some(area),
+        }
+    }
+
+    /// Creates a new global `AuditEvent` without bid year or area scope.
+    ///
+    /// This is used for operator management and other global events.
+    ///
+    /// # Arguments
+    ///
+    /// * `actor` - The actor who initiated the change
+    /// * `cause` - The reason for the change
+    /// * `action` - The action that was performed
+    /// * `before` - The state before the transition
+    /// * `after` - The state after the transition
+    #[must_use]
+    pub const fn new_global(
+        actor: Actor,
+        cause: Cause,
+        action: Action,
+        before: StateSnapshot,
+        after: StateSnapshot,
+    ) -> Self {
+        Self {
+            event_id: None,
+            actor,
+            cause,
+            action,
+            before,
+            after,
+            bid_year: None,
+            area: None,
         }
     }
 
@@ -257,8 +293,8 @@ impl AuditEvent {
             action,
             before,
             after,
-            bid_year,
-            area,
+            bid_year: Some(bid_year),
+            area: Some(area),
         }
     }
 }

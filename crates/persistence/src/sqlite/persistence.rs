@@ -7,7 +7,7 @@ use rusqlite::{Transaction, params};
 use tracing::{debug, info};
 use zab_bid::{BootstrapResult, State, TransitionResult};
 use zab_bid_audit::AuditEvent;
-use zab_bid_domain::{CanonicalBidYear, Crew};
+use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Crew};
 
 use crate::data_models::{ActionData, ActorData, CauseData, StateData, StateSnapshotData};
 use crate::error::PersistenceError;
@@ -122,7 +122,7 @@ pub fn persist_bootstrap(
             // Persist audit event with the generated ID
             // Note: For CreateBidYear, area is a placeholder, so area_id is None
             let event_id: i64 =
-                persist_audit_event_with_ids(tx, &result.audit_event, bid_year_id, None)?;
+                persist_audit_event_with_ids(tx, &result.audit_event, Some(bid_year_id), None)?;
             debug!(
                 event_id,
                 "Persisted bootstrap audit event for CreateBidYear"
@@ -135,31 +135,61 @@ pub fn persist_bootstrap(
             // Look up bid_year_id
             let bid_year_id: i64 = crate::sqlite::queries::lookup_bid_year_id_tx(
                 tx,
-                result.audit_event.bid_year.year(),
+                result
+                    .audit_event
+                    .bid_year
+                    .as_ref()
+                    .expect("CreateArea must have bid_year")
+                    .year(),
             )?;
 
             // Insert area and get generated ID
             tx.execute(
                 "INSERT INTO areas (bid_year_id, area_code) VALUES (?1, ?2)",
-                params![bid_year_id, result.audit_event.area.id()],
+                params![
+                    bid_year_id,
+                    result
+                        .audit_event
+                        .area
+                        .as_ref()
+                        .expect("CreateArea must have area")
+                        .id()
+                ],
             )?;
             let area_id: i64 = tx.last_insert_rowid();
             debug!(
                 area_id,
                 bid_year_id,
-                area_code = result.audit_event.area.id(),
+                area_code = result
+                    .audit_event
+                    .area
+                    .as_ref()
+                    .expect("CreateArea must have area")
+                    .id(),
                 "Inserted area into canonical table"
             );
 
             // Persist audit event with the generated IDs
-            let event_id: i64 =
-                persist_audit_event_with_ids(tx, &result.audit_event, bid_year_id, Some(area_id))?;
+            let event_id: i64 = persist_audit_event_with_ids(
+                tx,
+                &result.audit_event,
+                Some(bid_year_id),
+                Some(area_id),
+            )?;
             debug!(event_id, "Persisted bootstrap audit event for CreateArea");
 
             // Create an initial empty snapshot for new areas
             let initial_state: State = State::new(
-                result.audit_event.bid_year.clone(),
-                result.audit_event.area.clone(),
+                result
+                    .audit_event
+                    .bid_year
+                    .clone()
+                    .expect("CreateArea must have bid_year"),
+                result
+                    .audit_event
+                    .area
+                    .clone()
+                    .expect("CreateArea must have area"),
             );
             persist_state_snapshot_tx(tx, &initial_state, event_id)?;
             debug!(event_id, "Created initial empty snapshot for new area");
@@ -198,12 +228,29 @@ pub fn persist_audit_event(
     tx: &Transaction<'_>,
     event: &AuditEvent,
 ) -> Result<i64, PersistenceError> {
-    // Look up canonical IDs - these must exist or we fail
-    let bid_year_id: i64 =
-        crate::sqlite::queries::lookup_bid_year_id_tx(tx, event.bid_year.year())?;
-    let area_id: i64 = crate::sqlite::queries::lookup_area_id_tx(tx, bid_year_id, event.area.id())?;
+    // Look up canonical IDs if bid_year and area are present (Phase 23B)
+    let (bid_year_id, area_id): (Option<i64>, Option<i64>) = match (&event.bid_year, &event.area) {
+        (Some(bid_year), Some(area)) => {
+            // Both present - look up IDs
+            let bid_year_id: i64 =
+                crate::sqlite::queries::lookup_bid_year_id_tx(tx, bid_year.year())?;
+            let area_id: i64 =
+                crate::sqlite::queries::lookup_area_id_tx(tx, bid_year_id, area.id())?;
+            (Some(bid_year_id), Some(area_id))
+        }
+        (Some(bid_year), None) => {
+            // Only bid year present
+            let bid_year_id: i64 =
+                crate::sqlite::queries::lookup_bid_year_id_tx(tx, bid_year.year())?;
+            (Some(bid_year_id), None)
+        }
+        (None, _) => {
+            // Global event - no bid year or area
+            (None, None)
+        }
+    };
 
-    persist_audit_event_with_ids(tx, event, bid_year_id, Some(area_id))
+    persist_audit_event_with_ids(tx, event, bid_year_id, area_id)
 }
 
 /// Persists an audit event with explicit IDs within a transaction.
@@ -214,12 +261,15 @@ pub fn persist_audit_event(
 /// Phase 23A: `area_id` is optional to support `CreateBidYear` events
 /// where the area is not meaningful.
 ///
+/// Phase 23B: `bid_year_id` is also optional to support global events
+/// like operator management.
+///
 /// # Arguments
 ///
 /// * `tx` - The active database transaction
 /// * `event` - The audit event to persist
-/// * `bid_year_id` - The bid year ID
-/// * `area_id` - The area ID (`None` for `CreateBidYear`)
+/// * `bid_year_id` - The bid year ID (None for global events)
+/// * `area_id` - The area ID (None for global or bid-year-only events)
 ///
 /// # Returns
 ///
@@ -231,7 +281,7 @@ pub fn persist_audit_event(
 fn persist_audit_event_with_ids(
     tx: &Transaction<'_>,
     event: &AuditEvent,
-    bid_year_id: i64,
+    bid_year_id: Option<i64>,
     area_id: Option<i64>,
 ) -> Result<i64, PersistenceError> {
     let actor_data: ActorData = ActorData {
@@ -272,6 +322,10 @@ fn persist_audit_event_with_ids(
         .unwrap_or("System")
         .to_string();
 
+    // Extract display values (may be placeholders for global events)
+    let year: u16 = event.bid_year.as_ref().map_or(0, BidYear::year);
+    let area_code: &str = event.area.as_ref().map_or("", Area::id);
+
     tx.execute(
         "INSERT INTO audit_events (
             bid_year_id, area_id, year, area_code,
@@ -282,8 +336,8 @@ fn persist_audit_event_with_ids(
         params![
             bid_year_id,
             area_id,
-            event.bid_year.year(),
-            event.area.id(),
+            year,
+            area_code,
             actor_operator_id,
             actor_login_name,
             actor_display_name,

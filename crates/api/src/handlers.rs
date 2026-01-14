@@ -1126,19 +1126,8 @@ pub fn create_operator(
         operator_id, request.login_name, request.role
     ));
 
-    // Use placeholder bid_year and area for operator management events
-    let placeholder_bid_year: BidYear = BidYear::new(0);
-    let placeholder_area: Area = Area::new("_operator_management");
-
-    let audit_event: AuditEvent = AuditEvent::new(
-        actor,
-        cause,
-        action,
-        before,
-        after,
-        placeholder_bid_year,
-        placeholder_area,
-    );
+    // Phase 23B: Use global event for operator management
+    let audit_event: AuditEvent = AuditEvent::new_global(actor, cause, action, before, after);
 
     // Persist audit event
     persistence
@@ -1328,19 +1317,8 @@ pub fn disable_operator(
     let after: StateSnapshot =
         StateSnapshot::new(format!("operator_id={operator_id},is_disabled=true"));
 
-    // Use placeholder bid_year and area for operator management events
-    let placeholder_bid_year: BidYear = BidYear::new(0);
-    let placeholder_area: Area = Area::new("_operator_management");
-
-    let audit_event: AuditEvent = AuditEvent::new(
-        actor,
-        cause,
-        action,
-        before,
-        after,
-        placeholder_bid_year,
-        placeholder_area,
-    );
+    // Phase 23B: Use global event for operator management
+    let audit_event: AuditEvent = AuditEvent::new_global(actor, cause, action, before, after);
 
     // Persist audit event
     persistence
@@ -1438,19 +1416,8 @@ pub fn enable_operator(
     let after: StateSnapshot =
         StateSnapshot::new(format!("operator_id={operator_id},is_disabled=false"));
 
-    // Use placeholder bid_year and area for operator management events
-    let placeholder_bid_year: BidYear = BidYear::new(0);
-    let placeholder_area: Area = Area::new("_operator_management");
-
-    let audit_event: AuditEvent = AuditEvent::new(
-        actor,
-        cause,
-        action,
-        before,
-        after,
-        placeholder_bid_year,
-        placeholder_area,
-    );
+    // Phase 23B: Use global event for operator management
+    let audit_event: AuditEvent = AuditEvent::new_global(actor, cause, action, before, after);
 
     // Persist audit event
     persistence
@@ -1576,19 +1543,8 @@ pub fn delete_operator(
         StateSnapshot::new(format!("operator_id={operator_id},login_name={login_name}"));
     let after: StateSnapshot = StateSnapshot::new(String::from("operator_deleted"));
 
-    // Use placeholder bid_year and area for operator management events
-    let placeholder_bid_year: BidYear = BidYear::new(0);
-    let placeholder_area: Area = Area::new("_operator_management");
-
-    let audit_event: AuditEvent = AuditEvent::new(
-        actor,
-        cause,
-        action,
-        before,
-        after,
-        placeholder_bid_year,
-        placeholder_area,
-    );
+    // Phase 23B: Use global event for operator management
+    let audit_event: AuditEvent = AuditEvent::new_global(actor, cause, action, before, after);
 
     // Persist audit event
     persistence
@@ -1694,19 +1650,8 @@ pub fn change_password(
     let after: StateSnapshot =
         StateSnapshot::new(format!("operator_id={operator_id},password_changed"));
 
-    // Use placeholder bid_year and area for operator management events
-    let placeholder_bid_year: BidYear = BidYear::new(0);
-    let placeholder_area: Area = Area::new("_operator_management");
-
-    let audit_event: AuditEvent = AuditEvent::new(
-        actor,
-        cause,
-        action,
-        before,
-        after,
-        placeholder_bid_year,
-        placeholder_area,
-    );
+    // Phase 23B: Use global event for operator management
+    let audit_event: AuditEvent = AuditEvent::new_global(actor, cause, action, before, after);
 
     // Persist audit event
     persistence
@@ -1825,19 +1770,8 @@ pub fn reset_password(
         "operator_id={operator_id},login_name={target_login},password_reset"
     ));
 
-    // Use placeholder bid_year and area for operator management events
-    let placeholder_bid_year: BidYear = BidYear::new(0);
-    let placeholder_area: Area = Area::new("_operator_management");
-
-    let audit_event: AuditEvent = AuditEvent::new(
-        actor,
-        cause,
-        action,
-        before,
-        after,
-        placeholder_bid_year,
-        placeholder_area,
-    );
+    // Phase 23B: Use global event for operator management
+    let audit_event: AuditEvent = AuditEvent::new_global(actor, cause, action, before, after);
 
     // Persist audit event
     persistence

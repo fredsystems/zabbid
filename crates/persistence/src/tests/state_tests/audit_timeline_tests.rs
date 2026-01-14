@@ -5,7 +5,8 @@
 
 use crate::SqlitePersistence;
 use crate::tests::{
-    create_test_actor, create_test_cause, create_test_metadata, create_test_operator,
+    create_test_actor, create_test_bid_year_and_area, create_test_cause, create_test_metadata,
+    create_test_operator,
 };
 use zab_bid::{Command, State, TransitionResult, apply};
 use zab_bid_audit::AuditEvent;
@@ -15,6 +16,7 @@ use zab_bid_domain::{Area, BidYear};
 fn test_get_audit_timeline_returns_events_in_order() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
+    create_test_bid_year_and_area(&mut persistence, 2026, "North");
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create multiple events
@@ -59,14 +61,17 @@ fn test_get_audit_timeline_returns_events_in_order() {
         .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
         .unwrap();
 
-    assert_eq!(timeline.len(), 3);
-    assert_eq!(timeline[0].action.name, "Checkpoint");
-    assert_eq!(timeline[1].action.name, "Finalize");
-    assert_eq!(timeline[2].action.name, "Rollback");
+    // Timeline includes 1 bootstrap event (CreateArea) + 3 operations
+    assert_eq!(timeline.len(), 4);
+    assert_eq!(timeline[0].action.name, "CreateArea");
+    assert_eq!(timeline[1].action.name, "Checkpoint");
+    assert_eq!(timeline[2].action.name, "Finalize");
+    assert_eq!(timeline[3].action.name, "Rollback");
 
     // Verify event IDs are in ascending order
     assert!(timeline[0].event_id.unwrap() < timeline[1].event_id.unwrap());
     assert!(timeline[1].event_id.unwrap() < timeline[2].event_id.unwrap());
+    assert!(timeline[2].event_id.unwrap() < timeline[3].event_id.unwrap());
 }
 
 #[test]
@@ -85,6 +90,7 @@ fn test_get_audit_timeline_empty_for_nonexistent_scope() {
 fn test_get_audit_timeline_includes_rollback_events() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
+    create_test_bid_year_and_area(&mut persistence, 2026, "North");
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create checkpoint
@@ -120,15 +126,18 @@ fn test_get_audit_timeline_includes_rollback_events() {
         .get_audit_timeline(&BidYear::new(2026), &Area::new("North"))
         .unwrap();
 
-    assert_eq!(timeline.len(), 2);
-    assert_eq!(timeline[0].action.name, "Checkpoint");
-    assert_eq!(timeline[1].action.name, "Rollback");
+    // Timeline includes 1 bootstrap event (CreateArea) + 2 operations
+    assert_eq!(timeline.len(), 3);
+    assert_eq!(timeline[0].action.name, "CreateArea");
+    assert_eq!(timeline[1].action.name, "Checkpoint");
+    assert_eq!(timeline[2].action.name, "Rollback");
 }
 
 #[test]
 fn test_get_audit_timeline_does_not_mutate() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
+    create_test_bid_year_and_area(&mut persistence, 2026, "North");
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create events
@@ -156,13 +165,15 @@ fn test_get_audit_timeline_does_not_mutate() {
 
     // Should be identical
     assert_eq!(timeline1.len(), timeline2.len());
-    assert_eq!(timeline1.len(), 1);
+    // Timeline includes 1 bootstrap event (CreateArea) + 1 operation
+    assert_eq!(timeline1.len(), 2);
 }
 
 #[test]
 fn test_read_operations_are_side_effect_free() {
     let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
+    create_test_bid_year_and_area(&mut persistence, 2026, "North");
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create initial snapshot

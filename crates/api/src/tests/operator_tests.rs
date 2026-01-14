@@ -14,7 +14,6 @@ use crate::{
     delete_operator, disable_operator, enable_operator, list_operators,
 };
 use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
-use zab_bid_domain::{Area, BidYear};
 use zab_bid_persistence::SqlitePersistence;
 
 fn create_test_admin() -> AuthenticatedActor {
@@ -329,10 +328,8 @@ fn test_delete_operator_fails_when_referenced() {
     let action = Action::new(String::from("TestAction"), None);
     let before = StateSnapshot::new(String::from("before"));
     let after = StateSnapshot::new(String::from("after"));
-    let bid_year = BidYear::new(0);
-    let area = Area::new("_operator_management");
 
-    let audit_event = AuditEvent::new(actor, cause, action, before, after, bid_year, area);
+    let audit_event = AuditEvent::new_global(actor, cause, action, before, after);
     persistence.persist_audit_event(&audit_event).unwrap();
 
     // Attempt to delete
@@ -384,9 +381,7 @@ fn test_create_operator_emits_audit_event() {
     let cause = create_test_cause();
 
     // Get event count before
-    let events_before = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_before = persistence.get_global_audit_events().unwrap();
     let count_before = events_before.len();
 
     let result = create_operator(&mut persistence, request, &admin, &admin_operator, cause);
@@ -394,9 +389,7 @@ fn test_create_operator_emits_audit_event() {
     assert!(result.is_ok());
 
     // Verify audit event was created
-    let events_after = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_after = persistence.get_global_audit_events().unwrap();
     let count_after = events_after.len();
 
     assert_eq!(count_after, count_before + 1);
@@ -423,9 +416,7 @@ fn test_disable_operator_emits_audit_event() {
         .create_operator("testop", "Test Operator", "password", "Bidder")
         .unwrap();
 
-    let events_before = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_before = persistence.get_global_audit_events().unwrap();
     let count_before = events_before.len();
 
     let request = DisableOperatorRequest { operator_id };
@@ -433,9 +424,7 @@ fn test_disable_operator_emits_audit_event() {
 
     disable_operator(&mut persistence, request, &admin, &admin_operator, cause).unwrap();
 
-    let events_after = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_after = persistence.get_global_audit_events().unwrap();
     let count_after = events_after.len();
 
     assert_eq!(count_after, count_before + 1);
@@ -463,9 +452,7 @@ fn test_enable_operator_emits_audit_event() {
 
     persistence.disable_operator(operator_id).unwrap();
 
-    let events_before = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_before = persistence.get_global_audit_events().unwrap();
     let count_before = events_before.len();
 
     let request = EnableOperatorRequest { operator_id };
@@ -473,9 +460,7 @@ fn test_enable_operator_emits_audit_event() {
 
     enable_operator(&mut persistence, request, &admin, &admin_operator, cause).unwrap();
 
-    let events_after = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_after = persistence.get_global_audit_events().unwrap();
     let count_after = events_after.len();
 
     assert_eq!(count_after, count_before + 1);
@@ -501,9 +486,7 @@ fn test_delete_operator_emits_audit_event() {
         .create_operator("testop", "Test Operator", "password", "Bidder")
         .unwrap();
 
-    let events_before = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_before = persistence.get_global_audit_events().unwrap();
     let count_before = events_before.len();
 
     let request = DeleteOperatorRequest { operator_id };
@@ -511,9 +494,7 @@ fn test_delete_operator_emits_audit_event() {
 
     delete_operator(&mut persistence, request, &admin, &admin_operator, cause).unwrap();
 
-    let events_after = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_after = persistence.get_global_audit_events().unwrap();
     let count_after = events_after.len();
 
     assert_eq!(count_after, count_before + 1);
@@ -536,9 +517,7 @@ fn test_unauthorized_action_does_not_emit_audit_event() {
         .unwrap()
         .unwrap();
 
-    let events_before = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_before = persistence.get_global_audit_events().unwrap();
     let count_before = events_before.len();
 
     let request = DisableOperatorRequest { operator_id };
@@ -549,9 +528,7 @@ fn test_unauthorized_action_does_not_emit_audit_event() {
     assert!(result.is_err());
 
     // Verify no audit event was created
-    let events_after = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_after = persistence.get_global_audit_events().unwrap();
     let count_after = events_after.len();
 
     assert_eq!(count_after, count_before);

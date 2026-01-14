@@ -267,6 +267,20 @@ impl SqlitePersistence {
         sqlite::get_audit_timeline(&self.conn, bid_year, area)
     }
 
+    /// Retrieves all global audit events (events with no bid year or area scope).
+    ///
+    /// Global events include operator-management actions and other system-level operations
+    /// that are not scoped to a specific bid year or area.
+    ///
+    /// Events are returned in strict chronological order (ascending by `event_id`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if events cannot be retrieved or deserialized.
+    pub fn get_global_audit_events(&self) -> Result<Vec<AuditEvent>, PersistenceError> {
+        sqlite::get_global_audit_events(&self.conn)
+    }
+
     /// Reconstructs bootstrap metadata from canonical tables.
     ///
     /// This method queries the canonical `bid_years` and `areas` tables to retrieve

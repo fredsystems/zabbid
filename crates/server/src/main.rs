@@ -396,10 +396,10 @@ struct AuditEventResponse {
     before_snapshot: String,
     /// State after the transition.
     after_snapshot: String,
-    /// The bid year.
-    bid_year: u16,
-    /// The area.
-    area: String,
+    /// The bid year (optional for global events).
+    bid_year: Option<u16>,
+    /// The area (optional for global events).
+    area: Option<String>,
 }
 
 /// Error response type.
@@ -510,8 +510,8 @@ fn audit_event_to_response(event: &AuditEvent) -> AuditEventResponse {
         action_details: event.action.details.clone(),
         before_snapshot: event.before.data.clone(),
         after_snapshot: event.after.data.clone(),
-        bid_year: event.bid_year.year(),
-        area: event.area.id().to_string(),
+        bid_year: event.bid_year.as_ref().map(BidYear::year),
+        area: event.area.as_ref().map(|a| a.id().to_string()),
     }
 }
 
@@ -629,7 +629,12 @@ async fn handle_create_area(
 
     // Broadcast live event
     app_state.live_events.broadcast(&LiveEvent::AreaCreated {
-        bid_year: bootstrap_result.audit_event.bid_year.year(),
+        bid_year: bootstrap_result
+            .audit_event
+            .bid_year
+            .as_ref()
+            .expect("CreateArea event must have bid year")
+            .year(),
         area: req.area_id.clone(),
     });
 
@@ -638,7 +643,12 @@ async fn handle_create_area(
         message: Some(format!(
             "Created area '{}' in bid year {}",
             req.area_id,
-            bootstrap_result.audit_event.bid_year.year()
+            bootstrap_result
+                .audit_event
+                .bid_year
+                .as_ref()
+                .expect("CreateArea event must have bid year")
+                .year()
         )),
         event_id: Some(event_id),
     }))
@@ -1889,7 +1899,12 @@ async fn handle_update_user(
 
     // Broadcast live event
     app_state.live_events.broadcast(&LiveEvent::UserUpdated {
-        bid_year: result.audit_event.bid_year.year(),
+        bid_year: result
+            .audit_event
+            .bid_year
+            .as_ref()
+            .expect("UpdateUser event must have bid year")
+            .year(),
         area: req.area.clone(),
         initials: req.initials.clone(),
     });

@@ -75,8 +75,8 @@ fn test_audit_event_creation_requires_all_fields() {
     assert_eq!(event.action, action);
     assert_eq!(event.before, before);
     assert_eq!(event.after, after);
-    assert_eq!(event.bid_year, bid_year);
-    assert_eq!(event.area, area);
+    assert_eq!(event.bid_year, Some(bid_year));
+    assert_eq!(event.area, Some(area));
 }
 
 #[test]
@@ -104,8 +104,8 @@ fn test_audit_event_is_immutable_once_created() {
     assert_eq!(event.action.name, "SubmitBid");
     assert_eq!(event.before.data, "before-state");
     assert_eq!(event.after.data, "after-state");
-    assert_eq!(event.bid_year.year(), 2026);
-    assert_eq!(event.area.id(), "NORTH");
+    assert_eq!(event.bid_year.as_ref().unwrap().year(), 2026);
+    assert_eq!(event.area.as_ref().unwrap().id(), "NORTH");
 }
 
 #[test]

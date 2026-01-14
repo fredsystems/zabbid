@@ -378,8 +378,6 @@ fn test_create_operator_enforces_password_policy() {
 
 #[test]
 fn test_password_change_emits_audit_event() {
-    use zab_bid_domain::{Area, BidYear};
-
     let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     let operator_id = persistence
@@ -404,18 +402,14 @@ fn test_password_change_emits_audit_event() {
     let cause = create_test_cause();
 
     // Get event count before
-    let events_before = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_before = persistence.get_global_audit_events().unwrap();
     let count_before = events_before.len();
 
     let result = change_password(&mut persistence, &request, &actor, &operator, cause);
     assert!(result.is_ok());
 
     // Verify audit event was created
-    let events_after = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_after = persistence.get_global_audit_events().unwrap();
     let count_after = events_after.len();
 
     assert_eq!(count_after, count_before + 1);
@@ -428,8 +422,6 @@ fn test_password_change_emits_audit_event() {
 
 #[test]
 fn test_password_reset_emits_audit_event() {
-    use zab_bid_domain::{Area, BidYear};
-
     let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     let admin_id = persistence
@@ -455,18 +447,14 @@ fn test_password_reset_emits_audit_event() {
     let cause = create_test_cause();
 
     // Get event count before
-    let events_before = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_before = persistence.get_global_audit_events().unwrap();
     let count_before = events_before.len();
 
     let result = reset_password(&mut persistence, &request, &admin_actor, &admin, cause);
     assert!(result.is_ok());
 
     // Verify audit event was created
-    let events_after = persistence
-        .get_audit_timeline(&BidYear::new(0), &Area::new("_operator_management"))
-        .unwrap();
+    let events_after = persistence.get_global_audit_events().unwrap();
     let count_after = events_after.len();
 
     assert_eq!(count_after, count_before + 1);

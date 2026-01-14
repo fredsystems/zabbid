@@ -693,6 +693,103 @@ pub fn get_audit_timeline(
     Ok(event_list)
 }
 
+/// Retrieves all global audit events (events with no bid year or area scope).
+///
+/// Global events include operator-management actions and other system-level operations
+/// that are not scoped to a specific bid year or area.
+///
+/// Events are returned in strict chronological order (ascending by `event_id`).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+///
+/// # Errors
+///
+/// Returns an error if events cannot be retrieved or deserialized.
+pub fn get_global_audit_events(conn: &Connection) -> Result<Vec<AuditEvent>, PersistenceError> {
+    tracing::debug!("Retrieving global audit timeline");
+
+    let mut stmt = conn.prepare(
+        "SELECT event_id, actor_operator_id, actor_login_name,
+                actor_display_name, actor_json, cause_json, action_json,
+                before_snapshot_json, after_snapshot_json
+         FROM audit_events
+         WHERE bid_year_id IS NULL AND area_id IS NULL
+         ORDER BY event_id ASC",
+    )?;
+
+    let events: Result<Vec<AuditEvent>, PersistenceError> = stmt
+        .query_map(params![], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, String>(7)?,
+                row.get::<_, String>(8)?,
+            ))
+        })?
+        .map(|row_result| {
+            let (
+                event_id,
+                actor_operator_id,
+                actor_login_name,
+                actor_display_name,
+                actor_json,
+                cause_json,
+                action_json,
+                before_json,
+                after_json,
+            ) = row_result.map_err(|e| PersistenceError::DatabaseError(e.to_string()))?;
+
+            let actor_data: ActorData = serde_json::from_str(&actor_json)?;
+            let cause_data: CauseData = serde_json::from_str(&cause_json)?;
+            let action_data: ActionData = serde_json::from_str(&action_json)?;
+            let before_data: StateSnapshotData = serde_json::from_str(&before_json)?;
+            let after_data: StateSnapshotData = serde_json::from_str(&after_json)?;
+
+            // Reconstruct Actor with operator information if available
+            let actor: Actor = if actor_operator_id != 0 {
+                Actor::with_operator(
+                    actor_data.id,
+                    actor_data.actor_type,
+                    actor_operator_id,
+                    actor_login_name,
+                    actor_display_name,
+                )
+            } else {
+                Actor::new(actor_data.id, actor_data.actor_type)
+            };
+
+            // Global events have no bid year or area
+            // Create event with event_id but no scope
+            Ok(AuditEvent {
+                event_id: Some(event_id),
+                actor,
+                cause: Cause::new(cause_data.id, cause_data.description),
+                action: Action::new(action_data.name, action_data.details),
+                before: StateSnapshot::new(before_data.data),
+                after: StateSnapshot::new(after_data.data),
+                bid_year: None,
+                area: None,
+            })
+        })
+        .collect();
+
+    let event_list: Vec<AuditEvent> = events?;
+
+    tracing::info!(
+        event_count = event_list.len(),
+        "Retrieved global audit timeline"
+    );
+
+    Ok(event_list)
+}
+
 /// Retrieves the most recent snapshot at or before a given timestamp.
 ///
 /// # Arguments

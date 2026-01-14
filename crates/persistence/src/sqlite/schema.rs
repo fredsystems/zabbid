@@ -104,9 +104,10 @@ fn initialize_audit_schema(conn: &Connection) -> Result<(), PersistenceError> {
         "
         -- Audit log and derived historical state tables
         -- Phase 23A: Now use canonical IDs with FKs, but area_id can be NULL for CreateBidYear
+        -- Phase 23B: bid_year_id can also be NULL for global events (operator management)
         CREATE TABLE IF NOT EXISTS audit_events (
             event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bid_year_id INTEGER NOT NULL,
+            bid_year_id INTEGER,
             area_id INTEGER,
             year INTEGER NOT NULL,
             area_code TEXT NOT NULL,
@@ -119,7 +120,6 @@ fn initialize_audit_schema(conn: &Connection) -> Result<(), PersistenceError> {
             before_snapshot_json TEXT NOT NULL,
             after_snapshot_json TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(bid_year_id, area_id, event_id),
             FOREIGN KEY(actor_operator_id) REFERENCES operators(operator_id) ON DELETE RESTRICT,
             FOREIGN KEY(bid_year_id) REFERENCES bid_years(bid_year_id),
             FOREIGN KEY(area_id) REFERENCES areas(area_id)
