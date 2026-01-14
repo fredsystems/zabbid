@@ -166,10 +166,12 @@ pub fn register_user(
         apply(metadata, state, &bid_year, command, actor, cause).map_err(translate_core_error)?;
 
     // Translate to API response
-    // Note: user_id is not included because the user hasn't been persisted yet.
-    // Clients should query /users to get the full user info with user_id.
+    // Note: user_id and bid_year_id are not available until after persistence.
+    // The server layer will populate these after calling persist_transition.
     let response: RegisterUserResponse = RegisterUserResponse {
+        bid_year_id: None,
         bid_year: bid_year.year(),
+        user_id: None,
         initials: initials.value().to_string(),
         name: request.name,
         message: format!(
@@ -494,7 +496,7 @@ pub fn list_bid_years(
                 .bid_years
                 .iter()
                 .find(|by| by.year() == c.year())
-                .and_then(|by| by.bid_year_id())
+                .and_then(zab_bid_domain::BidYear::bid_year_id)
                 .ok_or_else(|| ApiError::Internal {
                     message: format!(
                         "Bid year {} exists in canonical data but has no ID in metadata",
@@ -550,7 +552,7 @@ pub fn list_areas(
         .bid_years
         .iter()
         .find(|by| by.year() == bid_year.year())
-        .and_then(|by| by.bid_year_id())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
         .ok_or_else(|| ApiError::Internal {
             message: format!(
                 "Bid year {} exists but has no ID in metadata",
@@ -624,6 +626,34 @@ pub fn list_users(
     // Validate bid year and area exist before processing
     validate_area_exists(metadata, bid_year, area).map_err(translate_domain_error)?;
 
+    // Extract bid_year_id from metadata
+    let bid_year_id: i64 = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == bid_year.year())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| ApiError::Internal {
+            message: format!(
+                "Bid year {} exists but has no ID in metadata",
+                bid_year.year()
+            ),
+        })?;
+
+    // Extract area_id from metadata
+    let area_id: i64 = metadata
+        .areas
+        .iter()
+        .filter(|(by, _)| by.year() == bid_year.year())
+        .find(|(_, a)| a.area_code() == area.id())
+        .and_then(|(_, a)| a.area_id())
+        .ok_or_else(|| ApiError::Internal {
+            message: format!(
+                "Area '{}' in bid year {} exists but has no ID in metadata",
+                area.id(),
+                bid_year.year()
+            ),
+        })?;
+
     // Find the canonical bid year metadata for leave calculations
     let canonical_bid_year: &CanonicalBidYear = canonical_bid_years
         .iter()
@@ -684,6 +714,8 @@ pub fn list_users(
 
             Ok(UserInfo {
                 user_id,
+                bid_year_id,
+                area_id,
                 initials: user.initials.value().to_string(),
                 name: user.name.clone(),
                 crew: user.crew.as_ref().map(Crew::number),
@@ -700,8 +732,10 @@ pub fn list_users(
         .collect();
 
     Ok(ListUsersResponse {
+        bid_year_id,
         bid_year: state.bid_year.year(),
-        area: state.area.id().to_string(),
+        area_id,
+        area_code: state.area.id().to_string(),
         users: users?,
     })
 }
@@ -818,6 +852,19 @@ pub fn get_leave_availability(
     // Validate bid year and area exist
     validate_area_exists(metadata, &bid_year, area).map_err(translate_domain_error)?;
 
+    // Extract bid_year_id from metadata
+    let bid_year_id: i64 = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == bid_year.year())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| ApiError::Internal {
+            message: format!(
+                "Bid year {} exists but has no ID in metadata",
+                bid_year.year()
+            ),
+        })?;
+
     // Find the user
     let user = state
         .users
@@ -879,6 +926,7 @@ pub fn get_leave_availability(
     );
 
     Ok(GetLeaveAvailabilityResponse {
+        bid_year_id,
         bid_year: bid_year.year(),
         user_id,
         initials: initials.value().to_string(),
@@ -930,6 +978,9 @@ pub fn get_bootstrap_status(
         .iter()
         .map(|bid_year| {
             let year: u16 = bid_year.year();
+            let bid_year_id: i64 = bid_year.bid_year_id().ok_or_else(|| ApiError::Internal {
+                message: format!("Bid year {year} has no ID in metadata"),
+            })?;
             let area_count: usize = area_counts
                 .iter()
                 .find(|(y, _)| *y == year)
@@ -939,13 +990,14 @@ pub fn get_bootstrap_status(
                 .find(|(y, _)| *y == year)
                 .map_or(0, |(_, count)| *count);
 
-            BidYearStatusInfo {
+            Ok(BidYearStatusInfo {
+                bid_year_id,
                 year,
                 area_count,
                 total_user_count,
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, ApiError>>()?;
 
     // Build area summaries
     let areas: Vec<AreaStatusInfo> = metadata
@@ -953,19 +1005,32 @@ pub fn get_bootstrap_status(
         .iter()
         .map(|(bid_year, area)| {
             let year: u16 = bid_year.year();
-            let area_id: String = area.id().to_string();
+            let bid_year_id: i64 = metadata
+                .bid_years
+                .iter()
+                .find(|by| by.year() == year)
+                .and_then(zab_bid_domain::BidYear::bid_year_id)
+                .ok_or_else(|| ApiError::Internal {
+                    message: format!("Bid year {year} has no ID in metadata"),
+                })?;
+            let area_code: String = area.area_code().to_string();
+            let area_id: i64 = area.area_id().ok_or_else(|| ApiError::Internal {
+                message: format!("Area '{area_code}' in bid year {year} has no ID in metadata"),
+            })?;
             let user_count: usize = user_counts_by_area
                 .iter()
-                .find(|(y, a, _)| *y == year && a == &area_id)
+                .find(|(y, a, _)| *y == year && a == &area_code)
                 .map_or(0, |(_, _, count)| *count);
 
-            AreaStatusInfo {
+            Ok(AreaStatusInfo {
+                bid_year_id,
                 bid_year: year,
                 area_id,
+                area_code,
                 user_count,
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, ApiError>>()?;
 
     Ok(BootstrapStatusResponse { bid_years, areas })
 }
@@ -2071,7 +2136,21 @@ pub fn set_active_bid_year(
             message: format!("Failed to persist audit event: {e}"),
         })?;
 
+    // Extract bid_year_id from metadata (it was just set active, so it must exist)
+    let bid_year_id: i64 = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == request.year)
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| ApiError::Internal {
+            message: format!(
+                "Bid year {} was set active but has no ID in metadata",
+                request.year
+            ),
+        })?;
+
     Ok(SetActiveBidYearResponse {
+        bid_year_id,
         year: request.year,
         message: format!("Bid year {} is now active", request.year),
     })
@@ -2089,6 +2168,7 @@ pub fn set_active_bid_year(
 /// Returns an error if database operations fail.
 pub fn get_active_bid_year(
     persistence: &SqlitePersistence,
+    metadata: &BootstrapMetadata,
 ) -> Result<GetActiveBidYearResponse, ApiError> {
     let year: Option<u16> = persistence
         .get_active_bid_year()
@@ -2096,7 +2176,16 @@ pub fn get_active_bid_year(
             message: format!("Failed to get active bid year: {e}"),
         })?;
 
-    Ok(GetActiveBidYearResponse { year })
+    // Extract bid_year_id if there is an active year
+    let bid_year_id: Option<i64> = year.and_then(|y| {
+        metadata
+            .bid_years
+            .iter()
+            .find(|by| by.year() == y)
+            .and_then(zab_bid_domain::BidYear::bid_year_id)
+    });
+
+    Ok(GetActiveBidYearResponse { bid_year_id, year })
 }
 
 /// Sets the expected area count for a bid year.
@@ -2162,7 +2251,21 @@ pub fn set_expected_area_count(
             message: format!("Failed to persist audit event: {e}"),
         })?;
 
+    // Extract bid_year_id from metadata
+    let bid_year_id: i64 = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == active_bid_year.year())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| ApiError::Internal {
+            message: format!(
+                "Bid year {} exists but has no ID in metadata",
+                active_bid_year.year()
+            ),
+        })?;
+
     Ok(SetExpectedAreaCountResponse {
+        bid_year_id,
         bid_year: active_bid_year.year(),
         expected_count: request.expected_count,
         message: format!(
@@ -2238,9 +2341,39 @@ pub fn set_expected_user_count(
             message: format!("Failed to persist audit event: {e}"),
         })?;
 
+    // Extract bid_year_id from metadata
+    let bid_year_id: i64 = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == active_bid_year.year())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| ApiError::Internal {
+            message: format!(
+                "Bid year {} exists but has no ID in metadata",
+                active_bid_year.year()
+            ),
+        })?;
+
+    // Extract area_id from metadata
+    let area_id: i64 = metadata
+        .areas
+        .iter()
+        .filter(|(by, _)| by.year() == active_bid_year.year())
+        .find(|(_, a)| a.area_code() == area.id())
+        .and_then(|(_, a)| a.area_id())
+        .ok_or_else(|| ApiError::Internal {
+            message: format!(
+                "Area '{}' in bid year {} exists but has no ID in metadata",
+                area.id(),
+                active_bid_year.year()
+            ),
+        })?;
+
     Ok(SetExpectedUserCountResponse {
+        bid_year_id,
         bid_year: active_bid_year.year(),
-        area: request.area.clone(),
+        area_id,
+        area_code: request.area.clone(),
         expected_count: request.expected_count,
         message: format!(
             "Expected user count set to {} for area '{}' in bid year {}",
@@ -2348,8 +2481,22 @@ pub fn update_user(
             message: format!("Failed to persist audit event: {e}"),
         })?;
 
+    // Extract bid_year_id from metadata
+    let bid_year_id: i64 = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == active_bid_year.year())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| ApiError::Internal {
+            message: format!(
+                "Bid year {} exists but has no ID in metadata",
+                active_bid_year.year()
+            ),
+        })?;
+
     // Build response
     let response = UpdateUserResponse {
+        bid_year_id,
         bid_year: active_bid_year.year(),
         user_id: request.user_id,
         initials: request.initials.clone(),
@@ -2390,6 +2537,15 @@ pub fn get_bootstrap_completeness(
                 message: format!("Failed to get active bid year: {e}"),
             })?;
 
+    // Extract active_bid_year_id if there is an active year
+    let active_bid_year_id: Option<i64> = active_bid_year.and_then(|y| {
+        metadata
+            .bid_years
+            .iter()
+            .find(|by| by.year() == y)
+            .and_then(zab_bid_domain::BidYear::bid_year_id)
+    });
+
     let mut bid_years_info: Vec<BidYearCompletenessInfo> = Vec::new();
     let mut areas_info: Vec<AreaCompletenessInfo> = Vec::new();
     let mut top_level_blocking: Vec<BlockingReason> = Vec::new();
@@ -2402,6 +2558,9 @@ pub fn get_bootstrap_completeness(
     // Check each bid year
     for bid_year in &metadata.bid_years {
         let year: u16 = bid_year.year();
+        let bid_year_id: i64 = bid_year.bid_year_id().ok_or_else(|| ApiError::Internal {
+            message: format!("Bid year {year} has no ID in metadata"),
+        })?;
         let is_active: bool = active_bid_year == Some(year);
 
         let expected_area_count: Option<u32> =
@@ -2422,13 +2581,17 @@ pub fn get_bootstrap_completeness(
 
         // Check if expected count is set
         let expected_count = expected_area_count.unwrap_or_else(|| {
-            blocking_reasons.push(BlockingReason::ExpectedAreaCountNotSet { bid_year: year });
+            blocking_reasons.push(BlockingReason::ExpectedAreaCountNotSet {
+                bid_year_id,
+                bid_year: year,
+            });
             0 // Placeholder
         });
 
         // Check if actual matches expected
         if expected_area_count.is_some() && actual_area_count != expected_count as usize {
             blocking_reasons.push(BlockingReason::AreaCountMismatch {
+                bid_year_id,
                 bid_year: year,
                 expected: expected_count,
                 actual: actual_area_count,
@@ -2438,6 +2601,7 @@ pub fn get_bootstrap_completeness(
         let is_complete: bool = blocking_reasons.is_empty() && expected_area_count.is_some();
 
         bid_years_info.push(BidYearCompletenessInfo {
+            bid_year_id,
             year,
             is_active,
             expected_area_count,
@@ -2450,6 +2614,18 @@ pub fn get_bootstrap_completeness(
     // Check each area
     for (bid_year, area) in &metadata.areas {
         let year: u16 = bid_year.year();
+        let bid_year_id: i64 = metadata
+            .bid_years
+            .iter()
+            .find(|by| by.year() == year)
+            .and_then(zab_bid_domain::BidYear::bid_year_id)
+            .ok_or_else(|| ApiError::Internal {
+                message: format!("Bid year {year} has no ID in metadata"),
+            })?;
+        let area_code: String = area.area_code().to_string();
+        let area_id: i64 = area.area_id().ok_or_else(|| ApiError::Internal {
+            message: format!("Area '{area_code}' in bid year {year} has no ID in metadata"),
+        })?;
 
         let expected_user_count: Option<u32> = persistence
             .get_expected_user_count(bid_year, area)
@@ -2469,8 +2645,10 @@ pub fn get_bootstrap_completeness(
         // Check if expected count is set
         let expected_count = expected_user_count.unwrap_or_else(|| {
             blocking_reasons.push(BlockingReason::ExpectedUserCountNotSet {
+                bid_year_id,
                 bid_year: year,
-                area: area.id().to_string(),
+                area_id,
+                area_code: area_code.clone(),
             });
             0 // Placeholder
         });
@@ -2478,8 +2656,10 @@ pub fn get_bootstrap_completeness(
         // Check if actual matches expected
         if expected_user_count.is_some() && actual_user_count != expected_count as usize {
             blocking_reasons.push(BlockingReason::UserCountMismatch {
+                bid_year_id,
                 bid_year: year,
-                area: area.id().to_string(),
+                area_id,
+                area_code: area_code.clone(),
                 expected: expected_count,
                 actual: actual_user_count,
             });
@@ -2488,8 +2668,10 @@ pub fn get_bootstrap_completeness(
         let is_complete: bool = blocking_reasons.is_empty() && expected_user_count.is_some();
 
         areas_info.push(AreaCompletenessInfo {
+            bid_year_id,
             bid_year: year,
-            area: area.id().to_string(),
+            area_id,
+            area_code,
             expected_user_count,
             actual_user_count,
             is_complete,
@@ -2503,6 +2685,7 @@ pub fn get_bootstrap_completeness(
         && areas_info.iter().all(|a| a.is_complete);
 
     Ok(GetBootstrapCompletenessResponse {
+        active_bid_year_id,
         active_bid_year,
         bid_years: bid_years_info,
         areas: areas_info,

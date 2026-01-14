@@ -501,10 +501,45 @@ impl From<PersistenceError> for HttpError {
 }
 
 /// Converts a `State` to a `StateResponse`.
-fn state_to_response(state: &State) -> StateResponse {
-    StateResponse {
+fn state_to_response(
+    state: &State,
+    metadata: &BootstrapMetadata,
+) -> Result<StateResponse, HttpError> {
+    // Extract bid_year_id from metadata
+    let bid_year_id: i64 = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == state.bid_year.year())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!(
+                "Bid year {} exists but has no ID in metadata",
+                state.bid_year.year()
+            ),
+        })?;
+
+    // Extract area_id from metadata
+    let area_id: i64 = metadata
+        .areas
+        .iter()
+        .filter(|(by, _)| by.year() == state.bid_year.year())
+        .find(|(_, a)| a.area_code() == state.area.id())
+        .and_then(|(_, a)| a.area_id())
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!(
+                "Area '{}' in bid year {} exists but has no ID in metadata",
+                state.area.id(),
+                state.bid_year.year()
+            ),
+        })?;
+
+    Ok(StateResponse {
+        bid_year_id,
         bid_year: state.bid_year.year(),
-        area: state.area.id().to_string(),
+        area_id,
+        area_code: state.area.id().to_string(),
         users: state
             .users
             .iter()
@@ -523,7 +558,7 @@ fn state_to_response(state: &State) -> StateResponse {
                 lottery_value: user.seniority_data.lottery_value,
             })
             .collect(),
-    }
+    })
 }
 
 /// Converts an `AuditEvent` to an `AuditEventResponse`.
@@ -819,6 +854,8 @@ async fn handle_list_users(
         .into_iter()
         .map(|u| UserInfoResponse {
             user_id: u.user_id,
+            bid_year_id: u.bid_year_id,
+            area_id: u.area_id,
             initials: u.initials,
             name: u.name,
             crew: u.crew,
@@ -834,8 +871,10 @@ async fn handle_list_users(
         .collect();
 
     Ok(Json(ListUsersApiResponse {
+        bid_year_id: response.bid_year_id,
         bid_year: response.bid_year,
-        area: response.area,
+        area_id: response.area_id,
+        area_code: response.area_code,
         users,
     }))
 }
@@ -879,7 +918,9 @@ async fn handle_get_leave_availability(
         get_leave_availability(&metadata, canonical_bid_year, &area, &initials, &state)?;
 
     Ok(Json(LeaveAvailabilityApiResponse {
+        bid_year_id: response.bid_year_id,
         bid_year: response.bid_year,
+        user_id: response.user_id,
         initials: response.initials,
         earned_hours: response.earned_hours,
         earned_days: response.earned_days,
@@ -890,6 +931,28 @@ async fn handle_get_leave_availability(
         is_overdrawn: response.is_overdrawn,
         explanation: response.explanation,
     }))
+}
+
+/// Extract `user_id` from reloaded state after user registration.
+///
+/// # Errors
+///
+/// Returns an error if the user is not found or has no `user_id`.
+fn extract_user_id_from_state(state: &State, initials: &str) -> Result<i64, HttpError> {
+    let initials_search = Initials::new(initials);
+    let persisted_user = state
+        .users
+        .iter()
+        .find(|u| u.initials == initials_search)
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("User '{initials}' was registered but not found in reloaded state",),
+        })?;
+
+    persisted_user.user_id.ok_or_else(|| HttpError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: format!("User '{initials}' was persisted but has no user_id",),
+    })
 }
 
 /// Handler for POST `/register_user` endpoint.
@@ -956,10 +1019,38 @@ async fn handle_register_user(
         new_state: result.new_state.clone(),
     };
     let event_id: i64 = persistence.persist_transition(&transition_result, false)?;
+
+    // Extract bid_year_id from metadata
+    let bid_year_id: i64 = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == bid_year.year())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!(
+                "Bid year {} exists but has no ID in metadata",
+                bid_year.year()
+            ),
+        })?;
+
+    // Reload the state to get the persisted user_id
+    let reloaded_state: State = persistence
+        .get_current_state(&bid_year, &area)
+        .map_err(|e| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("Failed to reload state after persistence: {e}"),
+        })?;
+
+    // Extract user_id from reloaded state
+    let user_id: i64 = extract_user_id_from_state(&reloaded_state, &result.response.initials)?;
+
     drop(persistence);
 
     info!(
         event_id = event_id,
+        user_id = user_id,
+        bid_year_id = bid_year_id,
         initials = %result.response.initials,
         "Successfully registered user"
     );
@@ -973,7 +1064,9 @@ async fn handle_register_user(
 
     Ok(Json(RegisterUserApiResponse {
         success: true,
+        bid_year_id,
         bid_year: result.response.bid_year,
+        user_id,
         initials: result.response.initials,
         name: result.response.name,
         message: result.response.message,
@@ -1185,7 +1278,7 @@ async fn handle_get_current_state(
     drop(persistence);
 
     let validated_state: State = get_current_state(&metadata, &bid_year, &area, state)?;
-    let response: StateResponse = state_to_response(&validated_state);
+    let response: StateResponse = state_to_response(&validated_state, &metadata)?;
 
     Ok(Json(response))
 }
@@ -1213,7 +1306,7 @@ async fn handle_get_historical_state(
     drop(persistence);
 
     let validated_state: State = get_historical_state(&metadata, &bid_year, &area, state)?;
-    let response: StateResponse = state_to_response(&validated_state);
+    let response: StateResponse = state_to_response(&validated_state, &metadata)?;
 
     Ok(Json(response))
 }
@@ -1763,7 +1856,8 @@ async fn handle_get_active_bid_year(
     info!("Handling get_active_bid_year request");
 
     let persistence = app_state.persistence.lock().await;
-    let response: GetActiveBidYearResponse = get_active_bid_year(&persistence)?;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    let response: GetActiveBidYearResponse = get_active_bid_year(&persistence, &metadata)?;
     drop(persistence);
 
     Ok(Json(response))

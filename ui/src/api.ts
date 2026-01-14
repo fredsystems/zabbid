@@ -21,6 +21,7 @@ import type {
   ListUsersResponse,
   OperatorInfo,
   PreviewCsvUsersResponse,
+  RegisterUserResponse,
   SetActiveBidYearResponse,
   SetExpectedAreaCountResponse,
   SetExpectedUserCountResponse,
@@ -586,11 +587,7 @@ export async function registerUser(
   eodFaaDate: string,
   serviceComputationDate: string,
   lotteryValue: number | null,
-): Promise<{
-  success: boolean;
-  message: string | null;
-  event_id: number | null;
-}> {
+): Promise<RegisterUserResponse> {
   return fetchJson(`${API_BASE}/users`, {
     method: "POST",
     headers: {

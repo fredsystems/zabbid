@@ -87,14 +87,17 @@ pub struct RegisterUserRequest {
 /// API response for a successful user registration.
 ///
 /// This DTO is distinct from domain types and represents the API contract.
+/// Note: `user_id` and `bid_year_id` are optional because they are not available
+/// until after the user is persisted. The server layer should populate these
+/// after calling `persist_transition`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegisterUserResponse {
-    /// The canonical bid year identifier.
-    pub bid_year_id: i64,
+    /// The canonical bid year identifier (populated by server after persistence).
+    pub bid_year_id: Option<i64>,
     /// The bid year the user was registered for (display value).
     pub bid_year: u16,
-    /// The user's canonical identifier.
-    pub user_id: i64,
+    /// The user's canonical identifier (populated by server after persistence).
+    pub user_id: Option<i64>,
     /// The user's initials.
     pub initials: String,
     /// The user's name.
