@@ -19,7 +19,7 @@ pub struct CreateBidYearRequest {
 }
 
 /// API response for a successful bid year creation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CreateBidYearResponse {
     /// The canonical numeric identifier.
     pub bid_year_id: i64,
@@ -43,7 +43,7 @@ pub struct CreateAreaRequest {
 }
 
 /// API response for a successful area creation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CreateAreaResponse {
     /// The canonical bid year identifier.
     pub bid_year_id: i64,
@@ -87,27 +87,26 @@ pub struct RegisterUserRequest {
 /// API response for a successful user registration.
 ///
 /// This DTO is distinct from domain types and represents the API contract.
-/// Note: `user_id` and `bid_year_id` are optional because they are not available
-/// until after the user is persisted. The server layer should populate these
-/// after calling `persist_transition`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RegisterUserResponse {
-    /// The canonical bid year identifier (populated by server after persistence).
-    pub bid_year_id: Option<i64>,
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
     /// The bid year the user was registered for (display value).
     pub bid_year: u16,
-    /// The user's canonical identifier (populated by server after persistence).
-    pub user_id: Option<i64>,
+    /// The user's canonical identifier.
+    pub user_id: i64,
     /// The user's initials.
     pub initials: String,
     /// The user's name.
     pub name: String,
     /// A success message.
     pub message: String,
+    /// The event ID of the persisted audit event.
+    pub event_id: i64,
 }
 
 /// Canonical bid year information.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BidYearInfo {
     /// The canonical numeric identifier.
     pub bid_year_id: i64,
@@ -126,7 +125,7 @@ pub struct BidYearInfo {
 }
 
 /// API response for listing bid years.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ListBidYearsResponse {
     /// The list of bid years with canonical metadata.
     pub bid_years: Vec<BidYearInfo>,
@@ -140,7 +139,7 @@ pub struct ListAreasRequest {
 }
 
 /// Information about a single area.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AreaInfo {
     /// The canonical area identifier.
     pub area_id: i64,
@@ -153,7 +152,7 @@ pub struct AreaInfo {
 }
 
 /// API response for listing areas.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ListAreasResponse {
     /// The canonical bid year identifier.
     pub bid_year_id: i64,
@@ -173,7 +172,7 @@ pub struct ListUsersRequest {
 }
 
 /// API response for listing users.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ListUsersResponse {
     /// The canonical bid year identifier.
     pub bid_year_id: i64,
@@ -188,7 +187,7 @@ pub struct ListUsersResponse {
 }
 
 /// User information for listing.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UserInfo {
     /// The user's canonical internal identifier.
     pub user_id: i64,
@@ -271,7 +270,7 @@ pub struct GetLeaveAvailabilityRequest {
 }
 
 /// API response for leave availability.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GetLeaveAvailabilityResponse {
     /// The canonical bid year identifier.
     pub bid_year_id: i64,

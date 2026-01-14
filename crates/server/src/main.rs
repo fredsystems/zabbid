@@ -35,14 +35,14 @@ use zab_bid_api::{
     CsvImportRowStatus, GetActiveBidYearResponse, GetBootstrapCompletenessResponse,
     GetLeaveAvailabilityResponse, ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest,
     ListAreasResponse, ListBidYearsResponse, ListUsersResponse, PreviewCsvUsersRequest,
-    PreviewCsvUsersResponse, RegisterUserRequest, RegisterUserResponse, SetActiveBidYearRequest,
-    SetActiveBidYearResponse, SetExpectedAreaCountRequest, SetExpectedAreaCountResponse,
-    SetExpectedUserCountRequest, SetExpectedUserCountResponse, UpdateUserRequest,
-    UpdateUserResponse, checkpoint, create_area, create_bid_year, finalize, get_active_bid_year,
-    get_bootstrap_completeness, get_bootstrap_status, get_current_state, get_historical_state,
-    get_leave_availability, import_csv_users, list_areas, list_bid_years, list_users,
-    preview_csv_users, register_user, rollback, set_active_bid_year, set_expected_area_count,
-    set_expected_user_count, update_user,
+    PreviewCsvUsersResponse, RegisterUserRequest, RegisterUserResponse, RegisterUserResult,
+    SetActiveBidYearRequest, SetActiveBidYearResponse, SetExpectedAreaCountRequest,
+    SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
+    UpdateUserRequest, UpdateUserResponse, checkpoint, create_area, create_bid_year, finalize,
+    get_active_bid_year, get_bootstrap_completeness, get_bootstrap_status, get_current_state,
+    get_historical_state, get_leave_availability, import_csv_users, list_areas, list_bid_years,
+    list_users, preview_csv_users, register_user, rollback, set_active_bid_year,
+    set_expected_area_count, set_expected_user_count, update_user,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials};
@@ -162,104 +162,6 @@ struct ListUsersQuery {
     area: String,
 }
 
-/// Bid year information for API responses.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct BidYearInfoApiResponse {
-    /// The canonical numeric identifier.
-    bid_year_id: i64,
-    /// The year value.
-    year: u16,
-    /// The start date (ISO 8601).
-    start_date: String,
-    /// The number of pay periods.
-    num_pay_periods: u8,
-    /// The end date (ISO 8601).
-    end_date: String,
-    /// The number of areas in this bid year.
-    area_count: usize,
-    /// The total number of users across all areas in this bid year.
-    total_user_count: usize,
-}
-
-/// API response for listing bid years.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ListBidYearsApiResponse {
-    /// The list of bid years with canonical metadata.
-    bid_years: Vec<BidYearInfoApiResponse>,
-}
-
-/// API response for listing areas.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ListAreasApiResponse {
-    /// The canonical bid year identifier.
-    bid_year_id: i64,
-    /// The bid year.
-    bid_year: u16,
-    /// The list of areas with metadata.
-    areas: Vec<AreaInfoResponse>,
-}
-
-/// Area information response for API.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct AreaInfoResponse {
-    /// The canonical area identifier.
-    area_id: i64,
-    /// The area code (display value).
-    area_code: String,
-    /// The area name (optional).
-    area_name: Option<String>,
-    /// The number of users in this area.
-    user_count: usize,
-}
-
-/// API response for listing users.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ListUsersApiResponse {
-    /// The canonical bid year identifier.
-    bid_year_id: i64,
-    /// The bid year.
-    bid_year: u16,
-    /// The canonical area identifier.
-    area_id: i64,
-    /// The area code (display value).
-    area_code: String,
-    /// The list of users.
-    users: Vec<UserInfoResponse>,
-}
-
-/// User information for listing.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct UserInfoResponse {
-    /// Canonical internal identifier.
-    user_id: i64,
-    /// The canonical bid year identifier.
-    bid_year_id: i64,
-    /// The canonical area identifier.
-    area_id: i64,
-    /// The user's initials.
-    initials: String,
-    /// The user's name.
-    name: String,
-    /// The user's crew (optional).
-    crew: Option<u8>,
-    /// The user's type classification (CPC, CPC-IT, Dev-R, Dev-D).
-    user_type: String,
-    /// Total hours earned (from Phase 9, post-rounding).
-    earned_hours: u16,
-    /// Total days earned.
-    earned_days: u16,
-    /// Remaining hours available (may be negative if overdrawn).
-    remaining_hours: i32,
-    /// Remaining days available (may be negative if overdrawn).
-    remaining_days: i32,
-    /// Whether all leave has been exhausted.
-    is_exhausted: bool,
-    /// Whether leave balance is overdrawn.
-    is_overdrawn: bool,
-    /// Target-specific capabilities for this user instance.
-    capabilities: zab_bid_api::UserCapabilities,
-}
-
 /// Query parameters for leave availability.
 #[derive(Debug, Clone, Deserialize)]
 struct LeaveAvailabilityQuery {
@@ -269,35 +171,6 @@ struct LeaveAvailabilityQuery {
     area: String,
     /// The user's initials.
     initials: String,
-}
-
-/// API response for leave availability.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct LeaveAvailabilityApiResponse {
-    /// The canonical bid year identifier.
-    bid_year_id: i64,
-    /// The bid year.
-    bid_year: u16,
-    /// The user's canonical identifier.
-    user_id: i64,
-    /// The user's initials.
-    initials: String,
-    /// Total hours earned.
-    earned_hours: u16,
-    /// Total days earned.
-    earned_days: u16,
-    /// Total hours used.
-    used_hours: u16,
-    /// Remaining hours available.
-    remaining_hours: i32,
-    /// Remaining days available.
-    remaining_days: i32,
-    /// Whether all leave has been exhausted.
-    is_exhausted: bool,
-    /// Whether leave balance is overdrawn.
-    is_overdrawn: bool,
-    /// Human-readable explanation.
-    explanation: String,
 }
 
 /// API response for write operations.
@@ -311,27 +184,6 @@ struct WriteResponse {
     /// The event ID of the persisted audit event.
     #[serde(skip_serializing_if = "Option::is_none")]
     event_id: Option<i64>,
-}
-
-/// API response for register user operations.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RegisterUserApiResponse {
-    /// Success indicator.
-    success: bool,
-    /// The canonical bid year identifier.
-    bid_year_id: i64,
-    /// The bid year the user was registered for.
-    bid_year: u16,
-    /// The user's canonical identifier.
-    user_id: i64,
-    /// The user's initials.
-    initials: String,
-    /// The user's name.
-    name: String,
-    /// A success message.
-    message: String,
-    /// The event ID of the persisted audit event.
-    event_id: i64,
 }
 
 /// Query parameters for current state endpoint.
@@ -722,7 +574,7 @@ async fn handle_create_area(
 /// Lists all bid years.
 async fn handle_list_bid_years(
     AxumState(app_state): AxumState<AppState>,
-) -> Result<Json<ListBidYearsApiResponse>, HttpError> {
+) -> Result<Json<ListBidYearsResponse>, HttpError> {
     info!("Handling list_bid_years request");
 
     let persistence = app_state.persistence.lock().await;
@@ -735,36 +587,21 @@ async fn handle_list_bid_years(
     let user_counts: Vec<(u16, usize)> = persistence.count_users_by_bid_year()?;
     drop(persistence);
 
-    let response: ListBidYearsResponse = list_bid_years(&metadata, &canonical_bid_years)?;
+    let mut response: ListBidYearsResponse = list_bid_years(&metadata, &canonical_bid_years)?;
 
-    // Convert to API response format with ISO 8601 date strings and counts
-    let api_bid_years: Vec<BidYearInfoApiResponse> = response
-        .bid_years
-        .iter()
-        .map(|info| {
-            let area_count: usize = area_counts
-                .iter()
-                .find(|(year, _)| *year == info.year)
-                .map_or(0, |(_, count)| *count);
-            let total_user_count: usize = user_counts
-                .iter()
-                .find(|(year, _)| *year == info.year)
-                .map_or(0, |(_, count)| *count);
-            BidYearInfoApiResponse {
-                bid_year_id: info.bid_year_id,
-                year: info.year,
-                start_date: info.start_date.to_string(),
-                num_pay_periods: info.num_pay_periods,
-                end_date: info.end_date.to_string(),
-                area_count,
-                total_user_count,
-            }
-        })
-        .collect();
+    // Enrich with counts
+    for info in &mut response.bid_years {
+        info.area_count = area_counts
+            .iter()
+            .find(|(year, _)| *year == info.year)
+            .map_or(0, |(_, count)| *count);
+        info.total_user_count = user_counts
+            .iter()
+            .find(|(year, _)| *year == info.year)
+            .map_or(0, |(_, count)| *count);
+    }
 
-    Ok(Json(ListBidYearsApiResponse {
-        bid_years: api_bid_years,
-    }))
+    Ok(Json(response))
 }
 
 /// Handler for GET `/areas` endpoint.
@@ -773,7 +610,7 @@ async fn handle_list_bid_years(
 async fn handle_list_areas(
     AxumState(app_state): AxumState<AppState>,
     Query(query): Query<ListAreasQuery>,
-) -> Result<Json<ListAreasApiResponse>, HttpError> {
+) -> Result<Json<ListAreasResponse>, HttpError> {
     info!(bid_year = query.bid_year, "Handling list_areas request");
 
     let persistence = app_state.persistence.lock().await;
@@ -787,31 +624,17 @@ async fn handle_list_areas(
     let request: ListAreasRequest = ListAreasRequest {
         bid_year: query.bid_year,
     };
-    let response: ListAreasResponse = list_areas(&metadata, &request)?;
+    let mut response: ListAreasResponse = list_areas(&metadata, &request)?;
 
-    // Build area info with user counts
-    let areas_with_counts: Vec<AreaInfoResponse> = response
-        .areas
-        .into_iter()
-        .map(|area_info| {
-            let user_count: usize = user_counts
-                .iter()
-                .find(|(area_code, _)| area_code == &area_info.area_code)
-                .map_or(0, |(_, count)| *count);
-            AreaInfoResponse {
-                area_id: area_info.area_id,
-                area_code: area_info.area_code,
-                area_name: area_info.area_name,
-                user_count,
-            }
-        })
-        .collect();
+    // Enrich with user counts
+    for area_info in &mut response.areas {
+        area_info.user_count = user_counts
+            .iter()
+            .find(|(area_code, _)| area_code == &area_info.area_code)
+            .map_or(0, |(_, count)| *count);
+    }
 
-    Ok(Json(ListAreasApiResponse {
-        bid_year_id: response.bid_year_id,
-        bid_year: response.bid_year,
-        areas: areas_with_counts,
-    }))
+    Ok(Json(response))
 }
 
 /// Handler for GET `/users` endpoint.
@@ -821,7 +644,7 @@ async fn handle_list_users(
     AxumState(app_state): AxumState<AppState>,
     session::SessionOperator(actor, operator): session::SessionOperator,
     Query(query): Query<ListUsersQuery>,
-) -> Result<Json<ListUsersApiResponse>, HttpError> {
+) -> Result<Json<ListUsersResponse>, HttpError> {
     info!(
         bid_year = query.bid_year,
         area = %query.area,
@@ -849,34 +672,7 @@ async fn handle_list_users(
         &operator,
     )?;
 
-    let users: Vec<UserInfoResponse> = response
-        .users
-        .into_iter()
-        .map(|u| UserInfoResponse {
-            user_id: u.user_id,
-            bid_year_id: u.bid_year_id,
-            area_id: u.area_id,
-            initials: u.initials,
-            name: u.name,
-            crew: u.crew,
-            user_type: u.user_type,
-            earned_hours: u.earned_hours,
-            earned_days: u.earned_days,
-            remaining_hours: u.remaining_hours,
-            remaining_days: u.remaining_days,
-            is_exhausted: u.is_exhausted,
-            is_overdrawn: u.is_overdrawn,
-            capabilities: u.capabilities,
-        })
-        .collect();
-
-    Ok(Json(ListUsersApiResponse {
-        bid_year_id: response.bid_year_id,
-        bid_year: response.bid_year,
-        area_id: response.area_id,
-        area_code: response.area_code,
-        users,
-    }))
+    Ok(Json(response))
 }
 
 /// Handler for GET `/leave/availability` endpoint.
@@ -885,7 +681,7 @@ async fn handle_list_users(
 async fn handle_get_leave_availability(
     AxumState(app_state): AxumState<AppState>,
     Query(query): Query<LeaveAvailabilityQuery>,
-) -> Result<Json<LeaveAvailabilityApiResponse>, HttpError> {
+) -> Result<Json<GetLeaveAvailabilityResponse>, HttpError> {
     info!(
         bid_year = query.bid_year,
         area = %query.area,
@@ -917,20 +713,7 @@ async fn handle_get_leave_availability(
     let response: GetLeaveAvailabilityResponse =
         get_leave_availability(&metadata, canonical_bid_year, &area, &initials, &state)?;
 
-    Ok(Json(LeaveAvailabilityApiResponse {
-        bid_year_id: response.bid_year_id,
-        bid_year: response.bid_year,
-        user_id: response.user_id,
-        initials: response.initials,
-        earned_hours: response.earned_hours,
-        earned_days: response.earned_days,
-        used_hours: response.used_hours,
-        remaining_hours: response.remaining_hours,
-        remaining_days: response.remaining_days,
-        is_exhausted: response.is_exhausted,
-        is_overdrawn: response.is_overdrawn,
-        explanation: response.explanation,
-    }))
+    Ok(Json(response))
 }
 
 /// Extract `user_id` from reloaded state after user registration.
@@ -962,7 +745,7 @@ async fn handle_register_user(
     AxumState(app_state): AxumState<AppState>,
     session::SessionOperator(actor, operator): session::SessionOperator,
     Json(req): Json<RegisterUserApiRequest>,
-) -> Result<Json<RegisterUserApiResponse>, HttpError> {
+) -> Result<Json<RegisterUserResponse>, HttpError> {
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
@@ -1003,7 +786,7 @@ async fn handle_register_user(
     };
 
     // Execute command via API
-    let result: ApiResult<RegisterUserResponse> = register_user(
+    let result: ApiResult<RegisterUserResult> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -1062,8 +845,8 @@ async fn handle_register_user(
         initials: result.response.initials.clone(),
     });
 
-    Ok(Json(RegisterUserApiResponse {
-        success: true,
+    // Construct final API response with all IDs populated
+    Ok(Json(RegisterUserResponse {
         bid_year_id,
         bid_year: result.response.bid_year,
         user_id,

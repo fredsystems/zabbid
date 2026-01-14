@@ -31,13 +31,29 @@ use crate::request_response::{
     GlobalCapabilities, ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest,
     ListAreasResponse, ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse,
     LoginRequest, LoginResponse, OperatorCapabilities, OperatorInfo, PreviewCsvUsersRequest,
-    PreviewCsvUsersResponse, RegisterUserRequest, RegisterUserResponse, ResetPasswordRequest,
-    ResetPasswordResponse, SetActiveBidYearRequest, SetActiveBidYearResponse,
-    SetExpectedAreaCountRequest, SetExpectedAreaCountResponse, SetExpectedUserCountRequest,
-    SetExpectedUserCountResponse, UpdateUserRequest, UpdateUserResponse, UserCapabilities,
-    UserInfo, WhoAmIResponse,
+    PreviewCsvUsersResponse, RegisterUserRequest, ResetPasswordRequest, ResetPasswordResponse,
+    SetActiveBidYearRequest, SetActiveBidYearResponse, SetExpectedAreaCountRequest,
+    SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
+    UpdateUserRequest, UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
 };
 use zab_bid_persistence::PersistenceError;
+
+/// Internal result type for user registration before ID population.
+///
+/// This is not an HTTP response type. The server layer must populate
+/// the canonical IDs after persistence before constructing the final
+/// `RegisterUserResponse`.
+#[derive(Debug, Clone)]
+pub struct RegisterUserResult {
+    /// The bid year the user was registered for (display value).
+    pub bid_year: u16,
+    /// The user's initials.
+    pub initials: String,
+    /// The user's name.
+    pub name: String,
+    /// A success message.
+    pub message: String,
+}
 
 /// Resolves the active bid year from persistence.
 ///
@@ -103,7 +119,7 @@ pub struct ApiResult<T> {
 ///
 /// # Returns
 ///
-/// * `Ok(ApiResult<RegisterUserResponse>)` on success
+/// * `Ok(ApiResult<RegisterUserResult>)` on success with internal result
 /// * `Err(ApiError)` if unauthorized, the request is invalid, or a domain rule is violated
 ///
 /// # Errors
@@ -120,7 +136,7 @@ pub fn register_user(
     authenticated_actor: &AuthenticatedActor,
     operator: &OperatorData,
     cause: Cause,
-) -> Result<ApiResult<RegisterUserResponse>, ApiError> {
+) -> Result<ApiResult<RegisterUserResult>, ApiError> {
     // Enforce authorization before executing command
     AuthorizationService::authorize_register_user(authenticated_actor)?;
 
@@ -165,13 +181,9 @@ pub fn register_user(
     let transition_result: TransitionResult =
         apply(metadata, state, &bid_year, command, actor, cause).map_err(translate_core_error)?;
 
-    // Translate to API response
-    // Note: user_id and bid_year_id are not available until after persistence.
-    // The server layer will populate these after calling persist_transition.
-    let response: RegisterUserResponse = RegisterUserResponse {
-        bid_year_id: None,
+    // Return internal result (IDs will be populated by server layer after persistence)
+    let result: RegisterUserResult = RegisterUserResult {
         bid_year: bid_year.year(),
-        user_id: None,
         initials: initials.value().to_string(),
         name: request.name,
         message: format!(
@@ -182,7 +194,7 @@ pub fn register_user(
     };
 
     Ok(ApiResult {
-        response,
+        response: result,
         audit_event: transition_result.audit_event,
         new_state: transition_result.new_state,
     })

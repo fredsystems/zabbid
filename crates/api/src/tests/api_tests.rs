@@ -12,7 +12,7 @@ use zab_bid_domain::{Area, BidYear};
 use crate::{
     ApiError, ApiResult, AuthError, AuthenticatedActor, CreateAreaRequest, CreateBidYearRequest,
     GetLeaveAvailabilityResponse, ImportCsvUsersRequest, ListAreasRequest, ListAreasResponse,
-    ListBidYearsResponse, ListUsersResponse, RegisterUserRequest, RegisterUserResponse, Role,
+    ListBidYearsResponse, ListUsersResponse, RegisterUserRequest, RegisterUserResult, Role,
     checkpoint, create_area, create_bid_year, finalize, get_current_state, get_historical_state,
     get_leave_availability, import_csv_users, list_areas, list_bid_years, list_users,
     register_user, rollback,
@@ -99,7 +99,7 @@ fn test_bidder_cannot_register_user() {
     let operator = create_test_bidder_operator();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -132,7 +132,7 @@ fn test_unauthorized_action_does_not_mutate_state() {
     let operator = create_test_bidder_operator();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -156,7 +156,7 @@ fn test_unauthorized_action_does_not_emit_audit_event() {
     let bidder: AuthenticatedActor = create_test_bidder();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -358,7 +358,7 @@ fn test_valid_api_request_succeeds() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -369,7 +369,7 @@ fn test_valid_api_request_succeeds() {
     );
 
     assert!(result.is_ok());
-    let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
+    let api_result: ApiResult<RegisterUserResult> = result.unwrap();
     assert_eq!(api_result.response.bid_year, 2026);
     assert_eq!(api_result.response.initials, "AB");
     assert_eq!(api_result.response.name, "John Doe");
@@ -390,7 +390,7 @@ fn test_valid_api_request_emits_audit_event() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -401,7 +401,7 @@ fn test_valid_api_request_emits_audit_event() {
     );
 
     assert!(result.is_ok());
-    let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
+    let api_result: ApiResult<RegisterUserResult> = result.unwrap();
     assert_eq!(api_result.audit_event.action.name, "RegisterUser");
     assert_eq!(api_result.audit_event.actor.id, "admin-123");
     assert_eq!(api_result.audit_event.actor.actor_type, "admin");
@@ -417,7 +417,7 @@ fn test_valid_api_request_returns_new_state() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -428,7 +428,7 @@ fn test_valid_api_request_returns_new_state() {
     );
 
     assert!(result.is_ok());
-    let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
+    let api_result: ApiResult<RegisterUserResult> = result.unwrap();
     assert_eq!(api_result.new_state.users.len(), 1);
     assert_eq!(api_result.new_state.users[0].initials.value(), "AB");
 }
@@ -443,7 +443,7 @@ fn test_duplicate_initials_returns_api_error() {
     let cause: Cause = create_test_cause();
 
     // Register first user successfully
-    let result1: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result1: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -469,7 +469,7 @@ fn test_duplicate_initials_returns_api_error() {
         lottery_value: Some(43),
     };
 
-    let result2: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result2: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -499,7 +499,7 @@ fn test_failed_api_request_does_not_mutate_state() {
     let cause: Cause = create_test_cause();
 
     // Register first user successfully
-    let result1: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result1: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -526,7 +526,7 @@ fn test_failed_api_request_does_not_mutate_state() {
         lottery_value: Some(43),
     };
 
-    let result2: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result2: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -561,7 +561,7 @@ fn test_invalid_empty_initials_returns_api_error() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -600,7 +600,7 @@ fn test_invalid_empty_name_returns_api_error() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -638,7 +638,7 @@ fn test_invalid_empty_area_returns_api_error() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -674,7 +674,7 @@ fn test_invalid_crew_number_returns_api_error() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -714,7 +714,7 @@ fn test_duplicate_initials_in_different_bid_years_allowed() {
 
     // Register user in 2026
     let request1: RegisterUserRequest = create_valid_request();
-    let result1: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result1: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state1,
@@ -739,7 +739,7 @@ fn test_duplicate_initials_in_different_bid_years_allowed() {
         lottery_value: Some(43),
     };
 
-    let result2: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result2: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state2,
@@ -750,7 +750,7 @@ fn test_duplicate_initials_in_different_bid_years_allowed() {
     );
 
     assert!(result2.is_ok());
-    let api_result: ApiResult<RegisterUserResponse> = result2.unwrap();
+    let api_result: ApiResult<RegisterUserResult> = result2.unwrap();
     assert_eq!(api_result.new_state.users.len(), 1);
 }
 
@@ -763,7 +763,7 @@ fn test_successful_api_call_updates_state() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -774,7 +774,7 @@ fn test_successful_api_call_updates_state() {
     );
 
     assert!(result.is_ok());
-    let api_result: ApiResult<RegisterUserResponse> = result.unwrap();
+    let api_result: ApiResult<RegisterUserResult> = result.unwrap();
 
     // New state has the user
     assert_eq!(api_result.new_state.users.len(), 1);
@@ -1273,7 +1273,7 @@ fn test_list_users_with_users() {
         lottery_value: None,
     };
 
-    let result1: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result1: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -1310,7 +1310,7 @@ fn test_list_users_with_users() {
         lottery_value: None,
     };
 
-    let result2: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result2: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state_with_user1,
@@ -1398,7 +1398,7 @@ fn test_list_users_with_no_crew() {
         lottery_value: None,
     };
 
-    let result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -1665,7 +1665,7 @@ fn test_get_leave_availability_zero_usage() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let register_result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let register_result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -1778,7 +1778,7 @@ fn test_get_leave_availability_explanation_text() {
     let admin: AuthenticatedActor = create_test_admin();
     let cause: Cause = create_test_cause();
 
-    let register_result: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let register_result: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -1838,7 +1838,7 @@ fn test_get_leave_availability_different_service_tiers() {
     request1.initials = String::from("U1");
     request1.service_computation_date = String::from("2024-01-15");
 
-    let register_result1: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let register_result1: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state,
@@ -1879,7 +1879,7 @@ fn test_get_leave_availability_different_service_tiers() {
     request2.initials = String::from("U2");
     request2.service_computation_date = String::from("2010-01-15");
 
-    let register_result2: Result<ApiResult<RegisterUserResponse>, ApiError> = register_user(
+    let register_result2: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
         &persistence,
         &metadata,
         &state1,
