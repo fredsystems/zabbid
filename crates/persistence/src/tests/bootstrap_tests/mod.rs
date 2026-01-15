@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use crate::Persistence;
+use crate::SqlitePersistence;
 use crate::tests::{
     create_test_actor, create_test_cause, create_test_metadata, create_test_operator,
     create_test_pay_periods, create_test_seniority_data, create_test_start_date,
@@ -16,8 +16,8 @@ use zab_bid_audit::AuditEvent;
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Crew, Initials, User, UserType};
 
 /// Creates a fully bootstrapped test persistence instance with bid year 2026 and area "North".
-fn create_bootstrapped_persistence() -> Persistence {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+fn create_bootstrapped_persistence() -> SqlitePersistence {
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
 
     // Create test operator first to satisfy foreign key constraints
     create_test_operator(&mut persistence);
@@ -60,7 +60,7 @@ fn create_bootstrapped_persistence() -> Persistence {
 
 #[test]
 fn test_persist_bootstrap_bid_year() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
 
@@ -89,7 +89,7 @@ fn test_persist_bootstrap_bid_year() {
 
 #[test]
 fn test_persist_bootstrap_area() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
@@ -134,7 +134,7 @@ fn test_persist_bootstrap_area() {
 
 #[test]
 fn test_get_bootstrap_metadata_empty() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
 
     assert_eq!(metadata.bid_years.len(), 0);
@@ -143,7 +143,7 @@ fn test_get_bootstrap_metadata_empty() {
 
 #[test]
 fn test_get_bootstrap_metadata_with_bid_year() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
 
@@ -172,7 +172,7 @@ fn test_get_bootstrap_metadata_with_bid_year() {
 
 #[test]
 fn test_get_bootstrap_metadata_with_multiple_bid_years() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
@@ -218,7 +218,7 @@ fn test_get_bootstrap_metadata_with_multiple_bid_years() {
 
 #[test]
 fn test_get_bootstrap_metadata_with_areas() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
@@ -278,7 +278,7 @@ fn test_get_bootstrap_metadata_with_areas() {
 
 #[test]
 fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
@@ -342,7 +342,7 @@ fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
 
 #[test]
 fn test_list_bid_years_empty() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     let bid_years: Vec<CanonicalBidYear> = persistence.list_bid_years().unwrap();
 
     assert_eq!(bid_years.len(), 0);
@@ -350,7 +350,7 @@ fn test_list_bid_years_empty() {
 
 #[test]
 fn test_list_bid_years() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
@@ -396,7 +396,7 @@ fn test_list_bid_years() {
 
 #[test]
 fn test_list_areas_empty() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     let areas: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
 
     assert_eq!(areas.len(), 0);
@@ -404,7 +404,7 @@ fn test_list_areas_empty() {
 
 #[test]
 fn test_list_areas_for_bid_year() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
@@ -463,7 +463,7 @@ fn test_list_areas_for_bid_year() {
 #[test]
 #[ignore = "Phase 19: Multiple bid years are no longer supported - all operations target the active bid year"]
 fn test_list_areas_isolated_by_bid_year() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
@@ -541,7 +541,7 @@ fn test_list_areas_isolated_by_bid_year() {
 
 #[test]
 fn test_bootstrap_persistence_is_deterministic() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
@@ -597,7 +597,7 @@ fn test_bootstrap_read_operations_do_not_mutate() {
         count: i64,
     }
 
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let metadata: BootstrapMetadata = BootstrapMetadata::new();
 
@@ -617,15 +617,10 @@ fn test_bootstrap_read_operations_do_not_mutate() {
     persistence.persist_bootstrap(&result).unwrap();
 
     // Get initial event count
-    let initial_count: i64 = match &mut persistence.conn {
-        crate::ConnectionBackend::Sqlite(conn) => {
-            sql_query("SELECT COUNT(*) as count FROM audit_events")
-                .get_result::<CountRow>(conn)
-                .unwrap()
-                .count
-        }
-        crate::ConnectionBackend::Mysql(_) => panic!("MySQL not supported in this test"),
-    };
+    let initial_count: i64 = sql_query("SELECT COUNT(*) as count FROM audit_events")
+        .get_result::<CountRow>(&mut persistence.conn)
+        .unwrap()
+        .count;
 
     // Perform multiple reads
     let _metadata1: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
@@ -636,22 +631,17 @@ fn test_bootstrap_read_operations_do_not_mutate() {
     let _areas2: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
 
     // Verify event count unchanged
-    let final_count: i64 = match &mut persistence.conn {
-        crate::ConnectionBackend::Sqlite(conn) => {
-            sql_query("SELECT COUNT(*) as count FROM audit_events")
-                .get_result::<CountRow>(conn)
-                .unwrap()
-                .count
-        }
-        crate::ConnectionBackend::Mysql(_) => panic!("MySQL not supported in this test"),
-    };
+    let final_count: i64 = sql_query("SELECT COUNT(*) as count FROM audit_events")
+        .get_result::<CountRow>(&mut persistence.conn)
+        .unwrap()
+        .count;
 
     assert_eq!(initial_count, final_count);
 }
 
 #[test]
 fn test_create_area_creates_initial_snapshot() {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 

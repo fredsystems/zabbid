@@ -7,7 +7,7 @@
 
 use time::{Duration, OffsetDateTime};
 use zab_bid_audit::Actor;
-use zab_bid_persistence::{OperatorData, Persistence, PersistenceError, SessionData};
+use zab_bid_persistence::{OperatorData, PersistenceError, SessionData, SqlitePersistence};
 
 use crate::error::AuthError;
 
@@ -262,7 +262,7 @@ impl AuthenticationService {
     ///
     /// Returns an error if authentication fails.
     pub fn login(
-        persistence: &mut Persistence,
+        persistence: &mut SqlitePersistence,
         login_name: &str,
         password: &str,
     ) -> Result<(String, AuthenticatedActor, OperatorData), AuthError> {
@@ -371,7 +371,7 @@ impl AuthenticationService {
     ///
     /// Returns an error if the session is invalid or expired.
     pub fn validate_session(
-        persistence: &mut Persistence,
+        persistence: &mut SqlitePersistence,
         session_token: &str,
     ) -> Result<(AuthenticatedActor, OperatorData), AuthError> {
         // Retrieve session
@@ -444,7 +444,10 @@ impl AuthenticationService {
     /// # Errors
     ///
     /// Returns an error if the logout fails.
-    pub fn logout(persistence: &mut Persistence, session_token: &str) -> Result<(), AuthError> {
+    pub fn logout(
+        persistence: &mut SqlitePersistence,
+        session_token: &str,
+    ) -> Result<(), AuthError> {
         persistence
             .delete_session(session_token)
             .map_err(|e| AuthError::AuthenticationFailed {
@@ -511,14 +514,14 @@ pub fn authenticate_stub(actor_id: String, role: Role) -> Result<AuthenticatedAc
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zab_bid_persistence::Persistence;
+    use zab_bid_persistence::SqlitePersistence;
 
-    fn create_test_persistence() -> Persistence {
-        Persistence::new_in_memory().expect("Failed to create test database")
+    fn create_test_persistence() -> SqlitePersistence {
+        SqlitePersistence::new_in_memory().expect("Failed to create test database")
     }
 
     fn create_test_operator(
-        persistence: &mut Persistence,
+        persistence: &mut SqlitePersistence,
         login_name: &str,
         display_name: &str,
         password: &str,

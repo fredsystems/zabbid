@@ -9,7 +9,7 @@ use time::Date;
 use zab_bid::BootstrapMetadata;
 use zab_bid_audit::Cause;
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear};
-use zab_bid_persistence::{OperatorData, Persistence};
+use zab_bid_persistence::{OperatorData, SqlitePersistence};
 
 use crate::{AuthenticatedActor, RegisterUserRequest, Role};
 
@@ -153,7 +153,7 @@ pub struct TestSession {
 /// Returns an error if the operator cannot be created.
 #[allow(dead_code)]
 pub fn create_persisted_admin_operator(
-    persistence: &mut Persistence,
+    persistence: &mut SqlitePersistence,
 ) -> Result<i64, zab_bid_persistence::PersistenceError> {
     persistence.create_operator("test-admin", "Test Admin", "password", "Admin")
 }
@@ -165,7 +165,7 @@ pub fn create_persisted_admin_operator(
 /// Returns an error if the operator cannot be created.
 #[allow(dead_code)]
 pub fn create_persisted_bidder_operator(
-    persistence: &mut Persistence,
+    persistence: &mut SqlitePersistence,
 ) -> Result<i64, zab_bid_persistence::PersistenceError> {
     persistence.create_operator("test-bidder", "Test Bidder", "password", "Bidder")
 }
@@ -179,7 +179,7 @@ pub fn create_persisted_bidder_operator(
 /// Returns an error if the operator or session cannot be created.
 #[allow(dead_code)]
 pub fn create_admin_session(
-    persistence: &mut Persistence,
+    persistence: &mut SqlitePersistence,
 ) -> Result<TestSession, zab_bid_persistence::PersistenceError> {
     let operator_id: i64 = create_persisted_admin_operator(persistence)?;
 
@@ -204,7 +204,7 @@ pub fn create_admin_session(
 /// Returns an error if the operator or session cannot be created.
 #[allow(dead_code)]
 pub fn create_bidder_session(
-    persistence: &mut Persistence,
+    persistence: &mut SqlitePersistence,
 ) -> Result<TestSession, zab_bid_persistence::PersistenceError> {
     let operator_id: i64 = create_persisted_bidder_operator(persistence)?;
 
@@ -227,7 +227,7 @@ pub fn create_bidder_session(
 /// Returns an error if the operator or session cannot be created.
 #[allow(dead_code)]
 pub fn create_custom_session(
-    persistence: &mut Persistence,
+    persistence: &mut SqlitePersistence,
     login_name: &str,
     display_name: &str,
     role: &str,
@@ -255,11 +255,12 @@ pub fn create_custom_session(
 /// # Errors
 ///
 /// Returns an error if database initialization fails.
-pub fn setup_test_persistence() -> Result<Persistence, zab_bid_persistence::PersistenceError> {
+pub fn setup_test_persistence() -> Result<SqlitePersistence, zab_bid_persistence::PersistenceError>
+{
     use zab_bid::{BootstrapMetadata, BootstrapResult, Command, apply_bootstrap};
     use zab_bid_audit::{Actor, Cause};
 
-    let mut persistence = Persistence::new_in_memory()?;
+    let mut persistence = SqlitePersistence::new_in_memory()?;
 
     // Create a test operator (required for foreign keys)
     let operator_id = persistence
@@ -336,7 +337,7 @@ pub fn setup_test_persistence() -> Result<Persistence, zab_bid_persistence::Pers
 /// Returns an error if bootstrap operations fail.
 #[allow(dead_code)]
 pub fn bootstrap_bid_year_and_area(
-    persistence: &mut Persistence,
+    persistence: &mut SqlitePersistence,
     year: u16,
     area_code: &str,
     operator_id: i64,
@@ -427,7 +428,7 @@ pub struct BootstrapIds {
 /// Returns an error if bootstrap operations fail.
 #[allow(dead_code)]
 pub fn bootstrap_with_ids(
-    persistence: &mut Persistence,
+    persistence: &mut SqlitePersistence,
     year: u16,
     area_code: &str,
     operator_id: i64,
@@ -461,7 +462,7 @@ pub fn bootstrap_with_ids(
 /// Returns an error if bootstrap operations fail.
 #[allow(dead_code)]
 pub fn bootstrap_bid_year_only(
-    persistence: &mut Persistence,
+    persistence: &mut SqlitePersistence,
     year: u16,
     operator_id: i64,
 ) -> Result<i64, zab_bid_persistence::PersistenceError> {

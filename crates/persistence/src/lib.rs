@@ -90,8 +90,8 @@ mod queries;
 #[cfg(test)]
 mod tests;
 
+use diesel::SqliteConnection;
 use diesel::prelude::*;
-use diesel::{MysqlConnection, SqliteConnection};
 use std::path::Path;
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_audit::AuditEvent;
@@ -100,50 +100,12 @@ use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials, User};
 pub use data_models::{OperatorData, SessionData};
 pub use error::PersistenceError;
 
-/// Internal connection backend enum.
-///
-/// This enum wraps different database connection types and allows
-/// the persistence adapter to dispatch queries to the appropriate backend.
-pub(crate) enum ConnectionBackend {
-    /// `SQLite` backend connection.
-    Sqlite(SqliteConnection),
-    /// MySQL/MariaDB backend connection.
-    Mysql(MysqlConnection),
-}
-
-/// Macro to dispatch method calls to the underlying connection backend.
-///
-/// This macro eliminates boilerplate by automatically matching on the
-/// connection backend and executing the same logic for each backend type.
-macro_rules! with_conn {
-    ($self:expr, $conn:ident, $body:expr) => {
-        match &mut $self.conn {
-            ConnectionBackend::Sqlite($conn) => $body,
-            ConnectionBackend::Mysql(_conn) => {
-                // MySQL backend not yet fully implemented
-                // For now, return an error for MySQL-specific calls
-                Err(PersistenceError::Other(
-                    "MySQL backend query/mutation support not yet implemented".to_string(),
-                ))
-            }
-        }
-    };
-}
-
 /// Persistence adapter for audit events and state snapshots.
-///
-/// This adapter provides a backend-agnostic interface for persisting
-/// domain events, state snapshots, and operational data. Backend selection
-/// happens at construction time via factory functions.
-///
-/// Supported backends:
-/// - `SQLite` (default for development and testing)
-/// - MySQL/MariaDB (validated via opt-in tests)
-pub struct Persistence {
-    pub(crate) conn: ConnectionBackend,
+pub struct SqlitePersistence {
+    pub(crate) conn: SqliteConnection,
 }
 
-impl Persistence {
+impl SqlitePersistence {
     /// Creates a new persistence adapter with an in-memory database.
     ///
     /// Uses a shared in-memory database via Diesel.
@@ -168,9 +130,7 @@ impl Persistence {
         // Verify foreign key enforcement is active
         backend::sqlite::verify_foreign_key_enforcement(&mut conn)?;
 
-        Ok(Self {
-            conn: ConnectionBackend::Sqlite(conn),
-        })
+        Ok(Self { conn })
     }
 
     /// Creates a new persistence adapter with a file-based database.
@@ -196,30 +156,7 @@ impl Persistence {
         // Verify foreign key enforcement is active
         backend::sqlite::verify_foreign_key_enforcement(&mut conn)?;
 
-        Ok(Self {
-            conn: ConnectionBackend::Sqlite(conn),
-        })
-    }
-
-    /// Creates a new persistence adapter with a MySQL/MariaDB database.
-    ///
-    /// # Arguments
-    ///
-    /// * `database_url` - The `MySQL` connection URL (e.g., `mysql://user:pass@host/db`)
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the database cannot be connected or initialized.
-    pub fn new_mysql(database_url: &str) -> Result<Self, PersistenceError> {
-        // Initialize database with Diesel migrations
-        let mut conn: MysqlConnection = backend::mysql::initialize_database(database_url)?;
-
-        // Verify foreign key enforcement is active
-        backend::mysql::verify_foreign_key_enforcement(&mut conn)?;
-
-        Ok(Self {
-            conn: ConnectionBackend::Mysql(conn),
-        })
+        Ok(Self { conn })
     }
 
     /// Verifies that foreign key enforcement is enabled.
@@ -231,12 +168,7 @@ impl Persistence {
     ///
     /// Returns an error if foreign key enforcement is not enabled.
     pub fn verify_foreign_key_enforcement(&mut self) -> Result<(), PersistenceError> {
-        match &mut self.conn {
-            ConnectionBackend::Sqlite(conn) => {
-                backend::sqlite::verify_foreign_key_enforcement(conn)
-            }
-            ConnectionBackend::Mysql(conn) => backend::mysql::verify_foreign_key_enforcement(conn),
-        }
+        backend::sqlite::verify_foreign_key_enforcement(&mut self.conn)
     }
 
     // ========================================================================
@@ -261,11 +193,7 @@ impl Persistence {
         result: &TransitionResult,
     ) -> Result<i64, PersistenceError> {
         let should_snapshot = queries::state::should_snapshot(&result.audit_event.action.name);
-        with_conn!(
-            self,
-            conn,
-            mutations::persist_transition(conn, result, should_snapshot)
-        )
+        mutations::persist_transition(&mut self.conn, result, should_snapshot)
     }
 
     /// Persists an audit event.
@@ -282,7 +210,7 @@ impl Persistence {
     ///
     /// Returns an error if persistence fails.
     pub fn persist_audit_event(&mut self, event: &AuditEvent) -> Result<i64, PersistenceError> {
-        with_conn!(self, conn, mutations::persist_audit_event(conn, event))
+        mutations::persist_audit_event(&mut self.conn, event)
     }
 
     /// Persists a bootstrap result (audit event for bid year/area creation).
@@ -299,7 +227,7 @@ impl Persistence {
     ///
     /// Returns an error if persistence fails.
     pub fn persist_bootstrap(&mut self, result: &BootstrapResult) -> Result<i64, PersistenceError> {
-        with_conn!(self, conn, mutations::persist_bootstrap(conn, result))
+        mutations::persist_bootstrap(&mut self.conn, result)
     }
 
     // ========================================================================
@@ -316,7 +244,7 @@ impl Persistence {
     ///
     /// Returns an error if the event is not found or cannot be deserialized.
     pub fn get_audit_event(&mut self, event_id: i64) -> Result<AuditEvent, PersistenceError> {
-        with_conn!(self, conn, queries::get_audit_event(conn, event_id))
+        queries::get_audit_event(&mut self.conn, event_id)
     }
 
     /// Retrieves the most recent state snapshot for a `(bid_year, area)` scope.
@@ -334,11 +262,9 @@ impl Persistence {
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<(State, i64), PersistenceError> {
-        with_conn!(self, conn, {
-            let bid_year_id = queries::lookup_bid_year_id(conn, bid_year.year())?;
-            let area_id = queries::lookup_area_id(conn, bid_year_id, area.id())?;
-            queries::get_latest_snapshot(conn, bid_year_id, area_id)
-        })
+        let bid_year_id = queries::lookup_bid_year_id(&mut self.conn, bid_year.year())?;
+        let area_id = queries::lookup_area_id(&mut self.conn, bid_year_id, area.id())?;
+        queries::get_latest_snapshot(&mut self.conn, bid_year_id, area_id)
     }
 
     /// Retrieves all audit events for a `(bid_year, area)` scope after a given event ID.
@@ -358,11 +284,9 @@ impl Persistence {
         area: &Area,
         after_event_id: i64,
     ) -> Result<Vec<AuditEvent>, PersistenceError> {
-        with_conn!(self, conn, {
-            let bid_year_id = queries::lookup_bid_year_id(conn, bid_year.year())?;
-            let area_id = queries::lookup_area_id(conn, bid_year_id, area.id())?;
-            queries::get_events_after(conn, bid_year_id, area_id, after_event_id)
-        })
+        let bid_year_id = queries::lookup_bid_year_id(&mut self.conn, bid_year.year())?;
+        let area_id = queries::lookup_area_id(&mut self.conn, bid_year_id, area.id())?;
+        queries::get_events_after(&mut self.conn, bid_year_id, area_id, after_event_id)
     }
 
     /// Retrieves the current effective state for a given `(bid_year, area)` scope.
@@ -380,11 +304,9 @@ impl Persistence {
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<State, PersistenceError> {
-        with_conn!(self, conn, {
-            let bid_year_id = queries::lookup_bid_year_id(conn, bid_year.year())?;
-            let area_id = queries::lookup_area_id(conn, bid_year_id, area.id())?;
-            queries::get_current_state(conn, bid_year_id, area_id, bid_year, area)
-        })
+        let bid_year_id = queries::lookup_bid_year_id(&mut self.conn, bid_year.year())?;
+        let area_id = queries::lookup_area_id(&mut self.conn, bid_year_id, area.id())?;
+        queries::get_current_state(&mut self.conn, bid_year_id, area_id, bid_year, area)
     }
 
     /// Retrieves the effective state for a given `(bid_year, area)` scope at a specific timestamp.
@@ -404,11 +326,9 @@ impl Persistence {
         area: &Area,
         timestamp: &str,
     ) -> Result<State, PersistenceError> {
-        with_conn!(self, conn, {
-            let bid_year_id = queries::lookup_bid_year_id(conn, bid_year.year())?;
-            let area_id = queries::lookup_area_id(conn, bid_year_id, area.id())?;
-            queries::get_historical_state(conn, bid_year_id, area_id, timestamp)
-        })
+        let bid_year_id = queries::lookup_bid_year_id(&mut self.conn, bid_year.year())?;
+        let area_id = queries::lookup_area_id(&mut self.conn, bid_year_id, area.id())?;
+        queries::get_historical_state(&mut self.conn, bid_year_id, area_id, timestamp)
     }
 
     /// Retrieves the ordered audit event timeline for a given `(bid_year, area)` scope.
@@ -426,21 +346,19 @@ impl Persistence {
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<Vec<AuditEvent>, PersistenceError> {
-        with_conn!(self, conn, {
-            // Look up the canonical IDs - if they don't exist, return empty timeline
-            let bid_year_id = match queries::lookup_bid_year_id(conn, bid_year.year()) {
-                Ok(id) => id,
-                Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
-                Err(e) => return Err(e),
-            };
-            let area_id = match queries::lookup_area_id(conn, bid_year_id, area.id()) {
-                Ok(id) => id,
-                Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
-                Err(e) => return Err(e),
-            };
+        // Look up the canonical IDs - if they don't exist, return empty timeline
+        let bid_year_id = match queries::lookup_bid_year_id(&mut self.conn, bid_year.year()) {
+            Ok(id) => id,
+            Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
+            Err(e) => return Err(e),
+        };
+        let area_id = match queries::lookup_area_id(&mut self.conn, bid_year_id, area.id()) {
+            Ok(id) => id,
+            Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
+            Err(e) => return Err(e),
+        };
 
-            queries::get_audit_timeline(conn, bid_year_id, area_id)
-        })
+        queries::get_audit_timeline(&mut self.conn, bid_year_id, area_id)
     }
 
     /// Retrieves all global audit events (events with no bid year or area scope).
@@ -449,7 +367,7 @@ impl Persistence {
     ///
     /// Returns an error if events cannot be retrieved or deserialized.
     pub fn get_global_audit_events(&mut self) -> Result<Vec<AuditEvent>, PersistenceError> {
-        with_conn!(self, conn, queries::get_global_audit_events(conn))
+        queries::get_global_audit_events(&mut self.conn)
     }
 
     // ========================================================================
@@ -462,7 +380,7 @@ impl Persistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn get_bootstrap_metadata(&mut self) -> Result<BootstrapMetadata, PersistenceError> {
-        with_conn!(self, conn, queries::get_bootstrap_metadata(conn))
+        queries::get_bootstrap_metadata(&mut self.conn)
     }
 
     /// Lists all bid years that have been created.
@@ -471,7 +389,7 @@ impl Persistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn list_bid_years(&mut self) -> Result<Vec<CanonicalBidYear>, PersistenceError> {
-        with_conn!(self, conn, queries::list_bid_years(conn))
+        queries::list_bid_years(&mut self.conn)
     }
 
     /// Lists all areas for a given bid year.
@@ -484,17 +402,15 @@ impl Persistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn list_areas(&mut self, bid_year: &BidYear) -> Result<Vec<Area>, PersistenceError> {
-        with_conn!(self, conn, {
-            let bid_year_id = match bid_year.bid_year_id() {
-                Some(id) => id,
-                None => match queries::lookup_bid_year_id(conn, bid_year.year()) {
-                    Ok(id) => id,
-                    Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
-                    Err(e) => return Err(e),
-                },
-            };
-            queries::list_areas(conn, bid_year_id)
-        })
+        let bid_year_id = match bid_year.bid_year_id() {
+            Some(id) => id,
+            None => match queries::lookup_bid_year_id(&mut self.conn, bid_year.year()) {
+                Ok(id) => id,
+                Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
+                Err(e) => return Err(e),
+            },
+        };
+        queries::list_areas(&mut self.conn, bid_year_id)
     }
 
     /// Lists all users for a given `(bid_year, area)` scope.
@@ -512,11 +428,9 @@ impl Persistence {
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<Vec<User>, PersistenceError> {
-        with_conn!(self, conn, {
-            let bid_year_id = queries::lookup_bid_year_id(conn, bid_year.year())?;
-            let area_id = queries::lookup_area_id(conn, bid_year_id, area.id())?;
-            queries::list_users(conn, bid_year_id, area_id, bid_year, area)
-        })
+        let bid_year_id = queries::lookup_bid_year_id(&mut self.conn, bid_year.year())?;
+        let area_id = queries::lookup_area_id(&mut self.conn, bid_year_id, area.id())?;
+        queries::list_users(&mut self.conn, bid_year_id, area_id, bid_year, area)
     }
 
     // ========================================================================
@@ -541,7 +455,7 @@ impl Persistence {
                 "BidYear must have a bid_year_id to count users".to_string(),
             )
         })?;
-        with_conn!(self, conn, queries::count_users_by_area(conn, bid_year_id))
+        queries::count_users_by_area(&mut self.conn, bid_year_id)
     }
 
     /// Counts areas per bid year.
@@ -550,7 +464,7 @@ impl Persistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn count_areas_by_bid_year(&mut self) -> Result<Vec<(u16, usize)>, PersistenceError> {
-        with_conn!(self, conn, queries::count_areas_by_bid_year(conn))
+        queries::count_areas_by_bid_year(&mut self.conn)
     }
 
     /// Counts total users per bid year across all areas.
@@ -559,7 +473,7 @@ impl Persistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn count_users_by_bid_year(&mut self) -> Result<Vec<(u16, usize)>, PersistenceError> {
-        with_conn!(self, conn, queries::count_users_by_bid_year(conn))
+        queries::count_users_by_bid_year(&mut self.conn)
     }
 
     /// Counts users per (`bid_year`, `area_id`) combination.
@@ -570,7 +484,7 @@ impl Persistence {
     pub fn count_users_by_bid_year_and_area(
         &mut self,
     ) -> Result<Vec<(u16, String, usize)>, PersistenceError> {
-        with_conn!(self, conn, queries::count_users_by_bid_year_and_area(conn))
+        queries::count_users_by_bid_year_and_area(&mut self.conn)
     }
 
     /// Determines if a given action requires a full snapshot.
@@ -583,8 +497,8 @@ impl Persistence {
     ///
     /// `true` if the action requires a snapshot, `false` otherwise.
     #[must_use]
-    pub fn should_snapshot(&mut self, action_name: &str) -> bool {
-        queries::state::should_snapshot(action_name)
+    pub fn should_snapshot(&self, action_name: &str) -> bool {
+        queries::should_snapshot(action_name)
     }
 
     // ========================================================================
@@ -610,11 +524,7 @@ impl Persistence {
         password: &str,
         role: &str,
     ) -> Result<i64, PersistenceError> {
-        with_conn!(
-            self,
-            conn,
-            mutations::create_operator(conn, login_name, display_name, password, role)
-        )
+        mutations::create_operator(&mut self.conn, login_name, display_name, password, role)
     }
 
     /// Retrieves an operator by login name.
@@ -630,7 +540,7 @@ impl Persistence {
         &mut self,
         login_name: &str,
     ) -> Result<Option<OperatorData>, PersistenceError> {
-        with_conn!(self, conn, queries::get_operator_by_login(conn, login_name))
+        queries::get_operator_by_login(&mut self.conn, login_name)
     }
 
     /// Retrieves an operator by ID.
@@ -646,7 +556,7 @@ impl Persistence {
         &mut self,
         operator_id: i64,
     ) -> Result<Option<OperatorData>, PersistenceError> {
-        with_conn!(self, conn, queries::get_operator_by_id(conn, operator_id))
+        queries::get_operator_by_id(&mut self.conn, operator_id)
     }
 
     /// Updates the last login timestamp for an operator.
@@ -659,7 +569,7 @@ impl Persistence {
     ///
     /// Returns an error if the database update fails.
     pub fn update_last_login(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
-        with_conn!(self, conn, mutations::update_last_login(conn, operator_id))
+        mutations::update_last_login(&mut self.conn, operator_id)
     }
 
     /// Disables an operator.
@@ -672,7 +582,7 @@ impl Persistence {
     ///
     /// Returns an error if the database update fails.
     pub fn disable_operator(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
-        with_conn!(self, conn, mutations::disable_operator(conn, operator_id))
+        mutations::disable_operator(&mut self.conn, operator_id)
     }
 
     /// Re-enables a disabled operator.
@@ -685,7 +595,7 @@ impl Persistence {
     ///
     /// Returns an error if the database update fails.
     pub fn enable_operator(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
-        with_conn!(self, conn, mutations::enable_operator(conn, operator_id))
+        mutations::enable_operator(&mut self.conn, operator_id)
     }
 
     /// Deletes an operator if they are not referenced by any audit events.
@@ -698,7 +608,7 @@ impl Persistence {
     ///
     /// Returns an error if the operator is referenced or doesn't exist.
     pub fn delete_operator(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
-        with_conn!(self, conn, mutations::delete_operator(conn, operator_id))
+        mutations::delete_operator(&mut self.conn, operator_id)
     }
 
     /// Lists all operators.
@@ -707,7 +617,7 @@ impl Persistence {
     ///
     /// Returns an error if the database query fails.
     pub fn list_operators(&mut self) -> Result<Vec<OperatorData>, PersistenceError> {
-        with_conn!(self, conn, queries::list_operators(conn))
+        queries::list_operators(&mut self.conn)
     }
 
     /// Checks if an operator is referenced by any audit events.
@@ -720,11 +630,7 @@ impl Persistence {
     ///
     /// Returns an error if the database query fails.
     pub fn is_operator_referenced(&mut self, operator_id: i64) -> Result<bool, PersistenceError> {
-        with_conn!(
-            self,
-            conn,
-            queries::is_operator_referenced(conn, operator_id)
-        )
+        queries::is_operator_referenced(&mut self.conn, operator_id)
     }
 
     /// Counts the total number of operators.
@@ -733,7 +639,7 @@ impl Persistence {
     ///
     /// Returns an error if the database query fails.
     pub fn count_operators(&mut self) -> Result<i64, PersistenceError> {
-        with_conn!(self, conn, queries::count_operators(conn))
+        queries::count_operators(&mut self.conn)
     }
 
     /// Counts the number of active admin operators.
@@ -742,7 +648,7 @@ impl Persistence {
     ///
     /// Returns an error if the database query fails.
     pub fn count_active_admin_operators(&mut self) -> Result<i64, PersistenceError> {
-        with_conn!(self, conn, queries::count_active_admin_operators(conn))
+        queries::count_active_admin_operators(&mut self.conn)
     }
 
     /// Verifies a password against a stored hash.
@@ -778,11 +684,7 @@ impl Persistence {
         operator_id: i64,
         new_password: &str,
     ) -> Result<(), PersistenceError> {
-        with_conn!(
-            self,
-            conn,
-            mutations::update_password(conn, operator_id, new_password)
-        )
+        mutations::update_password(&mut self.conn, operator_id, new_password)
     }
 
     /// Deletes all sessions for a specific operator.
@@ -798,11 +700,7 @@ impl Persistence {
         &mut self,
         operator_id: i64,
     ) -> Result<usize, PersistenceError> {
-        with_conn!(
-            self,
-            conn,
-            mutations::delete_sessions_for_operator(conn, operator_id)
-        )
+        mutations::delete_sessions_for_operator(&mut self.conn, operator_id)
     }
 
     // ========================================================================
@@ -826,11 +724,7 @@ impl Persistence {
         operator_id: i64,
         expires_at: &str,
     ) -> Result<i64, PersistenceError> {
-        with_conn!(
-            self,
-            conn,
-            mutations::create_session(conn, session_token, operator_id, expires_at)
-        )
+        mutations::create_session(&mut self.conn, session_token, operator_id, expires_at)
     }
 
     /// Retrieves a session by token.
@@ -846,11 +740,7 @@ impl Persistence {
         &mut self,
         session_token: &str,
     ) -> Result<Option<SessionData>, PersistenceError> {
-        with_conn!(
-            self,
-            conn,
-            queries::get_session_by_token(conn, session_token)
-        )
+        queries::get_session_by_token(&mut self.conn, session_token)
     }
 
     /// Updates the last activity timestamp for a session.
@@ -863,11 +753,7 @@ impl Persistence {
     ///
     /// Returns an error if the database update fails.
     pub fn update_session_activity(&mut self, session_id: i64) -> Result<(), PersistenceError> {
-        with_conn!(
-            self,
-            conn,
-            mutations::update_session_activity(conn, session_id)
-        )
+        mutations::update_session_activity(&mut self.conn, session_id)
     }
 
     /// Deletes a session by token.
@@ -880,7 +766,7 @@ impl Persistence {
     ///
     /// Returns an error if the database delete fails.
     pub fn delete_session(&mut self, session_token: &str) -> Result<(), PersistenceError> {
-        with_conn!(self, conn, mutations::delete_session(conn, session_token))
+        mutations::delete_session(&mut self.conn, session_token)
     }
 
     /// Deletes all expired sessions.
@@ -889,7 +775,7 @@ impl Persistence {
     ///
     /// Returns an error if the database delete fails.
     pub fn delete_expired_sessions(&mut self) -> Result<usize, PersistenceError> {
-        with_conn!(self, conn, mutations::delete_expired_sessions(conn))
+        mutations::delete_expired_sessions(&mut self.conn)
     }
 
     // ========================================================================
@@ -906,10 +792,8 @@ impl Persistence {
     ///
     /// Returns an error if the bid year doesn't exist or update fails.
     pub fn set_active_bid_year(&mut self, year: u16) -> Result<(), PersistenceError> {
-        with_conn!(self, conn, {
-            let bid_year_id = queries::lookup_bid_year_id(conn, year)?;
-            mutations::set_active_bid_year(conn, bid_year_id)
-        })
+        let bid_year_id = queries::lookup_bid_year_id(&mut self.conn, year)?;
+        mutations::set_active_bid_year(&mut self.conn, bid_year_id)
     }
 
     /// Gets the active bid year.
@@ -918,7 +802,7 @@ impl Persistence {
     ///
     /// Returns an error if no active bid year exists.
     pub fn get_active_bid_year(&mut self) -> Result<u16, PersistenceError> {
-        with_conn!(self, conn, queries::get_active_bid_year(conn))
+        queries::get_active_bid_year(&mut self.conn)
     }
 
     /// Sets the expected area count for a bid year.
@@ -936,10 +820,8 @@ impl Persistence {
         bid_year: &BidYear,
         count: usize,
     ) -> Result<(), PersistenceError> {
-        with_conn!(self, conn, {
-            let bid_year_id = queries::lookup_bid_year_id(conn, bid_year.year())?;
-            mutations::set_expected_area_count(conn, bid_year_id, count)
-        })
+        let bid_year_id = queries::lookup_bid_year_id(&mut self.conn, bid_year.year())?;
+        mutations::set_expected_area_count(&mut self.conn, bid_year_id, count)
     }
 
     /// Gets the expected area count for a bid year.
@@ -955,10 +837,8 @@ impl Persistence {
         &mut self,
         bid_year: &BidYear,
     ) -> Result<Option<usize>, PersistenceError> {
-        with_conn!(self, conn, {
-            let bid_year_id = queries::lookup_bid_year_id(conn, bid_year.year())?;
-            queries::get_expected_area_count(conn, bid_year_id)
-        })
+        let bid_year_id = queries::lookup_bid_year_id(&mut self.conn, bid_year.year())?;
+        queries::get_expected_area_count(&mut self.conn, bid_year_id)
     }
 
     /// Sets the expected user count for an area.
@@ -978,11 +858,9 @@ impl Persistence {
         area: &Area,
         count: usize,
     ) -> Result<(), PersistenceError> {
-        with_conn!(self, conn, {
-            let bid_year_id = queries::lookup_bid_year_id(conn, bid_year.year())?;
-            let area_id = queries::lookup_area_id(conn, bid_year_id, area.id())?;
-            mutations::set_expected_user_count(conn, bid_year_id, area_id, count)
-        })
+        let bid_year_id = queries::lookup_bid_year_id(&mut self.conn, bid_year.year())?;
+        let area_id = queries::lookup_area_id(&mut self.conn, bid_year_id, area.id())?;
+        mutations::set_expected_user_count(&mut self.conn, bid_year_id, area_id, count)
     }
 
     /// Gets the expected user count for an area.
@@ -1000,11 +878,9 @@ impl Persistence {
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<Option<usize>, PersistenceError> {
-        with_conn!(self, conn, {
-            let bid_year_id = queries::lookup_bid_year_id(conn, bid_year.year())?;
-            let area_id = queries::lookup_area_id(conn, bid_year_id, area.id())?;
-            queries::get_expected_user_count(conn, bid_year_id, area_id)
-        })
+        let bid_year_id = queries::lookup_bid_year_id(&mut self.conn, bid_year.year())?;
+        let area_id = queries::lookup_area_id(&mut self.conn, bid_year_id, area.id())?;
+        queries::get_expected_user_count(&mut self.conn, bid_year_id, area_id)
     }
 
     /// Gets the actual area count for a bid year.
@@ -1017,10 +893,8 @@ impl Persistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn get_actual_area_count(&mut self, bid_year: &BidYear) -> Result<usize, PersistenceError> {
-        with_conn!(self, conn, {
-            let bid_year_id = queries::lookup_bid_year_id(conn, bid_year.year())?;
-            queries::get_actual_area_count(conn, bid_year_id)
-        })
+        let bid_year_id = queries::lookup_bid_year_id(&mut self.conn, bid_year.year())?;
+        queries::get_actual_area_count(&mut self.conn, bid_year_id)
     }
 
     /// Gets the actual user count for an area.
@@ -1038,11 +912,9 @@ impl Persistence {
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<usize, PersistenceError> {
-        with_conn!(self, conn, {
-            let bid_year_id = queries::lookup_bid_year_id(conn, bid_year.year())?;
-            let area_id = queries::lookup_area_id(conn, bid_year_id, area.id())?;
-            queries::get_actual_user_count(conn, bid_year_id, area_id)
-        })
+        let bid_year_id = queries::lookup_bid_year_id(&mut self.conn, bid_year.year())?;
+        let area_id = queries::lookup_area_id(&mut self.conn, bid_year_id, area.id())?;
+        queries::get_actual_user_count(&mut self.conn, bid_year_id, area_id)
     }
 
     /// Updates an existing user's information.
@@ -1079,23 +951,19 @@ impl Persistence {
         service_computation_date: &str,
         lottery_value: Option<u32>,
     ) -> Result<(), PersistenceError> {
-        with_conn!(
-            self,
-            conn,
-            mutations::update_user(
-                conn,
-                user_id,
-                initials,
-                name,
-                area,
-                user_type,
-                crew,
-                cumulative_natca_bu_date,
-                natca_bu_date,
-                eod_faa_date,
-                service_computation_date,
-                lottery_value,
-            )
+        mutations::update_user(
+            &mut self.conn,
+            user_id,
+            initials,
+            name,
+            area,
+            user_type,
+            crew,
+            cumulative_natca_bu_date,
+            natca_bu_date,
+            eod_faa_date,
+            service_computation_date,
+            lottery_value,
         )
     }
 
@@ -1115,20 +983,18 @@ impl Persistence {
     pub fn get_bid_year_id(&mut self, year: u16) -> Result<i64, PersistenceError> {
         use crate::diesel_schema::bid_years;
 
-        with_conn!(self, conn, {
-            let result: Result<i64, diesel::result::Error> = bid_years::table
-                .select(bid_years::bid_year_id)
-                .filter(bid_years::year.eq(i32::from(year)))
-                .first::<i64>(conn);
+        let result: Result<i64, diesel::result::Error> = bid_years::table
+            .select(bid_years::bid_year_id)
+            .filter(bid_years::year.eq(i32::from(year)))
+            .first::<i64>(&mut self.conn);
 
-            match result {
-                Ok(bid_year_id) => Ok(bid_year_id),
-                Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
-                    "Bid year {year} not found"
-                ))),
-                Err(e) => Err(PersistenceError::from(e)),
-            }
-        })
+        match result {
+            Ok(bid_year_id) => Ok(bid_year_id),
+            Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
+                "Bid year {year} not found"
+            ))),
+            Err(e) => Err(PersistenceError::from(e)),
+        }
     }
 
     /// Queries the canonical `area_id` for a given bid year and area code.
@@ -1148,22 +1014,20 @@ impl Persistence {
     ) -> Result<i64, PersistenceError> {
         use crate::diesel_schema::areas;
 
-        with_conn!(self, conn, {
-            let normalized_code: String = area_code.to_uppercase();
-            let result: Result<i64, diesel::result::Error> = areas::table
-                .select(areas::area_id)
-                .filter(areas::bid_year_id.eq(bid_year_id))
-                .filter(areas::area_code.eq(&normalized_code))
-                .first::<i64>(conn);
+        let normalized_code: String = area_code.to_uppercase();
+        let result: Result<i64, diesel::result::Error> = areas::table
+            .select(areas::area_id)
+            .filter(areas::bid_year_id.eq(bid_year_id))
+            .filter(areas::area_code.eq(&normalized_code))
+            .first::<i64>(&mut self.conn);
 
-            match result {
-                Ok(area_id) => Ok(area_id),
-                Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
-                    "Area {area_code} not found"
-                ))),
-                Err(e) => Err(PersistenceError::from(e)),
-            }
-        })
+        match result {
+            Ok(area_id) => Ok(area_id),
+            Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
+                "Area {area_code} not found"
+            ))),
+            Err(e) => Err(PersistenceError::from(e)),
+        }
     }
 
     /// Queries the canonical `user_id` for a given bid year, area, and initials.
@@ -1185,22 +1049,20 @@ impl Persistence {
     ) -> Result<i64, PersistenceError> {
         use crate::diesel_schema::users;
 
-        with_conn!(self, conn, {
-            let normalized_initials: String = initials.to_uppercase();
-            let result: Result<i64, diesel::result::Error> = users::table
-                .select(users::user_id)
-                .filter(users::bid_year_id.eq(bid_year_id))
-                .filter(users::area_id.eq(area_id))
-                .filter(users::initials.eq(&normalized_initials))
-                .first::<i64>(conn);
+        let normalized_initials: String = initials.to_uppercase();
+        let result: Result<i64, diesel::result::Error> = users::table
+            .select(users::user_id)
+            .filter(users::bid_year_id.eq(bid_year_id))
+            .filter(users::area_id.eq(area_id))
+            .filter(users::initials.eq(&normalized_initials))
+            .first::<i64>(&mut self.conn);
 
-            match result {
-                Ok(user_id) => Ok(user_id),
-                Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
-                    "User {initials} not found"
-                ))),
-                Err(e) => Err(PersistenceError::from(e)),
-            }
-        })
+        match result {
+            Ok(user_id) => Ok(user_id),
+            Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
+                "User {initials} not found"
+            ))),
+            Err(e) => Err(PersistenceError::from(e)),
+        }
     }
 }

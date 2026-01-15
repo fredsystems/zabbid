@@ -46,7 +46,7 @@ use zab_bid_api::{
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials};
-use zab_bid_persistence::{Persistence, PersistenceError};
+use zab_bid_persistence::{PersistenceError, SqlitePersistence};
 
 /// ZAB Bid Server - HTTP server for the ZAB Bidding System
 #[derive(Parser, Debug)]
@@ -68,7 +68,7 @@ struct Args {
 #[derive(Clone)]
 struct AppState {
     /// The persistence layer for audit events and state snapshots.
-    persistence: Arc<Mutex<Persistence>>,
+    persistence: Arc<Mutex<SqlitePersistence>>,
     /// Live event broadcaster for streaming state changes to connected clients.
     live_events: Arc<LiveEventBroadcaster>,
 }
@@ -2204,12 +2204,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Initializing ZAB Bid Server");
 
     // Initialize persistence (in-memory or file-based based on CLI argument)
-    let persistence: Persistence = if let Some(db_path) = &args.database {
+    let persistence: SqlitePersistence = if let Some(db_path) = &args.database {
         info!("Using file-based database at: {}", db_path);
-        Persistence::new_with_file(db_path)?
+        SqlitePersistence::new_with_file(db_path)?
     } else {
         info!("Using in-memory database");
-        Persistence::new_in_memory()?
+        SqlitePersistence::new_in_memory()?
     };
 
     let app_state: AppState = AppState {
@@ -2242,8 +2242,8 @@ mod tests {
 
     /// Helper to create test app state with in-memory persistence.
     fn create_test_app_state() -> AppState {
-        let persistence: Persistence =
-            Persistence::new_in_memory().expect("Failed to create in-memory persistence");
+        let persistence: SqlitePersistence =
+            SqlitePersistence::new_in_memory().expect("Failed to create in-memory persistence");
         AppState {
             persistence: Arc::new(Mutex::new(persistence)),
             live_events: Arc::new(LiveEventBroadcaster::new()),

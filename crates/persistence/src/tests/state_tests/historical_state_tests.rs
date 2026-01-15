@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use crate::Persistence;
+use crate::SqlitePersistence;
 use crate::error::PersistenceError;
 use crate::tests::{
     create_test_actor, create_test_cause, create_test_metadata, create_test_operator,
@@ -14,8 +14,8 @@ use zab_bid_audit::AuditEvent;
 use zab_bid_domain::{Area, BidYear, Crew, Initials, UserType};
 
 /// Creates a fully bootstrapped test persistence instance with bid year 2026 and area "North".
-fn create_bootstrapped_persistence() -> Persistence {
-    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
+fn create_bootstrapped_persistence() -> SqlitePersistence {
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let mut metadata = zab_bid::BootstrapMetadata::new();
 
@@ -57,7 +57,7 @@ fn create_bootstrapped_persistence() -> Persistence {
 
 #[test]
 fn test_get_historical_state_at_specific_timestamp() {
-    let mut persistence: Persistence = create_bootstrapped_persistence();
+    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create first snapshot with no users
@@ -127,7 +127,7 @@ fn test_get_historical_state_at_specific_timestamp() {
 
 #[test]
 fn test_get_historical_state_before_any_snapshot_returns_error() {
-    let mut persistence: Persistence = create_bootstrapped_persistence();
+    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create a snapshot
@@ -169,7 +169,7 @@ fn test_get_historical_state_is_deterministic() {
         created_at: String,
     }
 
-    let mut persistence: Persistence = create_bootstrapped_persistence();
+    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create snapshot
@@ -186,15 +186,10 @@ fn test_get_historical_state_is_deterministic() {
     persistence.persist_transition(&result).unwrap();
 
     // Get the timestamp
-    let timestamp: String = match &mut persistence.conn {
-        crate::ConnectionBackend::Sqlite(conn) => {
-            sql_query("SELECT created_at FROM audit_events WHERE event_id = 1")
-                .get_result::<TimestampRow>(conn)
-                .unwrap()
-                .created_at
-        }
-        crate::ConnectionBackend::Mysql(_) => panic!("MySQL not supported in this test"),
-    };
+    let timestamp: String = sql_query("SELECT created_at FROM audit_events WHERE event_id = 1")
+        .get_result::<TimestampRow>(&mut persistence.conn)
+        .unwrap()
+        .created_at;
 
     // Query multiple times
     let state1: State = persistence
@@ -217,7 +212,7 @@ fn test_get_historical_state_is_deterministic() {
 
 #[test]
 fn test_get_historical_state_does_not_mutate() {
-    let mut persistence: Persistence = create_bootstrapped_persistence();
+    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create snapshot

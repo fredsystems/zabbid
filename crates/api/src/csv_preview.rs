@@ -14,7 +14,7 @@ use zab_bid::BootstrapMetadata;
 use zab_bid_domain::{
     Area, BidYear, Crew, Initials, SeniorityData, User, UserType, validate_user_fields,
 };
-use zab_bid_persistence::Persistence;
+use zab_bid_persistence::SqlitePersistence;
 
 use crate::error::ApiError;
 
@@ -235,7 +235,7 @@ fn parse_csv_row(
 fn validate_user_against_metadata(
     user: &User,
     metadata: &BootstrapMetadata,
-    persistence: &mut Persistence,
+    persistence: &mut SqlitePersistence,
     seen_initials: &HashSet<String>,
 ) -> Vec<String> {
     let mut errors: Vec<String> = Vec::new();
@@ -315,7 +315,7 @@ pub fn preview_csv_users(
     csv_content: &str,
     bid_year: &BidYear,
     metadata: &BootstrapMetadata,
-    persistence: &mut Persistence,
+    persistence: &mut SqlitePersistence,
 ) -> Result<CsvPreviewResult, ApiError> {
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
@@ -452,8 +452,8 @@ mod tests {
         BidYear::new(2026)
     }
 
-    fn create_test_persistence() -> Persistence {
-        Persistence::new_in_memory().expect("Failed to create in-memory persistence")
+    fn create_test_persistence() -> SqlitePersistence {
+        SqlitePersistence::new_in_memory().expect("Failed to create in-memory persistence")
     }
 
     fn create_test_actor() -> Actor {
@@ -470,7 +470,7 @@ mod tests {
         Cause::new(String::from("test"), String::from("Test bootstrap"))
     }
 
-    fn bootstrap_test_persistence(persistence: &mut Persistence) {
+    fn bootstrap_test_persistence(persistence: &mut SqlitePersistence) {
         // Create test operator first to satisfy foreign key constraints
         persistence
             .create_operator("test_admin", "Test Admin", "password", "Admin")
@@ -532,7 +532,7 @@ mod tests {
     fn test_missing_required_headers() {
         let csv: &str = "initials,name\nAB,Alice Brown\n";
         let bid_year: BidYear = create_test_bid_year();
-        let mut persistence: Persistence = create_test_persistence();
+        let mut persistence: SqlitePersistence = create_test_persistence();
         bootstrap_test_persistence(&mut persistence);
         let metadata: BootstrapMetadata = persistence
             .get_bootstrap_metadata()
@@ -555,7 +555,7 @@ mod tests {
                          AB,Alice Brown,ZAB,1,CPC,2020-01-01,2020-01-01,42,2019-01-01,2019-06-01\n";
 
         let bid_year: BidYear = create_test_bid_year();
-        let mut persistence: Persistence = create_test_persistence();
+        let mut persistence: SqlitePersistence = create_test_persistence();
         bootstrap_test_persistence(&mut persistence);
         let metadata: BootstrapMetadata = persistence
             .get_bootstrap_metadata()
@@ -583,7 +583,7 @@ mod tests {
                          Alice Brown,2020-01-01,AB,CPC,2020-01-01,ZAB,1\n";
 
         let bid_year: BidYear = create_test_bid_year();
-        let mut persistence: Persistence = create_test_persistence();
+        let mut persistence: SqlitePersistence = create_test_persistence();
         bootstrap_test_persistence(&mut persistence);
         let metadata: BootstrapMetadata = persistence
             .get_bootstrap_metadata()
@@ -601,7 +601,7 @@ mod tests {
                          AB,Alice Brown,ZAB,1,CPC,2020-01-01,2020-01-01,ignored,also_ignored\n";
 
         let bid_year: BidYear = create_test_bid_year();
-        let mut persistence: Persistence = create_test_persistence();
+        let mut persistence: SqlitePersistence = create_test_persistence();
         bootstrap_test_persistence(&mut persistence);
         let metadata: BootstrapMetadata = persistence
             .get_bootstrap_metadata()
@@ -619,7 +619,7 @@ mod tests {
                          A,Alice Brown,ZAB,1,CPC,2020-01-01,2020-01-01\n";
 
         let bid_year: BidYear = create_test_bid_year();
-        let mut persistence: Persistence = create_test_persistence();
+        let mut persistence: SqlitePersistence = create_test_persistence();
         bootstrap_test_persistence(&mut persistence);
         let metadata: BootstrapMetadata = persistence
             .get_bootstrap_metadata()
@@ -640,7 +640,7 @@ mod tests {
                          AB,Alice Brown,ZAB,8,CPC,2020-01-01,2020-01-01\n";
 
         let bid_year: BidYear = create_test_bid_year();
-        let mut persistence: Persistence = create_test_persistence();
+        let mut persistence: SqlitePersistence = create_test_persistence();
         bootstrap_test_persistence(&mut persistence);
         let metadata: BootstrapMetadata = persistence
             .get_bootstrap_metadata()
@@ -661,7 +661,7 @@ mod tests {
                          AB,Alice Brown,ZAB,1,INVALID,2020-01-01,2020-01-01\n";
 
         let bid_year: BidYear = create_test_bid_year();
-        let mut persistence: Persistence = create_test_persistence();
+        let mut persistence: SqlitePersistence = create_test_persistence();
         bootstrap_test_persistence(&mut persistence);
         let metadata: BootstrapMetadata = persistence
             .get_bootstrap_metadata()
@@ -681,7 +681,7 @@ mod tests {
                          AB,Alice Brown,NONEXISTENT,1,CPC,2020-01-01,2020-01-01\n";
 
         let bid_year: BidYear = create_test_bid_year();
-        let mut persistence: Persistence = create_test_persistence();
+        let mut persistence: SqlitePersistence = create_test_persistence();
         bootstrap_test_persistence(&mut persistence);
         let metadata: BootstrapMetadata = persistence
             .get_bootstrap_metadata()
@@ -702,7 +702,7 @@ mod tests {
                          AB,Another Person,ZAB,2,CPC,2020-01-01,2020-01-01\n";
 
         let bid_year: BidYear = create_test_bid_year();
-        let mut persistence: Persistence = create_test_persistence();
+        let mut persistence: SqlitePersistence = create_test_persistence();
         bootstrap_test_persistence(&mut persistence);
         let metadata: BootstrapMetadata = persistence
             .get_bootstrap_metadata()
@@ -732,7 +732,7 @@ mod tests {
                          EF,Eve Foster,ZAB,2,Dev-R,2020-01-01,2020-01-01\n";
 
         let bid_year: BidYear = create_test_bid_year();
-        let mut persistence: Persistence = create_test_persistence();
+        let mut persistence: SqlitePersistence = create_test_persistence();
         bootstrap_test_persistence(&mut persistence);
         let metadata: BootstrapMetadata = persistence
             .get_bootstrap_metadata()
@@ -752,7 +752,7 @@ mod tests {
                          AB,,ZAB,1,CPC,2020-01-01,2020-01-01\n";
 
         let bid_year: BidYear = create_test_bid_year();
-        let mut persistence: Persistence = create_test_persistence();
+        let mut persistence: SqlitePersistence = create_test_persistence();
         bootstrap_test_persistence(&mut persistence);
         let metadata: BootstrapMetadata = persistence
             .get_bootstrap_metadata()

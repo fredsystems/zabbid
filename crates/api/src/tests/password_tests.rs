@@ -10,11 +10,11 @@ use crate::auth::{AuthenticatedActor, Role};
 use crate::handlers::{change_password, create_operator, reset_password};
 use crate::request_response::{ChangePasswordRequest, CreateOperatorRequest, ResetPasswordRequest};
 use crate::tests::helpers::create_test_cause;
-use zab_bid_persistence::Persistence;
+use zab_bid_persistence::SqlitePersistence;
 
 #[test]
 fn test_operator_can_change_own_password() {
-    let mut persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     // Create an operator
     let operator_id = persistence
@@ -45,7 +45,7 @@ fn test_operator_can_change_own_password() {
 
 #[test]
 fn test_change_password_with_wrong_current_password_fails() {
-    let mut persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     let operator_id = persistence
         .create_operator("testop", "Test Operator", "OldPassword123!", "Bidder")
@@ -79,7 +79,7 @@ fn test_change_password_with_wrong_current_password_fails() {
 
 #[test]
 fn test_change_password_enforces_policy() {
-    let mut persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     let operator_id = persistence
         .create_operator("testop", "Test Operator", "OldPassword123!", "Bidder")
@@ -114,7 +114,7 @@ fn test_change_password_enforces_policy() {
 
 #[test]
 fn test_change_password_invalidates_sessions() {
-    let mut persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     let operator_id = persistence
         .create_operator("testop", "Test Operator", "OldPassword123!", "Bidder")
@@ -161,7 +161,7 @@ fn test_change_password_invalidates_sessions() {
 
 #[test]
 fn test_admin_can_reset_another_operators_password() {
-    let mut persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     // Create admin
     let admin_id = persistence
@@ -194,7 +194,7 @@ fn test_admin_can_reset_another_operators_password() {
 
 #[test]
 fn test_bidder_cannot_reset_password() {
-    let mut persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     // Create bidder
     let bidder_id = persistence
@@ -231,7 +231,7 @@ fn test_bidder_cannot_reset_password() {
 
 #[test]
 fn test_reset_password_enforces_policy() {
-    let mut persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     let admin_id = persistence
         .create_operator("admin", "Admin User", "AdminPassword123!", "Admin")
@@ -267,7 +267,7 @@ fn test_reset_password_enforces_policy() {
 
 #[test]
 fn test_reset_password_invalidates_target_sessions() {
-    let mut persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     let admin_id = persistence
         .create_operator("admin", "Admin User", "AdminPassword123!", "Admin")
@@ -315,7 +315,7 @@ fn test_reset_password_invalidates_target_sessions() {
 
 #[test]
 fn test_create_operator_requires_password() {
-    let mut persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     let admin_id = persistence
         .create_operator("admin", "Admin User", "AdminPassword123!", "Admin")
@@ -344,7 +344,7 @@ fn test_create_operator_requires_password() {
 
 #[test]
 fn test_create_operator_enforces_password_policy() {
-    let mut persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     let admin_id = persistence
         .create_operator("admin", "Admin User", "AdminPassword123!", "Admin")
@@ -378,7 +378,7 @@ fn test_create_operator_enforces_password_policy() {
 
 #[test]
 fn test_password_change_emits_audit_event() {
-    let mut persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     let operator_id = persistence
         .create_operator("testop", "Test Operator", "OldPassword123!", "Bidder")
@@ -422,7 +422,7 @@ fn test_password_change_emits_audit_event() {
 
 #[test]
 fn test_password_reset_emits_audit_event() {
-    let mut persistence = Persistence::new_in_memory().unwrap();
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
 
     let admin_id = persistence
         .create_operator("admin", "Admin User", "AdminPassword123!", "Admin")
