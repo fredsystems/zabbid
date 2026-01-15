@@ -26,15 +26,21 @@ pub mod bootstrap;
 pub mod canonical;
 pub mod operators;
 
-// Re-export commonly used mutation functions
-pub use audit::persist_audit_event;
+// Re-export backend-specific mutation functions used by lib.rs
+pub use audit::{persist_audit_event_mysql, persist_audit_event_sqlite};
 pub use bootstrap::{
-    persist_bootstrap, persist_transition, set_active_bid_year, set_expected_area_count,
-    set_expected_user_count,
+    persist_bootstrap_mysql, persist_bootstrap_sqlite, persist_transition_mysql,
+    persist_transition_sqlite, set_active_bid_year_mysql, set_active_bid_year_sqlite,
+    set_expected_area_count_mysql, set_expected_area_count_sqlite, set_expected_user_count_mysql,
+    set_expected_user_count_sqlite,
 };
-pub use canonical::update_user;
+pub use canonical::{update_user_mysql, update_user_sqlite};
 pub use operators::{
-    create_operator, create_session, delete_expired_sessions, delete_operator, delete_session,
-    delete_sessions_for_operator, disable_operator, enable_operator, update_last_login,
-    update_password, update_session_activity,
+    create_operator_mysql, create_operator_sqlite, create_session_mysql, create_session_sqlite,
+    delete_expired_sessions_mysql, delete_expired_sessions_sqlite, delete_operator_mysql,
+    delete_operator_sqlite, delete_session_mysql, delete_session_sqlite,
+    delete_sessions_for_operator_mysql, delete_sessions_for_operator_sqlite,
+    disable_operator_mysql, disable_operator_sqlite, enable_operator_mysql, enable_operator_sqlite,
+    update_last_login_mysql, update_last_login_sqlite, update_password_mysql,
+    update_password_sqlite, update_session_activity_mysql, update_session_activity_sqlite,
 };

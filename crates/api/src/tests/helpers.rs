@@ -314,7 +314,7 @@ pub fn setup_test_persistence() -> Result<SqlitePersistence, zab_bid_persistence
     persistence.persist_bootstrap(&area_result)?;
 
     // Set the bid year as active
-    persistence.set_active_bid_year(2026)?;
+    persistence.set_active_bid_year(&active_bid_year)?;
 
     Ok(persistence)
 }

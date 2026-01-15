@@ -5,11 +5,14 @@
 
 //! Canonical entity queries.
 //!
-//! This module contains backend-agnostic queries for retrieving canonical
+//! This module contains queries for retrieving canonical
 //! bid years, areas, and users from their respective tables.
-//! All queries use Diesel DSL and work across all supported database backends.
+//!
+//! All queries are generated in backend-specific monomorphic versions
+//! (`_sqlite` and `_mysql` suffixes) using the `backend_fn!` macro.
 
 use diesel::prelude::*;
+use diesel::{MysqlConnection, SqliteConnection};
 use num_traits::ToPrimitive;
 use time::Date;
 use zab_bid::BootstrapMetadata;
@@ -20,7 +23,8 @@ use zab_bid_domain::{
 use crate::diesel_schema::{areas, bid_years, users};
 use crate::error::PersistenceError;
 
-/// Looks up the `bid_year_id` from the year value.
+backend_fn! {
+/// Looks up the canonical `bid_year_id` from the year value.
 ///
 /// # Arguments
 ///
@@ -30,7 +34,7 @@ use crate::error::PersistenceError;
 /// # Errors
 ///
 /// Returns an error if the bid year does not exist.
-pub fn lookup_bid_year_id(conn: &mut SqliteConnection, year: u16) -> Result<i64, PersistenceError> {
+pub fn lookup_bid_year_id(conn: &mut _, year: u16) -> Result<i64, PersistenceError> {
     let year_i32: i32 = year
         .to_i32()
         .ok_or_else(|| PersistenceError::Other("Year out of range".to_string()))?;
@@ -48,7 +52,9 @@ pub fn lookup_bid_year_id(conn: &mut SqliteConnection, year: u16) -> Result<i64,
         Err(e) => Err(PersistenceError::from(e)),
     }
 }
+}
 
+backend_fn! {
 /// Looks up the `area_id` from the `bid_year_id` and `area_code`.
 ///
 /// # Arguments
@@ -61,7 +67,7 @@ pub fn lookup_bid_year_id(conn: &mut SqliteConnection, year: u16) -> Result<i64,
 ///
 /// Returns an error if the area does not exist.
 pub fn lookup_area_id(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     bid_year_id: i64,
     area_code: &str,
 ) -> Result<i64, PersistenceError> {
@@ -79,7 +85,9 @@ pub fn lookup_area_id(
         Err(e) => Err(PersistenceError::from(e)),
     }
 }
+}
 
+backend_fn! {
 /// Reconstructs bootstrap metadata from canonical tables.
 ///
 /// This method queries the canonical `bid_years` and `areas` tables to retrieve
@@ -99,9 +107,7 @@ pub fn lookup_area_id(
 ///
 /// Panics if a bid year value from the database is outside the valid `u16` range.
 /// This should not occur in normal operation as bid years are validated on creation.
-pub fn get_bootstrap_metadata(
-    conn: &mut SqliteConnection,
-) -> Result<BootstrapMetadata, PersistenceError> {
+pub fn get_bootstrap_metadata(conn: &mut _) -> Result<BootstrapMetadata, PersistenceError> {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Query canonical bid_years table
@@ -137,7 +143,9 @@ pub fn get_bootstrap_metadata(
 
     Ok(metadata)
 }
+}
 
+backend_fn! {
 /// Lists all bid years that have been created with their canonical metadata.
 ///
 /// This queries the canonical `bid_years` table directly and returns full
@@ -156,9 +164,7 @@ pub fn get_bootstrap_metadata(
 ///
 /// Panics if a bid year value from the database cannot be converted to `u16`.
 /// This should never happen in practice as the schema enforces valid ranges.
-pub fn list_bid_years(
-    conn: &mut SqliteConnection,
-) -> Result<Vec<CanonicalBidYear>, PersistenceError> {
+pub fn list_bid_years(conn: &mut _) -> Result<Vec<CanonicalBidYear>, PersistenceError> {
     let rows: Vec<(i32, String, i32)> = bid_years::table
         .select((
             bid_years::year,
@@ -199,7 +205,9 @@ pub fn list_bid_years(
 
     Ok(bid_years_list)
 }
+}
 
+backend_fn! {
 /// Lists all areas for a given bid year.
 ///
 /// This queries the canonical `areas` table directly.
@@ -214,10 +222,7 @@ pub fn list_bid_years(
 /// # Errors
 ///
 /// Returns an error if the database cannot be queried.
-pub fn list_areas(
-    conn: &mut SqliteConnection,
-    bid_year_id: i64,
-) -> Result<Vec<Area>, PersistenceError> {
+pub fn list_areas(conn: &mut _, bid_year_id: i64) -> Result<Vec<Area>, PersistenceError> {
     let rows: Vec<(i64, String, Option<String>)> = areas::table
         .select((areas::area_id, areas::area_code, areas::area_name))
         .filter(areas::bid_year_id.eq(bid_year_id))
@@ -231,7 +236,9 @@ pub fn list_areas(
 
     Ok(areas_list)
 }
+}
 
+backend_fn! {
 /// Lists all users for a given `(bid_year, area)` scope.
 ///
 /// This queries the canonical `users` table directly.
@@ -248,7 +255,7 @@ pub fn list_areas(
 ///
 /// Returns an error if the database cannot be queried.
 pub fn list_users(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     bid_year_id: i64,
     area_id: i64,
     bid_year: &BidYear,
@@ -327,7 +334,9 @@ pub fn list_users(
 
     Ok(users_list)
 }
+}
 
+backend_fn! {
 /// Gets the active bid year.
 ///
 /// # Arguments
@@ -337,7 +346,7 @@ pub fn list_users(
 /// # Errors
 ///
 /// Returns an error if the database cannot be queried or no active bid year exists.
-pub fn get_active_bid_year(conn: &mut SqliteConnection) -> Result<u16, PersistenceError> {
+pub fn get_active_bid_year(conn: &mut _) -> Result<u16, PersistenceError> {
     let result: Result<i32, _> = bid_years::table
         .select(bid_years::year)
         .filter(bid_years::is_active.eq(1))
@@ -356,7 +365,9 @@ pub fn get_active_bid_year(conn: &mut SqliteConnection) -> Result<u16, Persisten
         Err(e) => Err(PersistenceError::from(e)),
     }
 }
+}
 
+backend_fn! {
 /// Gets the expected area count for a bid year.
 ///
 /// # Arguments
@@ -368,7 +379,7 @@ pub fn get_active_bid_year(conn: &mut SqliteConnection) -> Result<u16, Persisten
 ///
 /// Returns an error if the database cannot be queried or the bid year doesn't exist.
 pub fn get_expected_area_count(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     bid_year_id: i64,
 ) -> Result<Option<usize>, PersistenceError> {
     let result: Result<Option<i32>, _> = bid_years::table
@@ -390,7 +401,9 @@ pub fn get_expected_area_count(
         Err(e) => Err(PersistenceError::from(e)),
     }
 }
+}
 
+backend_fn! {
 /// Gets the expected user count for a bid year and area.
 ///
 /// # Arguments
@@ -403,7 +416,7 @@ pub fn get_expected_area_count(
 ///
 /// Returns an error if the database cannot be queried or the area doesn't exist.
 pub fn get_expected_user_count(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     bid_year_id: i64,
     area_id: i64,
 ) -> Result<Option<usize>, PersistenceError> {
@@ -427,7 +440,9 @@ pub fn get_expected_user_count(
         Err(e) => Err(PersistenceError::from(e)),
     }
 }
+}
 
+backend_fn! {
 /// Gets the actual area count for a bid year.
 ///
 /// # Arguments
@@ -438,10 +453,7 @@ pub fn get_expected_user_count(
 /// # Errors
 ///
 /// Returns an error if the database cannot be queried.
-pub fn get_actual_area_count(
-    conn: &mut SqliteConnection,
-    bid_year_id: i64,
-) -> Result<usize, PersistenceError> {
+pub fn get_actual_area_count(conn: &mut _, bid_year_id: i64) -> Result<usize, PersistenceError> {
     let count: i64 = areas::table
         .filter(areas::bid_year_id.eq(bid_year_id))
         .count()
@@ -451,7 +463,9 @@ pub fn get_actual_area_count(
         .to_usize()
         .ok_or_else(|| PersistenceError::DatabaseError("Count conversion failed".to_string()))
 }
+}
 
+backend_fn! {
 /// Gets the actual user count for a bid year and area.
 ///
 /// # Arguments
@@ -464,7 +478,7 @@ pub fn get_actual_area_count(
 ///
 /// Returns an error if the database cannot be queried.
 pub fn get_actual_user_count(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     bid_year_id: i64,
     area_id: i64,
 ) -> Result<usize, PersistenceError> {
@@ -477,4 +491,5 @@ pub fn get_actual_user_count(
     count
         .to_usize()
         .ok_or_else(|| PersistenceError::DatabaseError("Count conversion failed".to_string()))
+}
 }

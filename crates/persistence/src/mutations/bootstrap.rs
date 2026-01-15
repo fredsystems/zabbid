@@ -10,21 +10,27 @@
 //! lower-level mutations.
 
 use diesel::prelude::*;
+use diesel::{MysqlConnection, SqliteConnection};
 use num_traits::ToPrimitive;
 use tracing::{debug, info};
 use zab_bid::{BootstrapResult, State, TransitionResult};
 use zab_bid_domain::CanonicalBidYear;
 
-use crate::backend::sqlite::get_last_insert_rowid;
+use crate::backend::PersistenceBackend;
 use crate::diesel_schema;
 use crate::error::PersistenceError;
 use crate::mutations::audit::{
-    persist_audit_event, persist_audit_event_with_ids, persist_state_snapshot,
+    persist_audit_event_mysql, persist_audit_event_sqlite, persist_audit_event_with_ids_mysql,
+    persist_audit_event_with_ids_sqlite, persist_state_snapshot_mysql,
+    persist_state_snapshot_sqlite,
 };
-use crate::mutations::canonical::{insert_new_user, sync_canonical_users};
-use crate::queries::canonical::lookup_bid_year_id;
+use crate::mutations::canonical::{
+    insert_new_user_mysql, insert_new_user_sqlite, sync_canonical_users_mysql,
+    sync_canonical_users_sqlite,
+};
+use crate::queries::canonical::{lookup_bid_year_id_mysql, lookup_bid_year_id_sqlite};
 
-/// Persists a transition result (audit event and optionally a full snapshot).
+/// Persists a transition result (audit event and optionally a full snapshot) - `SQLite` version.
 ///
 /// # Arguments
 ///
@@ -39,20 +45,20 @@ use crate::queries::canonical::lookup_bid_year_id;
 /// # Errors
 ///
 /// Returns an error if persistence fails.
-pub fn persist_transition(
+pub fn persist_transition_sqlite(
     conn: &mut SqliteConnection,
     result: &TransitionResult,
     should_snapshot: bool,
 ) -> Result<i64, PersistenceError> {
     // Persist the audit event
-    let event_id: i64 = persist_audit_event(conn, &result.audit_event)?;
+    let event_id: i64 = persist_audit_event_sqlite(conn, &result.audit_event)?;
     debug!(event_id, "Persisted audit event");
 
     // Update canonical state based on action type
     // RegisterUser is incremental (insert one user), others are full state replacement
     if result.audit_event.action.name.as_str() == "RegisterUser" {
         // Insert just the new user incrementally
-        insert_new_user(conn, &result.new_state)?;
+        insert_new_user_sqlite(conn, &result.new_state)?;
         debug!(
             bid_year = result.new_state.bid_year.year(),
             area = result.new_state.area.id(),
@@ -60,7 +66,7 @@ pub fn persist_transition(
         );
     } else {
         // For all other operations, do full state sync
-        sync_canonical_users(conn, &result.new_state)?;
+        sync_canonical_users_sqlite(conn, &result.new_state)?;
         debug!(
             bid_year = result.new_state.bid_year.year(),
             area = result.new_state.area.id(),
@@ -71,7 +77,7 @@ pub fn persist_transition(
 
     // Persist full snapshot if required
     if should_snapshot {
-        persist_state_snapshot(conn, &result.new_state, event_id)?;
+        persist_state_snapshot_sqlite(conn, &result.new_state, event_id)?;
         debug!(event_id, "Persisted full state snapshot");
     }
 
@@ -80,7 +86,63 @@ pub fn persist_transition(
     Ok(event_id)
 }
 
-/// Persists a bootstrap result (audit event for bid year/area creation).
+/// Persists a transition result (audit event and optionally a full snapshot) - `MySQL` version.
+///
+/// # Arguments
+///
+/// * `conn` - The active database connection
+/// * `result` - The transition result to persist
+/// * `should_snapshot` - Whether to persist a full state snapshot
+///
+/// # Returns
+///
+/// The event ID assigned to the persisted audit event.
+///
+/// # Errors
+///
+/// Returns an error if persistence fails.
+pub fn persist_transition_mysql(
+    conn: &mut MysqlConnection,
+    result: &TransitionResult,
+    should_snapshot: bool,
+) -> Result<i64, PersistenceError> {
+    // Persist the audit event
+    let event_id: i64 = persist_audit_event_mysql(conn, &result.audit_event)?;
+    debug!(event_id, "Persisted audit event");
+
+    // Update canonical state based on action type
+    // RegisterUser is incremental (insert one user), others are full state replacement
+    if result.audit_event.action.name.as_str() == "RegisterUser" {
+        // Insert just the new user incrementally
+        insert_new_user_mysql(conn, &result.new_state)?;
+        debug!(
+            bid_year = result.new_state.bid_year.year(),
+            area = result.new_state.area.id(),
+            "Inserted new user"
+        );
+    } else {
+        // For all other operations, do full state sync
+        sync_canonical_users_mysql(conn, &result.new_state)?;
+        debug!(
+            bid_year = result.new_state.bid_year.year(),
+            area = result.new_state.area.id(),
+            user_count = result.new_state.users.len(),
+            "Synced canonical users table"
+        );
+    }
+
+    // Persist full snapshot if required
+    if should_snapshot {
+        persist_state_snapshot_mysql(conn, &result.new_state, event_id)?;
+        debug!(event_id, "Persisted full state snapshot");
+    }
+
+    info!(event_id, should_snapshot, "Persisted transition");
+
+    Ok(event_id)
+}
+
+/// Persists a bootstrap result (audit event for bid year/area creation) - `SQLite` version.
 ///
 /// Phase 23A: This function inserts the canonical record first to obtain
 /// the generated ID, then persists the audit event with both the ID and display values.
@@ -98,7 +160,7 @@ pub fn persist_transition(
 ///
 /// Returns an error if persistence fails.
 #[allow(clippy::too_many_lines)]
-pub fn persist_bootstrap(
+pub fn persist_bootstrap_sqlite(
     conn: &mut SqliteConnection,
     result: &BootstrapResult,
 ) -> Result<i64, PersistenceError> {
@@ -131,7 +193,7 @@ pub fn persist_bootstrap(
                 ))
                 .execute(conn)?;
 
-            let bid_year_id: i64 = get_last_insert_rowid(conn)?;
+            let bid_year_id: i64 = conn.get_last_insert_rowid()?;
 
             debug!(
                 bid_year_id,
@@ -143,8 +205,12 @@ pub fn persist_bootstrap(
 
             // Persist audit event with the generated ID
             // Note: For CreateBidYear, area is a placeholder, so area_id is None
-            let event_id: i64 =
-                persist_audit_event_with_ids(conn, &result.audit_event, Some(bid_year_id), None)?;
+            let event_id: i64 = persist_audit_event_with_ids_sqlite(
+                conn,
+                &result.audit_event,
+                Some(bid_year_id),
+                None,
+            )?;
             debug!(
                 event_id,
                 "Persisted bootstrap audit event for CreateBidYear"
@@ -155,7 +221,7 @@ pub fn persist_bootstrap(
         }
         "CreateArea" => {
             // Look up bid_year_id
-            let bid_year_id: i64 = lookup_bid_year_id(
+            let bid_year_id: i64 = lookup_bid_year_id_sqlite(
                 conn,
                 result
                     .audit_event
@@ -178,7 +244,7 @@ pub fn persist_bootstrap(
                 ))
                 .execute(conn)?;
 
-            let area_id: i64 = get_last_insert_rowid(conn)?;
+            let area_id: i64 = conn.get_last_insert_rowid()?;
 
             debug!(
                 area_id,
@@ -193,7 +259,7 @@ pub fn persist_bootstrap(
             );
 
             // Persist audit event with the generated IDs
-            let event_id: i64 = persist_audit_event_with_ids(
+            let event_id: i64 = persist_audit_event_with_ids_sqlite(
                 conn,
                 &result.audit_event,
                 Some(bid_year_id),
@@ -214,7 +280,7 @@ pub fn persist_bootstrap(
                     .clone()
                     .expect("CreateArea must have area"),
             );
-            persist_state_snapshot(conn, &initial_state, event_id)?;
+            persist_state_snapshot_sqlite(conn, &initial_state, event_id)?;
             debug!(event_id, "Created initial empty snapshot for new area");
 
             info!(event_id, area_id, bid_year_id, "Persisted CreateArea");
@@ -222,7 +288,7 @@ pub fn persist_bootstrap(
         }
         _ => {
             // Non-bootstrap actions should use the standard persist path
-            let event_id: i64 = persist_audit_event(conn, &result.audit_event)?;
+            let event_id: i64 = persist_audit_event_sqlite(conn, &result.audit_event)?;
             debug!(event_id, "Persisted bootstrap audit event");
             info!(event_id, "Persisted bootstrap operation");
             Ok(event_id)
@@ -230,6 +296,161 @@ pub fn persist_bootstrap(
     }
 }
 
+/// Persists a bootstrap result (audit event for bid year/area creation) - `MySQL` version.
+///
+/// Phase 23A: This function inserts the canonical record first to obtain
+/// the generated ID, then persists the audit event with both the ID and display values.
+///
+/// # Arguments
+///
+/// * `conn` - The active database connection
+/// * `result` - The bootstrap result to persist
+///
+/// # Returns
+///
+/// The event ID assigned to the persisted audit event.
+///
+/// # Errors
+///
+/// Returns an error if persistence fails.
+#[allow(clippy::too_many_lines)]
+pub fn persist_bootstrap_mysql(
+    conn: &mut MysqlConnection,
+    result: &BootstrapResult,
+) -> Result<i64, PersistenceError> {
+    // Update canonical tables first to generate IDs
+    match result.audit_event.action.name.as_str() {
+        "CreateBidYear" => {
+            // Extract canonical bid year metadata
+            let canonical: &CanonicalBidYear = result
+                .canonical_bid_year
+                .as_ref()
+                .expect("CreateBidYear must include canonical_bid_year");
+
+            // Format date as ISO 8601 string for storage
+            let start_date_str: String = canonical.start_date().to_string();
+            let year_i32: i32 = canonical
+                .year()
+                .to_i32()
+                .ok_or_else(|| PersistenceError::Other("Year out of range".to_string()))?;
+            let num_pay_periods_i32: i32 =
+                canonical.num_pay_periods().to_i32().ok_or_else(|| {
+                    PersistenceError::Other("num_pay_periods out of range".to_string())
+                })?;
+
+            // Insert bid year and get generated ID
+            diesel::insert_into(diesel_schema::bid_years::table)
+                .values((
+                    diesel_schema::bid_years::year.eq(year_i32),
+                    diesel_schema::bid_years::start_date.eq(&start_date_str),
+                    diesel_schema::bid_years::num_pay_periods.eq(num_pay_periods_i32),
+                ))
+                .execute(conn)?;
+
+            let bid_year_id: i64 = conn.get_last_insert_rowid()?;
+
+            debug!(
+                bid_year_id,
+                bid_year = canonical.year(),
+                start_date = %start_date_str,
+                num_pay_periods = canonical.num_pay_periods(),
+                "Inserted bid year with canonical metadata into canonical table"
+            );
+
+            // Persist audit event with the generated ID
+            // Note: For CreateBidYear, area is a placeholder, so area_id is None
+            let event_id: i64 = persist_audit_event_with_ids_mysql(
+                conn,
+                &result.audit_event,
+                Some(bid_year_id),
+                None,
+            )?;
+            debug!(
+                event_id,
+                "Persisted bootstrap audit event for CreateBidYear"
+            );
+
+            info!(event_id, bid_year_id, "Persisted CreateBidYear");
+            Ok(event_id)
+        }
+        "CreateArea" => {
+            // Look up bid_year_id
+            let bid_year_id: i64 = lookup_bid_year_id_mysql(
+                conn,
+                result
+                    .audit_event
+                    .bid_year
+                    .as_ref()
+                    .expect("CreateArea must have bid_year")
+                    .year(),
+            )?;
+
+            // Insert area and get generated ID
+            diesel::insert_into(diesel_schema::areas::table)
+                .values((
+                    diesel_schema::areas::bid_year_id.eq(bid_year_id),
+                    diesel_schema::areas::area_code.eq(result
+                        .audit_event
+                        .area
+                        .as_ref()
+                        .expect("CreateArea must have area")
+                        .id()),
+                ))
+                .execute(conn)?;
+
+            let area_id: i64 = conn.get_last_insert_rowid()?;
+
+            debug!(
+                area_id,
+                bid_year_id,
+                area_code = result
+                    .audit_event
+                    .area
+                    .as_ref()
+                    .expect("CreateArea must have area")
+                    .id(),
+                "Inserted area into canonical table"
+            );
+
+            // Persist audit event with the generated IDs
+            let event_id: i64 = persist_audit_event_with_ids_mysql(
+                conn,
+                &result.audit_event,
+                Some(bid_year_id),
+                Some(area_id),
+            )?;
+            debug!(event_id, "Persisted bootstrap audit event for CreateArea");
+
+            // Create an initial empty snapshot for new areas
+            let initial_state: State = State::new(
+                result
+                    .audit_event
+                    .bid_year
+                    .clone()
+                    .expect("CreateArea must have bid_year"),
+                result
+                    .audit_event
+                    .area
+                    .clone()
+                    .expect("CreateArea must have area"),
+            );
+            persist_state_snapshot_mysql(conn, &initial_state, event_id)?;
+            debug!(event_id, "Created initial empty snapshot for new area");
+
+            info!(event_id, area_id, bid_year_id, "Persisted CreateArea");
+            Ok(event_id)
+        }
+        _ => {
+            // Non-bootstrap actions should use the standard persist path
+            let event_id: i64 = persist_audit_event_mysql(conn, &result.audit_event)?;
+            debug!(event_id, "Persisted bootstrap audit event");
+            info!(event_id, "Persisted bootstrap operation");
+            Ok(event_id)
+        }
+    }
+}
+
+backend_fn! {
 /// Sets a bid year as active, ensuring only one bid year is active at a time.
 ///
 /// This method atomically updates the active status:
@@ -244,10 +465,7 @@ pub fn persist_bootstrap(
 /// # Errors
 ///
 /// Returns an error if the database cannot be updated or the bid year doesn't exist.
-pub fn set_active_bid_year(
-    conn: &mut SqliteConnection,
-    bid_year_id: i64,
-) -> Result<(), PersistenceError> {
+pub fn set_active_bid_year(conn: &mut _, bid_year_id: i64) -> Result<(), PersistenceError> {
     // Clear active flag from all bid years
     diesel::update(diesel_schema::bid_years::table)
         .set(diesel_schema::bid_years::is_active.eq(0))
@@ -268,7 +486,9 @@ pub fn set_active_bid_year(
     info!(bid_year_id, "Set active bid year");
     Ok(())
 }
+}
 
+backend_fn! {
 /// Sets the expected area count for a bid year.
 ///
 /// # Arguments
@@ -281,7 +501,7 @@ pub fn set_active_bid_year(
 ///
 /// Returns an error if the database cannot be updated or the bid year doesn't exist.
 pub fn set_expected_area_count(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     bid_year_id: i64,
     count: usize,
 ) -> Result<(), PersistenceError> {
@@ -303,7 +523,9 @@ pub fn set_expected_area_count(
     debug!(bid_year_id, count, "Set expected area count");
     Ok(())
 }
+}
 
+backend_fn! {
 /// Sets the expected user count for an area.
 ///
 /// # Arguments
@@ -317,7 +539,7 @@ pub fn set_expected_area_count(
 ///
 /// Returns an error if the database cannot be updated or the area doesn't exist.
 pub fn set_expected_user_count(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     bid_year_id: i64,
     area_id: i64,
     count: usize,
@@ -338,4 +560,5 @@ pub fn set_expected_user_count(
 
     debug!(bid_year_id, area_id, count, "Set expected user count");
     Ok(())
+}
 }

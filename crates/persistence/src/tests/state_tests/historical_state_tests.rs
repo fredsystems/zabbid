@@ -160,15 +160,6 @@ fn test_get_historical_state_before_any_snapshot_returns_error() {
 
 #[test]
 fn test_get_historical_state_is_deterministic() {
-    use diesel::prelude::*;
-    use diesel::sql_query;
-
-    #[derive(diesel::QueryableByName)]
-    struct TimestampRow {
-        #[diesel(sql_type = diesel::sql_types::Text)]
-        created_at: String,
-    }
-
     let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
@@ -185,11 +176,8 @@ fn test_get_historical_state_is_deterministic() {
     .unwrap();
     persistence.persist_transition(&result).unwrap();
 
-    // Get the timestamp
-    let timestamp: String = sql_query("SELECT created_at FROM audit_events WHERE event_id = 1")
-        .get_result::<TimestampRow>(&mut persistence.conn)
-        .unwrap()
-        .created_at;
+    // Use a far-future timestamp that will definitely be after the persisted event
+    let timestamp: String = String::from("9999-12-31 23:59:59");
 
     // Query multiple times
     let state1: State = persistence

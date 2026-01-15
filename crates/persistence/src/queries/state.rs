@@ -5,11 +5,14 @@
 
 //! State snapshot and reconstruction queries.
 //!
-//! This module contains backend-agnostic queries for retrieving and
-//! reconstructing state from snapshots and canonical tables.
-//! All queries use Diesel DSL and work across all supported database backends.
+//! This module contains queries for retrieving and reconstructing state
+//! from snapshots and canonical tables.
+//!
+//! All queries are generated in backend-specific monomorphic versions
+//! (`_sqlite` and `_mysql` suffixes) using the `backend_fn!` macro.
 
 use diesel::prelude::*;
+use diesel::{MysqlConnection, SqliteConnection};
 use zab_bid::State;
 use zab_bid_domain::{Area, BidYear, Crew, Initials, SeniorityData, User, UserType};
 
@@ -46,7 +49,8 @@ struct UserRow {
     lottery_value: Option<i32>,
 }
 
-/// Retrieves the most recent state snapshot for a `(bid_year, area)` scope.
+backend_fn! {
+/// Retrieves the most recent state snapshot for a `(BidYear, Area)` scope.
 ///
 /// Phase 23A: Now uses `bid_year_id` and `area_id` for queries.
 ///
@@ -59,8 +63,13 @@ struct UserRow {
 /// # Errors
 ///
 /// Returns an error if no snapshot exists or cannot be deserialized.
+///
+/// # Generated Functions
+///
+/// - `get_latest_snapshot_sqlite(&mut SqliteConnection, i64, i64)`
+/// - `get_latest_snapshot_mysql(&mut MysqlConnection, i64, i64)`
 pub fn get_latest_snapshot(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     bid_year_id: i64,
     area_id: i64,
 ) -> Result<(State, i64), PersistenceError> {
@@ -94,7 +103,9 @@ pub fn get_latest_snapshot(
         event_id,
     ))
 }
+}
 
+backend_fn! {
 /// Retrieves the most recent snapshot at or before a given timestamp.
 ///
 /// # Arguments
@@ -107,8 +118,13 @@ pub fn get_latest_snapshot(
 /// # Errors
 ///
 /// Returns an error if no snapshot exists before the timestamp.
+///
+/// # Generated Functions
+///
+/// - `get_snapshot_before_timestamp_sqlite(&mut SqliteConnection, i64, i64, &str)`
+/// - `get_snapshot_before_timestamp_mysql(&mut MysqlConnection, i64, i64, &str)`
 pub fn get_snapshot_before_timestamp(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     bid_year_id: i64,
     area_id: i64,
     timestamp: &str,
@@ -145,8 +161,10 @@ pub fn get_snapshot_before_timestamp(
         event_id,
     ))
 }
+}
 
-/// Retrieves the current effective state for a given `(bid_year, area)` scope.
+backend_fn! {
+/// Retrieves the current effective state for a given `(BidYear, Area)` scope.
 ///
 /// This queries the canonical `users` table to reconstruct the current state.
 ///
@@ -161,8 +179,13 @@ pub fn get_snapshot_before_timestamp(
 /// # Errors
 ///
 /// Returns an error if the database cannot be queried.
+///
+/// # Generated Functions
+///
+/// - `get_current_state_sqlite(&mut SqliteConnection, i64, i64, &BidYear, &Area)`
+/// - `get_current_state_mysql(&mut MysqlConnection, i64, i64, &BidYear, &Area)`
 pub fn get_current_state(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     bid_year_id: i64,
     area_id: i64,
     bid_year: &BidYear,
@@ -225,8 +248,11 @@ pub fn get_current_state(
 
     Ok(state)
 }
+}
 
-/// Retrieves the effective state for a given `(bid_year, area)` scope at a specific timestamp.
+/// Retrieves the effective state for a given `(BidYear, Area)` scope at a specific timestamp.
+///
+/// `SQLite` version.
 ///
 /// This is a read-only operation that returns the most recent snapshot at or before
 /// the target timestamp. In the current implementation, snapshots represent complete
@@ -245,7 +271,7 @@ pub fn get_current_state(
 /// # Errors
 ///
 /// Returns an error if no snapshot exists before the timestamp.
-pub fn get_historical_state(
+pub fn get_historical_state_sqlite(
     conn: &mut SqliteConnection,
     bid_year_id: i64,
     area_id: i64,
@@ -260,7 +286,56 @@ pub fn get_historical_state(
 
     // Get the most recent snapshot at or before the timestamp - this IS the historical state
     let (state, snapshot_event_id): (State, i64) =
-        get_snapshot_before_timestamp(conn, bid_year_id, area_id, timestamp)?;
+        get_snapshot_before_timestamp_sqlite(conn, bid_year_id, area_id, timestamp)?;
+
+    tracing::info!(
+        bid_year_id,
+        area_id,
+        timestamp,
+        snapshot_event_id,
+        "Retrieved historical state from snapshot"
+    );
+
+    Ok(state)
+}
+
+/// Retrieves the effective state for a given `(BidYear, Area)` scope at a specific timestamp.
+///
+/// `MySQL` version.
+///
+/// This is a read-only operation that returns the most recent snapshot at or before
+/// the target timestamp. In the current implementation, snapshots represent complete
+/// state at specific points, and non-snapshot events are for audit trail purposes only.
+///
+/// If the timestamp does not correspond exactly to a snapshot, the most recent
+/// prior snapshot defines the state.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `area_id` - The canonical area ID
+/// * `timestamp` - The target timestamp (ISO 8601 format)
+///
+/// # Errors
+///
+/// Returns an error if no snapshot exists before the timestamp.
+pub fn get_historical_state_mysql(
+    conn: &mut MysqlConnection,
+    bid_year_id: i64,
+    area_id: i64,
+    timestamp: &str,
+) -> Result<State, PersistenceError> {
+    tracing::debug!(
+        bid_year_id,
+        area_id,
+        timestamp,
+        "Retrieving historical state"
+    );
+
+    // Get the most recent snapshot at or before the timestamp - this IS the historical state
+    let (state, snapshot_event_id): (State, i64) =
+        get_snapshot_before_timestamp_mysql(conn, bid_year_id, area_id, timestamp)?;
 
     tracing::info!(
         bid_year_id,

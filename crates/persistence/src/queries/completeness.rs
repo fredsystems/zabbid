@@ -3,23 +3,28 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-//! Completeness and count queries.
+//! Completeness tracking queries.
 //!
-//! This module contains backend-agnostic queries for counting entities
-//! across bid years and areas. All queries use Diesel DSL and work across
-//! all supported database backends.
+//! This module contains queries for counting users and areas
+//! across different scopes. These queries support the completeness tracking system.
+//!
+//! All queries are generated in backend-specific monomorphic versions
+//! (`_sqlite` and `_mysql` suffixes) using the `backend_fn!` macro.
 
 use diesel::prelude::*;
+use diesel::{MysqlConnection, SqliteConnection};
 use num_traits::ToPrimitive;
 
 use crate::diesel_schema::{areas, bid_years, users};
 use crate::error::PersistenceError;
 
+backend_fn! {
+
 /// Counts users per area for a given bid year.
 ///
 /// Returns a vector of tuples containing (`area_code`, `user_count`).
 ///
-/// Phase 23A: Now uses `bid_year_id` for queries.
+/// Phase 23A: Now uses canonical `bid_year_id` for queries.
 ///
 /// # Arguments
 ///
@@ -30,7 +35,7 @@ use crate::error::PersistenceError;
 ///
 /// Returns an error if the database cannot be queried or if count conversion fails.
 pub fn count_users_by_area(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     bid_year_id: i64,
 ) -> Result<Vec<(String, usize)>, PersistenceError> {
     let rows = users::table
@@ -51,6 +56,9 @@ pub fn count_users_by_area(
 
     Ok(result)
 }
+}
+
+backend_fn! {
 
 /// Counts areas per bid year.
 ///
@@ -65,9 +73,7 @@ pub fn count_users_by_area(
 /// # Errors
 ///
 /// Returns an error if the database cannot be queried or if conversions fail.
-pub fn count_areas_by_bid_year(
-    conn: &mut SqliteConnection,
-) -> Result<Vec<(u16, usize)>, PersistenceError> {
+pub fn count_areas_by_bid_year(conn: &mut _) -> Result<Vec<(u16, usize)>, PersistenceError> {
     let rows = areas::table
         .inner_join(bid_years::table.on(areas::bid_year_id.eq(bid_years::bid_year_id)))
         .group_by(bid_years::year)
@@ -88,6 +94,9 @@ pub fn count_areas_by_bid_year(
 
     Ok(result)
 }
+}
+
+backend_fn! {
 
 /// Counts total users per bid year across all areas.
 ///
@@ -102,9 +111,7 @@ pub fn count_areas_by_bid_year(
 /// # Errors
 ///
 /// Returns an error if the database cannot be queried or if conversions fail.
-pub fn count_users_by_bid_year(
-    conn: &mut SqliteConnection,
-) -> Result<Vec<(u16, usize)>, PersistenceError> {
+pub fn count_users_by_bid_year(conn: &mut _) -> Result<Vec<(u16, usize)>, PersistenceError> {
     let rows = users::table
         .inner_join(bid_years::table.on(users::bid_year_id.eq(bid_years::bid_year_id)))
         .group_by(bid_years::year)
@@ -125,6 +132,9 @@ pub fn count_users_by_bid_year(
 
     Ok(result)
 }
+}
+
+backend_fn! {
 
 /// Counts users per (`bid_year`, `area_id`) combination.
 ///
@@ -140,7 +150,7 @@ pub fn count_users_by_bid_year(
 ///
 /// Returns an error if the database cannot be queried or if conversions fail.
 pub fn count_users_by_bid_year_and_area(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
 ) -> Result<Vec<(u16, String, usize)>, PersistenceError> {
     let rows = users::table
         .inner_join(bid_years::table.on(users::bid_year_id.eq(bid_years::bid_year_id)))
@@ -166,4 +176,5 @@ pub fn count_users_by_bid_year_and_area(
     }
 
     Ok(result)
+}
 }

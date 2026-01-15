@@ -10,6 +10,7 @@
 //! supported database backends.
 
 use diesel::prelude::*;
+use diesel::{MysqlConnection, SqliteConnection};
 use num_traits::ToPrimitive;
 use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
 use zab_bid_domain::{Area, BidYear};
@@ -39,6 +40,7 @@ struct AuditEventFullRow {
     created_at: Option<String>,
 }
 
+backend_fn! {
 /// Retrieves an audit event by ID.
 ///
 /// Phase 23A: Now retrieves and uses canonical IDs to construct domain objects.
@@ -51,10 +53,7 @@ struct AuditEventFullRow {
 /// # Errors
 ///
 /// Returns an error if the event is not found or cannot be deserialized.
-pub fn get_audit_event(
-    conn: &mut SqliteConnection,
-    event_id: i64,
-) -> Result<AuditEvent, PersistenceError> {
+pub fn get_audit_event(conn: &mut _, event_id: i64) -> Result<AuditEvent, PersistenceError> {
     let result = audit_events::table
         .filter(audit_events::event_id.eq(event_id))
         .select(AuditEventFullRow::as_select())
@@ -114,7 +113,9 @@ pub fn get_audit_event(
         area,
     ))
 }
+}
 
+backend_fn! {
 /// Retrieves all audit events for a `(bid_year, area)` scope after a given event ID.
 ///
 /// Phase 23A: Now uses `bid_year_id` and `area_id` for queries.
@@ -130,7 +131,7 @@ pub fn get_audit_event(
 ///
 /// Returns an error if events cannot be retrieved or deserialized.
 pub fn get_events_after(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     bid_year_id: i64,
     area_id: i64,
     after_event_id: i64,
@@ -195,7 +196,9 @@ pub fn get_events_after(
 
     events
 }
+}
 
+backend_fn! {
 /// Retrieves the complete audit timeline for a given `(bid_year, area)` scope.
 ///
 /// Phase 23A: Now uses `bid_year_id` and `area_id` for queries.
@@ -211,7 +214,7 @@ pub fn get_events_after(
 /// Returns an error if events cannot be retrieved or deserialized.
 #[allow(clippy::too_many_lines)]
 pub fn get_audit_timeline(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     bid_year_id: i64,
     area_id: i64,
 ) -> Result<Vec<AuditEvent>, PersistenceError> {
@@ -313,7 +316,9 @@ pub fn get_audit_timeline(
 
     Ok(event_list)
 }
+}
 
+backend_fn! {
 /// Retrieves all global audit events (events with no bid year or area scope).
 ///
 /// Global events include operator-management actions and other system-level operations
@@ -328,9 +333,7 @@ pub fn get_audit_timeline(
 /// # Errors
 ///
 /// Returns an error if events cannot be retrieved or deserialized.
-pub fn get_global_audit_events(
-    conn: &mut SqliteConnection,
-) -> Result<Vec<AuditEvent>, PersistenceError> {
+pub fn get_global_audit_events(conn: &mut _) -> Result<Vec<AuditEvent>, PersistenceError> {
     tracing::debug!("Retrieving global audit timeline");
 
     let rows = audit_events::table
@@ -417,4 +420,5 @@ pub fn get_global_audit_events(
     );
 
     Ok(event_list)
+}
 }

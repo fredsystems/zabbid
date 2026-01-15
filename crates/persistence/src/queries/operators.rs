@@ -10,6 +10,7 @@
 //! database backends.
 
 use diesel::prelude::*;
+use diesel::{MysqlConnection, SqliteConnection};
 use tracing::debug;
 
 use crate::data_models::{OperatorData, SessionData};
@@ -43,6 +44,7 @@ struct SessionRow {
     expires_at: String,
 }
 
+backend_fn! {
 /// Retrieves an operator by login name.
 ///
 /// The `login_name` is normalized to uppercase for case-insensitive lookup.
@@ -57,7 +59,7 @@ struct SessionRow {
 /// Returns an error if the database query fails.
 /// Returns `Ok(None)` if the operator is not found.
 pub fn get_operator_by_login(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     login_name: &str,
 ) -> Result<Option<OperatorData>, PersistenceError> {
     let normalized_login: String = login_name.to_uppercase();
@@ -85,7 +87,9 @@ pub fn get_operator_by_login(
         Err(e) => Err(PersistenceError::from(e)),
     }
 }
+}
 
+backend_fn! {
 /// Retrieves an operator by ID.
 ///
 /// # Arguments
@@ -98,7 +102,7 @@ pub fn get_operator_by_login(
 /// Returns an error if the database query fails.
 /// Returns `Ok(None)` if the operator is not found.
 pub fn get_operator_by_id(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     operator_id: i64,
 ) -> Result<Option<OperatorData>, PersistenceError> {
     debug!("Looking up operator by ID: {}", operator_id);
@@ -124,7 +128,9 @@ pub fn get_operator_by_id(
         Err(e) => Err(PersistenceError::from(e)),
     }
 }
+}
 
+backend_fn! {
 /// Retrieves a session by token.
 ///
 /// # Arguments
@@ -137,7 +143,7 @@ pub fn get_operator_by_id(
 /// Returns an error if the database query fails.
 /// Returns `Ok(None)` if the session is not found.
 pub fn get_session_by_token(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     session_token: &str,
 ) -> Result<Option<SessionData>, PersistenceError> {
     debug!("Looking up session by token");
@@ -160,7 +166,9 @@ pub fn get_session_by_token(
         Err(e) => Err(PersistenceError::from(e)),
     }
 }
+}
 
+backend_fn! {
 /// Checks if an operator is referenced by any audit events.
 ///
 /// # Arguments
@@ -171,10 +179,7 @@ pub fn get_session_by_token(
 /// # Errors
 ///
 /// Returns an error if the database query fails.
-pub fn is_operator_referenced(
-    conn: &mut SqliteConnection,
-    operator_id: i64,
-) -> Result<bool, PersistenceError> {
+pub fn is_operator_referenced(conn: &mut _, operator_id: i64) -> Result<bool, PersistenceError> {
     use diesel::dsl::count;
 
     debug!(
@@ -189,7 +194,9 @@ pub fn is_operator_referenced(
 
     Ok(count > 0)
 }
+}
 
+backend_fn! {
 /// Lists all operators.
 ///
 /// # Arguments
@@ -199,7 +206,7 @@ pub fn is_operator_referenced(
 /// # Errors
 ///
 /// Returns an error if the database query fails.
-pub fn list_operators(conn: &mut SqliteConnection) -> Result<Vec<OperatorData>, PersistenceError> {
+pub fn list_operators(conn: &mut _) -> Result<Vec<OperatorData>, PersistenceError> {
     debug!("Listing all operators");
 
     let rows: Vec<OperatorRow> = operators::table
@@ -224,7 +231,9 @@ pub fn list_operators(conn: &mut SqliteConnection) -> Result<Vec<OperatorData>, 
 
     Ok(operators_list)
 }
+}
 
+backend_fn! {
 /// Counts the total number of operators.
 ///
 /// # Arguments
@@ -234,7 +243,7 @@ pub fn list_operators(conn: &mut SqliteConnection) -> Result<Vec<OperatorData>, 
 /// # Errors
 ///
 /// Returns an error if the database query fails.
-pub fn count_operators(conn: &mut SqliteConnection) -> Result<i64, PersistenceError> {
+pub fn count_operators(conn: &mut _) -> Result<i64, PersistenceError> {
     use diesel::dsl::count;
 
     debug!("Counting operators");
@@ -246,7 +255,9 @@ pub fn count_operators(conn: &mut SqliteConnection) -> Result<i64, PersistenceEr
     debug!("Total operators: {}", count);
     Ok(count)
 }
+}
 
+backend_fn! {
 /// Counts the number of active admin operators.
 ///
 /// An active admin operator is one where:
@@ -260,7 +271,7 @@ pub fn count_operators(conn: &mut SqliteConnection) -> Result<i64, PersistenceEr
 /// # Errors
 ///
 /// Returns an error if the database query fails.
-pub fn count_active_admin_operators(conn: &mut SqliteConnection) -> Result<i64, PersistenceError> {
+pub fn count_active_admin_operators(conn: &mut _) -> Result<i64, PersistenceError> {
     use diesel::dsl::count;
 
     debug!("Counting active admin operators");
@@ -273,6 +284,7 @@ pub fn count_active_admin_operators(conn: &mut SqliteConnection) -> Result<i64, 
 
     debug!("Active admin operators: {}", count);
     Ok(count)
+}
 }
 
 /// Verifies a password against a stored hash.

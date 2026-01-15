@@ -2278,8 +2278,9 @@ fn test_csv_import_multiple_users_same_area() {
     metadata.areas.push((BidYear::new(2026), Area::new("EAST")));
 
     // Set active bid year
+    let bid_year_2026 = BidYear::new(2026);
     persistence
-        .set_active_bid_year(2026)
+        .set_active_bid_year(&bid_year_2026)
         .expect("Failed to set active bid year");
 
     // CSV with 2 users in EAST area - this tests the bug fix where only the last user was persisted
@@ -2402,8 +2403,9 @@ fn test_csv_import_is_additive_not_destructive() {
     metadata.areas.push((BidYear::new(2026), Area::new("EAST")));
 
     // Set active bid year
+    let bid_year_2026 = BidYear::new(2026);
     persistence
-        .set_active_bid_year(2026)
+        .set_active_bid_year(&bid_year_2026)
         .expect("Failed to set active bid year");
 
     // Test importing 3 users in a single CSV file

@@ -81,7 +81,8 @@
 //! Schema divergence is a **critical failure**. Tooling enforces this invariant.
 //! See AGENTS.md § Migration Guardrails & Schema Parity Enforcement for details.
 
-use diesel::sql_types::Integer;
+use diesel::dsl::sql;
+use diesel::sql_types::{BigInt, Integer};
 use diesel::{Connection, MysqlConnection, QueryableByName, RunQueryDsl};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use tracing::info;
@@ -90,18 +91,34 @@ use crate::error::PersistenceError;
 
 /// Result type for foreign key check query.
 #[derive(QueryableByName)]
-#[allow(dead_code)]
 struct ForeignKeyCheck {
     #[diesel(sql_type = Integer)]
     fk_checks: i32,
 }
 
-/// MySQL-specific migrations.
+/// Helper function to get the last inserted row ID.
+///
+/// `MySQL` supports `LAST_INSERT_ID()` to retrieve the auto-increment ID
+/// of the most recently inserted row.
+///
+/// This is a justified use of raw SQL as `Diesel` has no direct API for this.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+///
+/// # Errors
+///
+/// Returns an error if the query fails.
+pub fn get_last_insert_rowid(conn: &mut MysqlConnection) -> Result<i64, PersistenceError> {
+    Ok(diesel::select(sql::<BigInt>("LAST_INSERT_ID()")).get_result(conn)?)
+}
+
+/// `MySQL`-specific migrations.
 ///
 /// These migrations are functionally equivalent to the `SQLite` migrations
-/// but use MySQL-compatible syntax (e.g., `AUTO_INCREMENT` instead of `AUTOINCREMENT`,
+/// but use `MySQL`-compatible syntax (e.g., `AUTO_INCREMENT` instead of `AUTOINCREMENT`,
 /// `BIGINT` instead of `INTEGER`, `VARCHAR` instead of `TEXT` where appropriate).
-#[allow(dead_code)]
 pub const MYSQL_MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations_mysql");
 
 /// Initialize a `MySQL` database at the given URL and run migrations.
@@ -118,7 +135,6 @@ pub const MYSQL_MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations_m
 /// # Errors
 ///
 /// Returns an error if connection or migration fails.
-#[allow(dead_code)]
 pub fn initialize_database(database_url: &str) -> Result<MysqlConnection, PersistenceError> {
     info!("Initializing MySQL database at: {}", database_url);
 
@@ -142,7 +158,6 @@ pub fn initialize_database(database_url: &str) -> Result<MysqlConnection, Persis
 /// # Errors
 ///
 /// Returns an error if migration execution fails.
-#[allow(dead_code)]
 pub fn run_migrations(
     conn: &mut MysqlConnection,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -159,7 +174,6 @@ pub fn run_migrations(
 /// # Errors
 ///
 /// Returns an error if verification fails.
-#[allow(dead_code)]
 pub fn verify_foreign_key_enforcement(conn: &mut MysqlConnection) -> Result<(), PersistenceError> {
     // Query foreign_key_checks system variable
     // NOTE: This is raw SQL (justified - Diesel has no system variable query DSL)

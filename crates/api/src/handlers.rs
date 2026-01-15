@@ -2136,7 +2136,7 @@ pub fn set_active_bid_year(
 
     // Persist the active bid year setting
     persistence
-        .set_active_bid_year(year)
+        .set_active_bid_year(bid_year)
         .map_err(|e| ApiError::Internal {
             message: format!("Failed to set active bid year: {e}"),
         })?;

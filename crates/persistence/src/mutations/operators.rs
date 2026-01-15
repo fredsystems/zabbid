@@ -7,16 +7,18 @@
 //!
 //! This module contains backend-agnostic mutations for persisting operators
 //! and sessions. Most mutations use Diesel DSL, with minimal backend-specific
-//! helpers for `SQLite`'s `last_insert_rowid()`.
+//! helpers abstracted via the `PersistenceBackend` trait.
 
 use diesel::prelude::*;
+use diesel::{MysqlConnection, SqliteConnection};
 use tracing::{debug, info};
 
-use crate::backend::sqlite::get_last_insert_rowid;
+use crate::backend::PersistenceBackend;
 use crate::diesel_schema::{operators, sessions};
 use crate::error::PersistenceError;
-use crate::queries::operators::is_operator_referenced;
+use crate::queries::operators::{is_operator_referenced_mysql, is_operator_referenced_sqlite};
 
+backend_fn! {
 /// Creates a new operator.
 ///
 /// The `login_name` is normalized to uppercase for case-insensitive uniqueness.
@@ -34,7 +36,7 @@ use crate::queries::operators::is_operator_referenced;
 /// Returns an error if the operator cannot be created or if the login name
 /// already exists.
 pub fn create_operator(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     login_name: &str,
     display_name: &str,
     password: &str,
@@ -60,13 +62,16 @@ pub fn create_operator(
         ))
         .execute(conn)?;
 
-    let operator_id: i64 = get_last_insert_rowid(conn)?;
+    let operator_id: i64 = conn.get_last_insert_rowid()?;
 
+    info!(operator_id, "Operator created successfully");
     info!("Created operator with ID: {}", operator_id);
 
     Ok(operator_id)
 }
+}
 
+backend_fn! {
 /// Updates the last login timestamp for an operator.
 ///
 /// # Arguments
@@ -77,22 +82,21 @@ pub fn create_operator(
 /// # Errors
 ///
 /// Returns an error if the database update fails.
-pub fn update_last_login(
-    conn: &mut SqliteConnection,
-    operator_id: i64,
-) -> Result<(), PersistenceError> {
+pub fn update_last_login(conn: &mut _, operator_id: i64) -> Result<(), PersistenceError> {
     debug!("Updating last_login_at for operator ID: {}", operator_id);
 
     diesel::update(operators::table)
         .filter(operators::operator_id.eq(operator_id))
         .set(operators::last_login_at.eq(diesel::dsl::sql::<
-            diesel::sql_types::Nullable<diesel::sql_types::Timestamp>,
+            diesel::sql_types::Nullable<diesel::sql_types::Text>,
         >("CURRENT_TIMESTAMP")))
         .execute(conn)?;
 
     Ok(())
 }
+}
 
+backend_fn! {
 /// Disables an operator.
 ///
 /// This sets `is_disabled` to true and records the `disabled_at` timestamp.
@@ -105,10 +109,7 @@ pub fn update_last_login(
 /// # Errors
 ///
 /// Returns an error if the database update fails.
-pub fn disable_operator(
-    conn: &mut SqliteConnection,
-    operator_id: i64,
-) -> Result<(), PersistenceError> {
+pub fn disable_operator(conn: &mut _, operator_id: i64) -> Result<(), PersistenceError> {
     info!("Disabling operator ID: {}", operator_id);
 
     diesel::update(operators::table)
@@ -116,14 +117,16 @@ pub fn disable_operator(
         .set((
             operators::is_disabled.eq(1),
             operators::disabled_at.eq(diesel::dsl::sql::<
-                diesel::sql_types::Nullable<diesel::sql_types::Timestamp>,
+                diesel::sql_types::Nullable<diesel::sql_types::Text>,
             >("CURRENT_TIMESTAMP")),
         ))
         .execute(conn)?;
 
     Ok(())
 }
+}
 
+backend_fn! {
 /// Re-enables a disabled operator.
 ///
 /// This sets `is_disabled` to false and clears the `disabled_at` timestamp.
@@ -136,10 +139,7 @@ pub fn disable_operator(
 /// # Errors
 ///
 /// Returns an error if the database update fails.
-pub fn enable_operator(
-    conn: &mut SqliteConnection,
-    operator_id: i64,
-) -> Result<(), PersistenceError> {
+pub fn enable_operator(conn: &mut _, operator_id: i64) -> Result<(), PersistenceError> {
     info!("Re-enabling operator ID: {}", operator_id);
 
     diesel::update(operators::table)
@@ -152,8 +152,9 @@ pub fn enable_operator(
 
     Ok(())
 }
+}
 
-/// Deletes an operator if they are not referenced by any audit events.
+/// Deletes an operator if they are not referenced by any audit events (`SQLite` version).
 ///
 /// # Arguments
 ///
@@ -166,14 +167,14 @@ pub fn enable_operator(
 /// - The operator is referenced by audit events
 /// - The operator does not exist
 /// - The database operation fails
-pub fn delete_operator(
+pub fn delete_operator_sqlite(
     conn: &mut SqliteConnection,
     operator_id: i64,
 ) -> Result<(), PersistenceError> {
     info!("Attempting to delete operator ID: {}", operator_id);
 
     // Check if operator is referenced by audit events
-    if is_operator_referenced(conn, operator_id)? {
+    if is_operator_referenced_sqlite(conn, operator_id)? {
         return Err(PersistenceError::OperatorReferenced { operator_id });
     }
 
@@ -192,6 +193,46 @@ pub fn delete_operator(
     Ok(())
 }
 
+/// Deletes an operator if they are not referenced by any audit events (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `operator_id` - The operator ID
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The operator is referenced by audit events
+/// - The operator does not exist
+/// - The database operation fails
+pub fn delete_operator_mysql(
+    conn: &mut MysqlConnection,
+    operator_id: i64,
+) -> Result<(), PersistenceError> {
+    info!("Attempting to delete operator ID: {}", operator_id);
+
+    // Check if operator is referenced by audit events
+    if is_operator_referenced_mysql(conn, operator_id)? {
+        return Err(PersistenceError::OperatorReferenced { operator_id });
+    }
+
+    // Attempt deletion
+    let rows_affected: usize = diesel::delete(operators::table)
+        .filter(operators::operator_id.eq(operator_id))
+        .execute(conn)?;
+
+    if rows_affected == 0 {
+        return Err(PersistenceError::OperatorNotFound(format!(
+            "Operator with ID {operator_id} not found"
+        )));
+    }
+
+    info!("Deleted operator ID: {}", operator_id);
+    Ok(())
+}
+
+backend_fn! {
 /// Creates a new session for an operator.
 ///
 /// # Arguments
@@ -205,7 +246,7 @@ pub fn delete_operator(
 ///
 /// Returns an error if the session cannot be created.
 pub fn create_session(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     session_token: &str,
     operator_id: i64,
     expires_at: &str,
@@ -223,12 +264,15 @@ pub fn create_session(
         ))
         .execute(conn)?;
 
-    let session_id: i64 = get_last_insert_rowid(conn)?;
+    let session_id: i64 = conn.get_last_insert_rowid()?;
 
+    debug!(session_id, operator_id, "Session created");
     debug!("Created session with ID: {}", session_id);
     Ok(session_id)
 }
+}
 
+backend_fn! {
 /// Updates the last activity timestamp for a session.
 ///
 /// # Arguments
@@ -239,16 +283,13 @@ pub fn create_session(
 /// # Errors
 ///
 /// Returns an error if the database update fails.
-pub fn update_session_activity(
-    conn: &mut SqliteConnection,
-    session_id: i64,
-) -> Result<(), PersistenceError> {
+pub fn update_session_activity(conn: &mut _, session_id: i64) -> Result<(), PersistenceError> {
     debug!("Updating last_activity_at for session ID: {}", session_id);
 
     diesel::update(sessions::table)
         .filter(sessions::session_id.eq(session_id))
         .set(
-            sessions::last_activity_at.eq(diesel::dsl::sql::<diesel::sql_types::Timestamp>(
+            sessions::last_activity_at.eq(diesel::dsl::sql::<diesel::sql_types::Text>(
                 "CURRENT_TIMESTAMP",
             )),
         )
@@ -256,7 +297,9 @@ pub fn update_session_activity(
 
     Ok(())
 }
+}
 
+backend_fn! {
 /// Deletes a session by token.
 ///
 /// This is used for logout operations.
@@ -269,10 +312,7 @@ pub fn update_session_activity(
 /// # Errors
 ///
 /// Returns an error if the database delete fails.
-pub fn delete_session(
-    conn: &mut SqliteConnection,
-    session_token: &str,
-) -> Result<(), PersistenceError> {
+pub fn delete_session(conn: &mut _, session_token: &str) -> Result<(), PersistenceError> {
     debug!("Deleting session by token");
 
     diesel::delete(sessions::table)
@@ -281,7 +321,9 @@ pub fn delete_session(
 
     Ok(())
 }
+}
 
+backend_fn! {
 /// Deletes all expired sessions.
 ///
 /// This is a cleanup operation that should be run periodically.
@@ -293,12 +335,12 @@ pub fn delete_session(
 /// # Errors
 ///
 /// Returns an error if the database delete fails.
-pub fn delete_expired_sessions(conn: &mut SqliteConnection) -> Result<usize, PersistenceError> {
+pub fn delete_expired_sessions(conn: &mut _) -> Result<usize, PersistenceError> {
     debug!("Deleting expired sessions");
 
     let rows_affected: usize = diesel::delete(sessions::table)
         .filter(
-            sessions::expires_at.lt(diesel::dsl::sql::<diesel::sql_types::Timestamp>(
+            sessions::expires_at.lt(diesel::dsl::sql::<diesel::sql_types::Text>(
                 "CURRENT_TIMESTAMP",
             )),
         )
@@ -307,7 +349,9 @@ pub fn delete_expired_sessions(conn: &mut SqliteConnection) -> Result<usize, Per
     info!("Deleted {} expired sessions", rows_affected);
     Ok(rows_affected)
 }
+}
 
+backend_fn! {
 /// Updates an operator's password.
 ///
 /// # Arguments
@@ -320,7 +364,7 @@ pub fn delete_expired_sessions(conn: &mut SqliteConnection) -> Result<usize, Per
 ///
 /// Returns an error if the password cannot be hashed or the update fails.
 pub fn update_password(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     operator_id: i64,
     new_password: &str,
 ) -> Result<(), PersistenceError> {
@@ -338,7 +382,9 @@ pub fn update_password(
     info!("Password updated for operator ID: {}", operator_id);
     Ok(())
 }
+}
 
+backend_fn! {
 /// Deletes all sessions for a specific operator.
 ///
 /// This is used when an operator's password is changed to invalidate all active sessions.
@@ -352,7 +398,7 @@ pub fn update_password(
 ///
 /// Returns an error if the database delete fails.
 pub fn delete_sessions_for_operator(
-    conn: &mut SqliteConnection,
+    conn: &mut _,
     operator_id: i64,
 ) -> Result<usize, PersistenceError> {
     info!("Deleting all sessions for operator ID: {}", operator_id);
@@ -366,4 +412,5 @@ pub fn delete_sessions_for_operator(
         rows_affected, operator_id
     );
     Ok(rows_affected)
+}
 }

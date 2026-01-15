@@ -33,7 +33,7 @@ diesel::table! {
         action_json -> Text,
         before_snapshot_json -> Text,
         after_snapshot_json -> Text,
-        created_at -> Nullable<Timestamp>,
+        created_at -> Nullable<Text>,
     }
 }
 
@@ -56,9 +56,9 @@ diesel::table! {
         password_hash -> Text,
         role -> Text,
         is_disabled -> Integer,
-        created_at -> Timestamp,
-        disabled_at -> Nullable<Timestamp>,
-        last_login_at -> Nullable<Timestamp>,
+        created_at -> Text,
+        disabled_at -> Nullable<Text>,
+        last_login_at -> Nullable<Text>,
     }
 }
 
@@ -67,9 +67,9 @@ diesel::table! {
         session_id -> BigInt,
         session_token -> Text,
         operator_id -> BigInt,
-        created_at -> Timestamp,
-        last_activity_at -> Timestamp,
-        expires_at -> Timestamp,
+        created_at -> Text,
+        last_activity_at -> Text,
+        expires_at -> Text,
     }
 }
 
@@ -80,7 +80,7 @@ diesel::table! {
         area_id -> BigInt,
         event_id -> BigInt,
         state_json -> Text,
-        created_at -> Nullable<Timestamp>,
+        created_at -> Nullable<Text>,
     }
 }
 

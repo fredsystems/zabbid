@@ -46,7 +46,7 @@ use zab_bid_api::{
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials};
-use zab_bid_persistence::{PersistenceError, SqlitePersistence};
+use zab_bid_persistence::{Persistence, PersistenceError};
 
 /// ZAB Bid Server - HTTP server for the ZAB Bidding System
 #[derive(Parser, Debug)]
@@ -66,7 +66,7 @@ struct Args {
     database_url: Option<String>,
 
     /// Port to bind the server to
-    #[arg(short, long, default_value_t = 3000)]
+    #[arg(short, long, default_value_t = 8080)]
     port: u16,
 }
 
@@ -117,7 +117,7 @@ impl Args {
 #[derive(Clone)]
 struct AppState {
     /// The persistence layer for audit events and state snapshots.
-    persistence: Arc<Mutex<SqlitePersistence>>,
+    persistence: Arc<Mutex<Persistence>>,
     /// Live event broadcaster for streaming state changes to connected clients.
     live_events: Arc<LiveEventBroadcaster>,
 }
@@ -2258,23 +2258,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Selected database backend: {}", args.db_backend);
 
     // Initialize persistence based on selected backend
-    let persistence: SqlitePersistence = match args.db_backend.as_str() {
+    let persistence: Persistence = match args.db_backend.as_str() {
         "sqlite" => {
             if let Some(db_path) = &args.database {
                 info!("Using SQLite file-based database at: {}", db_path);
-                SqlitePersistence::new_with_file(db_path)?
+                Persistence::new_with_file(db_path)?
             } else {
                 info!("Using SQLite in-memory database");
-                SqlitePersistence::new_in_memory()?
+                Persistence::new_in_memory()?
             }
         }
         "mysql" => {
-            // MySQL backend selected but not yet implemented for runtime use.
-            // This will be wired in Phase 24H.
-            return Err(
-                "MySQL backend is not yet supported for server runtime. Use --db-backend=sqlite."
-                    .into(),
-            );
+            let database_url = args
+                .database_url
+                .as_ref()
+                .ok_or("MySQL backend requires --database-url")?;
+            info!("Using MySQL database at: {}", database_url);
+            Persistence::new_with_mysql(database_url)?
         }
         _ => {
             // This should never be reached due to validation, but handle defensively
@@ -2312,8 +2312,8 @@ mod tests {
 
     /// Helper to create test app state with in-memory persistence.
     fn create_test_app_state() -> AppState {
-        let persistence: SqlitePersistence =
-            SqlitePersistence::new_in_memory().expect("Failed to create in-memory persistence");
+        let persistence: Persistence =
+            Persistence::new_in_memory().expect("Failed to create in-memory persistence");
         AppState {
             persistence: Arc::new(Mutex::new(persistence)),
             live_events: Arc::new(LiveEventBroadcaster::new()),
