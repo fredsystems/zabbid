@@ -52,13 +52,62 @@ use zab_bid_persistence::{PersistenceError, SqlitePersistence};
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    /// Database backend to use (sqlite or mysql)
+    #[arg(long, default_value = "sqlite")]
+    db_backend: String,
+
     /// Path to the `SQLite` database file. If not provided, uses in-memory database.
+    /// Only valid when --db-backend=sqlite.
     #[arg(short, long)]
     database: Option<String>,
+
+    /// `MySQL` database URL (required when --db-backend=mysql)
+    #[arg(long)]
+    database_url: Option<String>,
 
     /// Port to bind the server to
     #[arg(short, long, default_value_t = 3000)]
     port: u16,
+}
+
+impl Args {
+    /// Validates argument combinations based on selected backend.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Unknown backend is specified
+    /// - `MySQL` backend is selected without --database-url
+    /// - `SQLite` backend is used with --database-url
+    /// - `MySQL` backend is used with --database
+    fn validate(&self) -> Result<(), String> {
+        match self.db_backend.as_str() {
+            "sqlite" => {
+                if self.database_url.is_some() {
+                    return Err(
+                        "SQLite backend does not support --database-url. Use --database instead."
+                            .to_string(),
+                    );
+                }
+                Ok(())
+            }
+            "mysql" => {
+                if self.database_url.is_none() {
+                    return Err("MySQL backend requires --database-url".to_string());
+                }
+                if self.database.is_some() {
+                    return Err(
+                        "MySQL backend does not support --database. Use --database-url instead."
+                            .to_string(),
+                    );
+                }
+                Ok(())
+            }
+            unknown => Err(format!(
+                "Unknown database backend: '{unknown}'. Valid options: sqlite, mysql"
+            )),
+        }
+    }
 }
 
 /// Application state shared across handlers.
@@ -2193,6 +2242,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command-line arguments
     let args: Args = Args::parse();
 
+    // Validate argument combinations
+    args.validate()
+        .map_err(|e| format!("Invalid arguments: {e}"))?;
+
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -2202,14 +2255,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     info!("Initializing ZAB Bid Server");
+    info!("Selected database backend: {}", args.db_backend);
 
-    // Initialize persistence (in-memory or file-based based on CLI argument)
-    let persistence: SqlitePersistence = if let Some(db_path) = &args.database {
-        info!("Using file-based database at: {}", db_path);
-        SqlitePersistence::new_with_file(db_path)?
-    } else {
-        info!("Using in-memory database");
-        SqlitePersistence::new_in_memory()?
+    // Initialize persistence based on selected backend
+    let persistence: SqlitePersistence = match args.db_backend.as_str() {
+        "sqlite" => {
+            if let Some(db_path) = &args.database {
+                info!("Using SQLite file-based database at: {}", db_path);
+                SqlitePersistence::new_with_file(db_path)?
+            } else {
+                info!("Using SQLite in-memory database");
+                SqlitePersistence::new_in_memory()?
+            }
+        }
+        "mysql" => {
+            // MySQL backend selected but not yet implemented for runtime use.
+            // This will be wired in Phase 24H.
+            return Err(
+                "MySQL backend is not yet supported for server runtime. Use --db-backend=sqlite."
+                    .into(),
+            );
+        }
+        _ => {
+            // This should never be reached due to validation, but handle defensively
+            return Err(format!("Unsupported backend: {}", args.db_backend).into());
+        }
     };
 
     let app_state: AppState = AppState {
@@ -2248,6 +2318,127 @@ mod tests {
             persistence: Arc::new(Mutex::new(persistence)),
             live_events: Arc::new(LiveEventBroadcaster::new()),
         }
+    }
+
+    // ========================================================================
+    // Phase 24G Argument Validation Tests
+    // ========================================================================
+
+    #[test]
+    fn test_args_default_sqlite_backend() {
+        let args = Args {
+            db_backend: String::from("sqlite"),
+            database: None,
+            database_url: None,
+            port: 3000,
+        };
+        assert!(args.validate().is_ok());
+    }
+
+    #[test]
+    fn test_args_sqlite_with_file() {
+        let args = Args {
+            db_backend: String::from("sqlite"),
+            database: Some(String::from("./test.db")),
+            database_url: None,
+            port: 3000,
+        };
+        assert!(args.validate().is_ok());
+    }
+
+    #[test]
+    fn test_args_sqlite_rejects_database_url() {
+        let args = Args {
+            db_backend: String::from("sqlite"),
+            database: None,
+            database_url: Some(String::from("mysql://localhost/test")),
+            port: 3000,
+        };
+        let result = args.validate();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("SQLite backend does not support --database-url")
+        );
+    }
+
+    #[test]
+    fn test_args_mysql_requires_database_url() {
+        let args = Args {
+            db_backend: String::from("mysql"),
+            database: None,
+            database_url: None,
+            port: 3000,
+        };
+        let result = args.validate();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("MySQL backend requires --database-url")
+        );
+    }
+
+    #[test]
+    fn test_args_mysql_with_database_url() {
+        let args = Args {
+            db_backend: String::from("mysql"),
+            database: None,
+            database_url: Some(String::from("mysql://user:pass@localhost/zabbid")),
+            port: 3000,
+        };
+        assert!(args.validate().is_ok());
+    }
+
+    #[test]
+    fn test_args_mysql_rejects_database_flag() {
+        let args = Args {
+            db_backend: String::from("mysql"),
+            database: Some(String::from("./test.db")),
+            database_url: Some(String::from("mysql://localhost/test")),
+            port: 3000,
+        };
+        let result = args.validate();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("MySQL backend does not support --database")
+        );
+    }
+
+    #[test]
+    fn test_args_unknown_backend_rejected() {
+        let args = Args {
+            db_backend: String::from("postgres"),
+            database: None,
+            database_url: None,
+            port: 3000,
+        };
+        let result = args.validate();
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Unknown database backend"));
+        assert!(error_msg.contains("postgres"));
+    }
+
+    #[test]
+    fn test_args_sqlite_with_both_flags_rejected() {
+        // SQLite with database_url should fail
+        let args = Args {
+            db_backend: String::from("sqlite"),
+            database: Some(String::from("./test.db")),
+            database_url: Some(String::from("mysql://localhost/test")),
+            port: 3000,
+        };
+        let result = args.validate();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("SQLite backend does not support --database-url")
+        );
     }
 
     // ========================================================================
