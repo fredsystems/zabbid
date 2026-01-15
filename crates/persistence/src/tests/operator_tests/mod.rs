@@ -5,12 +5,12 @@
 
 //! Tests for operator lifecycle persistence operations.
 
-use crate::{PersistenceError, SqlitePersistence};
+use crate::{Persistence, PersistenceError};
 use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
 
 #[test]
 fn test_enable_operator_succeeds() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
 
     // Create an operator
     let operator_id = persistence
@@ -42,7 +42,7 @@ fn test_enable_operator_succeeds() {
 
 #[test]
 fn test_delete_operator_succeeds_when_not_referenced() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
 
     // Create an operator
     let operator_id = persistence
@@ -71,7 +71,7 @@ fn test_delete_operator_succeeds_when_not_referenced() {
 
 #[test]
 fn test_delete_operator_fails_when_referenced_by_audit_event() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
 
     // Create an operator
     let operator_id = persistence
@@ -124,7 +124,7 @@ fn test_delete_operator_fails_when_referenced_by_audit_event() {
 
 #[test]
 fn test_delete_nonexistent_operator_fails() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
 
     // Attempt to delete a nonexistent operator
     let result = persistence.delete_operator(999);
@@ -141,7 +141,7 @@ fn test_delete_nonexistent_operator_fails() {
 
 #[test]
 fn test_is_operator_referenced_returns_true_when_referenced() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
 
     // Create an operator
     let operator_id = persistence
@@ -180,7 +180,7 @@ fn test_is_operator_referenced_returns_true_when_referenced() {
 
 #[test]
 fn test_is_operator_referenced_returns_false_when_not_referenced() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
 
     // Create an operator
     let operator_id = persistence
@@ -193,7 +193,7 @@ fn test_is_operator_referenced_returns_false_when_not_referenced() {
 
 #[test]
 fn test_operator_lifecycle_complete_flow() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
 
     // Create operator
     let operator_id = persistence

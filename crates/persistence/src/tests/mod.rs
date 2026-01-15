@@ -86,7 +86,7 @@ pub fn create_test_pay_periods() -> u8 {
 /// Creates a test operator in the persistence layer and returns the operator ID.
 ///
 /// This must be called before persisting any audit events to satisfy foreign key constraints.
-pub fn create_test_operator(persistence: &mut crate::SqlitePersistence) -> i64 {
+pub fn create_test_operator(persistence: &mut crate::Persistence) -> i64 {
     persistence
         .create_operator("test-operator", "Test Operator", "password", "Admin")
         .expect("Failed to create test operator")
@@ -107,7 +107,7 @@ pub fn create_test_operator(persistence: &mut crate::SqlitePersistence) -> i64 {
 ///
 /// Panics if bootstrap fails.
 pub fn create_test_bid_year_and_area(
-    persistence: &mut crate::SqlitePersistence,
+    persistence: &mut crate::Persistence,
     year: u16,
     area_code: &str,
 ) {

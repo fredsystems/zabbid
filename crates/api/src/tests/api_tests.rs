@@ -8,7 +8,7 @@
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_audit::{Actor, Cause};
 use zab_bid_domain::{Area, BidYear};
-use zab_bid_persistence::SqlitePersistence;
+use zab_bid_persistence::Persistence;
 
 use crate::{
     ApiError, ApiResult, AuthError, AuthenticatedActor, CreateAreaRequest, CreateBidYearRequest,
@@ -956,7 +956,7 @@ fn test_list_bid_years_with_multiple_years() {
     use zab_bid::{BootstrapResult, Command, apply_bootstrap};
     use zab_bid_audit::{Actor, Cause};
 
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
 
     // Create a test operator (required for foreign keys)
     let operator_id = persistence
@@ -1116,7 +1116,7 @@ fn test_list_bid_years_end_date_derivation() {
     use zab_bid::{BootstrapResult, Command, apply_bootstrap};
     use zab_bid_audit::{Actor, Cause};
 
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
 
     // Create a test operator (required for foreign keys)
     let operator_id = persistence
@@ -1219,7 +1219,7 @@ fn test_list_areas_empty() {
     use zab_bid::{BootstrapResult, Command, apply_bootstrap};
     use zab_bid_audit::{Actor, Cause};
 
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
 
     // Create a test operator (required for foreign keys)
     let operator_id = persistence
@@ -1273,7 +1273,7 @@ fn test_list_areas_for_bid_year() {
     use zab_bid::{BootstrapResult, Command, apply_bootstrap};
     use zab_bid_audit::{Actor, Cause};
 
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
 
     // Create a test operator (required for foreign keys)
     let operator_id = persistence
@@ -1360,7 +1360,7 @@ fn test_list_areas_isolated_by_bid_year() {
     use zab_bid::{BootstrapResult, Command, apply_bootstrap};
     use zab_bid_audit::{Actor, Cause};
 
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
 
     // Create a test operator (required for foreign keys)
     let operator_id = persistence
@@ -2223,10 +2223,10 @@ fn test_csv_import_multiple_users_same_area() {
     use crate::{ImportCsvUsersRequest, import_csv_users};
     use zab_bid::{Command, apply_bootstrap};
     use zab_bid_audit::Actor;
-    use zab_bid_persistence::SqlitePersistence;
+    use zab_bid_persistence::Persistence;
 
     let mut persistence =
-        SqlitePersistence::new_in_memory().expect("Failed to create in-memory persistence");
+        Persistence::new_in_memory().expect("Failed to create in-memory persistence");
 
     // Create operator for auth
     persistence
@@ -2347,10 +2347,10 @@ fn test_csv_import_is_additive_not_destructive() {
     use zab_bid::Command;
     use zab_bid::apply_bootstrap;
     use zab_bid_audit::Actor;
-    use zab_bid_persistence::SqlitePersistence;
+    use zab_bid_persistence::Persistence;
 
     let mut persistence =
-        SqlitePersistence::new_in_memory().expect("Failed to create in-memory persistence");
+        Persistence::new_in_memory().expect("Failed to create in-memory persistence");
 
     // Create operator for auth
     persistence

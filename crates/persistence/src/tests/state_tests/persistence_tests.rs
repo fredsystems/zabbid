@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use crate::SqlitePersistence;
+use crate::Persistence;
 use crate::tests::{
     create_test_actor, create_test_bid_year_and_area, create_test_cause, create_test_metadata,
     create_test_operator, create_test_pay_periods, create_test_seniority_data,
@@ -16,8 +16,8 @@ use zab_bid_audit::AuditEvent;
 use zab_bid_domain::{Area, BidYear, Crew, Initials, UserType};
 
 /// Creates a fully bootstrapped test persistence instance with bid year 2026 and area "North".
-fn create_bootstrapped_persistence() -> SqlitePersistence {
-    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+fn create_bootstrapped_persistence() -> Persistence {
+    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
 
     // Create test operator first to satisfy foreign key constraints
     create_test_operator(&mut persistence);
@@ -62,7 +62,7 @@ fn create_bootstrapped_persistence() -> SqlitePersistence {
 
 #[test]
 fn test_persist_and_retrieve_audit_event() {
-    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
+    let mut persistence: Persistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let command: Command = Command::RegisterUser {
         initials: Initials::new("AB"),
@@ -92,7 +92,7 @@ fn test_persist_and_retrieve_audit_event() {
 
 #[test]
 fn test_persist_with_snapshot() {
-    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
+    let mut persistence: Persistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     let command: Command = Command::Checkpoint;
@@ -119,7 +119,7 @@ fn test_persist_with_snapshot() {
 
 #[test]
 fn test_get_events_after() {
-    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
+    let mut persistence: Persistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create first event
@@ -159,7 +159,7 @@ fn test_get_events_after() {
 
 #[test]
 fn test_should_snapshot_detection() {
-    let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
     assert!(persistence.should_snapshot("Checkpoint"));
     assert!(persistence.should_snapshot("Finalize"));
     assert!(persistence.should_snapshot("Rollback"));
@@ -168,14 +168,14 @@ fn test_should_snapshot_detection() {
 
 #[test]
 fn test_atomic_persistence_failure() {
-    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
 
     // Close the connection to force an error
     drop(persistence);
 
     // Try to create a new one and verify it works
-    persistence = SqlitePersistence::new_in_memory().unwrap();
+    persistence = Persistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     create_test_bid_year_and_area(&mut persistence, 2026, "North");
 
@@ -197,7 +197,7 @@ fn test_atomic_persistence_failure() {
 
 #[test]
 fn test_state_reconstruction_with_snapshot_then_deltas() {
-    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
+    let mut persistence: Persistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create initial snapshot

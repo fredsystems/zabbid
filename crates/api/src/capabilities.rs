@@ -13,7 +13,7 @@ use crate::auth::{AuthenticatedActor, Role};
 use crate::request_response::{
     Capability, GlobalCapabilities, OperatorCapabilities, UserCapabilities,
 };
-use zab_bid_persistence::{OperatorData, SqlitePersistence};
+use zab_bid_persistence::{OperatorData, Persistence};
 
 /// Computes global capabilities for an authenticated operator.
 ///
@@ -96,7 +96,7 @@ pub fn compute_operator_capabilities(
     actor: &AuthenticatedActor,
     actor_operator: &OperatorData,
     target_operator: &OperatorData,
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
 ) -> Result<OperatorCapabilities, String> {
     // Disabled actors have no capabilities
     if actor_operator.is_disabled {
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn test_operator_capabilities_last_active_admin_cannot_be_disabled() {
-        let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut persistence = Persistence::new_in_memory().unwrap();
         let actor = create_test_admin();
 
         // Create a single admin operator
@@ -302,7 +302,7 @@ mod tests {
 
     #[test]
     fn test_operator_capabilities_can_disable_when_multiple_admins() {
-        let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut persistence = Persistence::new_in_memory().unwrap();
         let actor = create_test_admin();
 
         // Create two admin operators
@@ -330,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_operator_capabilities_disabled_admin_can_be_deleted() {
-        let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut persistence = Persistence::new_in_memory().unwrap();
         let actor = create_test_admin();
 
         // Create two admins, disable one
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_operator_capabilities_bidder_cannot_disable() {
-        let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut persistence = Persistence::new_in_memory().unwrap();
         let actor = create_test_bidder();
 
         let bidder_id = persistence
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn test_operator_capabilities_disabled_actor_has_no_capabilities() {
-        let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+        let mut persistence = Persistence::new_in_memory().unwrap();
         let actor = create_test_admin();
 
         let admin1_id = persistence

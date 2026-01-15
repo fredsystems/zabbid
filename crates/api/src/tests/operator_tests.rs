@@ -14,7 +14,7 @@ use crate::{
     delete_operator, disable_operator, enable_operator, list_operators,
 };
 use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
-use zab_bid_persistence::SqlitePersistence;
+use zab_bid_persistence::Persistence;
 
 fn create_test_admin() -> AuthenticatedActor {
     AuthenticatedActor {
@@ -36,7 +36,7 @@ fn create_test_cause() -> Cause {
 
 #[test]
 fn test_list_operators_requires_admin() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let bidder = create_test_bidder();
     let bidder_operator = create_test_bidder_operator();
 
@@ -53,7 +53,7 @@ fn test_list_operators_requires_admin() {
 
 #[test]
 fn test_list_operators_succeeds_for_admin() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     // Create some operators
@@ -78,7 +78,7 @@ fn test_list_operators_succeeds_for_admin() {
 
 #[test]
 fn test_disable_operator_requires_admin() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let bidder = create_test_bidder();
 
     let operator_id = persistence
@@ -106,7 +106,7 @@ fn test_disable_operator_requires_admin() {
 
 #[test]
 fn test_disable_operator_succeeds_for_admin() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     // Create admin operator for audit attribution
@@ -142,7 +142,7 @@ fn test_disable_operator_succeeds_for_admin() {
 
 #[test]
 fn test_disable_nonexistent_operator_fails() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     let admin_op_id = persistence
@@ -167,7 +167,7 @@ fn test_disable_nonexistent_operator_fails() {
 
 #[test]
 fn test_enable_operator_requires_admin() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let bidder = create_test_bidder();
 
     let operator_id = persistence
@@ -195,7 +195,7 @@ fn test_enable_operator_requires_admin() {
 
 #[test]
 fn test_enable_operator_succeeds_for_admin() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     let admin_op_id = persistence
@@ -232,7 +232,7 @@ fn test_enable_operator_succeeds_for_admin() {
 
 #[test]
 fn test_delete_operator_requires_admin() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let bidder = create_test_bidder();
 
     let operator_id = persistence
@@ -260,7 +260,7 @@ fn test_delete_operator_requires_admin() {
 
 #[test]
 fn test_delete_operator_succeeds_when_not_referenced() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     let admin_op_id = persistence
@@ -295,7 +295,7 @@ fn test_delete_operator_succeeds_when_not_referenced() {
 
 #[test]
 fn test_delete_operator_fails_when_referenced() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     let admin_op_id = persistence
@@ -359,7 +359,7 @@ fn test_delete_operator_fails_when_referenced() {
 fn test_create_operator_emits_audit_event() {
     use crate::CreateOperatorRequest;
 
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     let admin_op_id = persistence
@@ -401,7 +401,7 @@ fn test_create_operator_emits_audit_event() {
 
 #[test]
 fn test_disable_operator_emits_audit_event() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     let admin_op_id = persistence
@@ -435,7 +435,7 @@ fn test_disable_operator_emits_audit_event() {
 
 #[test]
 fn test_enable_operator_emits_audit_event() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     let admin_op_id = persistence
@@ -471,7 +471,7 @@ fn test_enable_operator_emits_audit_event() {
 
 #[test]
 fn test_delete_operator_emits_audit_event() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     let admin_op_id = persistence
@@ -505,7 +505,7 @@ fn test_delete_operator_emits_audit_event() {
 
 #[test]
 fn test_unauthorized_action_does_not_emit_audit_event() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let bidder = create_test_bidder();
 
     let operator_id = persistence
@@ -538,7 +538,7 @@ fn test_unauthorized_action_does_not_emit_audit_event() {
 
 #[test]
 fn test_cannot_disable_last_active_admin() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     // Create a single admin operator
@@ -569,7 +569,7 @@ fn test_cannot_disable_last_active_admin() {
 
 #[test]
 fn test_cannot_delete_last_active_admin() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     // Create a single admin operator
@@ -600,7 +600,7 @@ fn test_cannot_delete_last_active_admin() {
 
 #[test]
 fn test_can_disable_admin_when_another_active_admin_exists() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     // Create two admin operators
@@ -630,7 +630,7 @@ fn test_can_disable_admin_when_another_active_admin_exists() {
 
 #[test]
 fn test_can_delete_admin_when_another_active_admin_exists() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     // Create two admin operators
@@ -660,7 +660,7 @@ fn test_can_delete_admin_when_another_active_admin_exists() {
 
 #[test]
 fn test_disabled_admins_do_not_count_toward_invariant() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     // Create two admin operators
@@ -695,7 +695,7 @@ fn test_disabled_admins_do_not_count_toward_invariant() {
 
 #[test]
 fn test_bidder_operators_do_not_satisfy_requirement() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     // Create one admin and one bidder
@@ -727,7 +727,7 @@ fn test_bidder_operators_do_not_satisfy_requirement() {
 
 #[test]
 fn test_can_disable_already_disabled_admin_without_checking_invariant() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     // Create a single admin operator
@@ -759,7 +759,7 @@ fn test_can_disable_already_disabled_admin_without_checking_invariant() {
 
 #[test]
 fn test_can_delete_disabled_admin_when_no_active_admins() {
-    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence = Persistence::new_in_memory().unwrap();
     let admin = create_test_admin();
 
     // Create two admin operators

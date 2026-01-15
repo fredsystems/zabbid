@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use crate::SqlitePersistence;
+use crate::Persistence;
 use crate::tests::{
     create_test_actor, create_test_bid_year_and_area, create_test_cause, create_test_metadata,
     create_test_operator,
@@ -14,7 +14,7 @@ use zab_bid_domain::{Area, BidYear};
 
 #[test]
 fn test_get_audit_timeline_returns_events_in_order() {
-    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     create_test_bid_year_and_area(&mut persistence, 2026, "North");
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
@@ -76,7 +76,7 @@ fn test_get_audit_timeline_returns_events_in_order() {
 
 #[test]
 fn test_get_audit_timeline_empty_for_nonexistent_scope() {
-    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
 
     // Retrieve timeline for non-existent scope
     let timeline: Vec<AuditEvent> = persistence
@@ -88,7 +88,7 @@ fn test_get_audit_timeline_empty_for_nonexistent_scope() {
 
 #[test]
 fn test_get_audit_timeline_includes_rollback_events() {
-    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     create_test_bid_year_and_area(&mut persistence, 2026, "North");
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
@@ -135,7 +135,7 @@ fn test_get_audit_timeline_includes_rollback_events() {
 
 #[test]
 fn test_get_audit_timeline_does_not_mutate() {
-    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     create_test_bid_year_and_area(&mut persistence, 2026, "North");
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
@@ -171,7 +171,7 @@ fn test_get_audit_timeline_does_not_mutate() {
 
 #[test]
 fn test_read_operations_are_side_effect_free() {
-    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     create_test_bid_year_and_area(&mut persistence, 2026, "North");
     let state: State = State::new(BidYear::new(2026), Area::new("North"));

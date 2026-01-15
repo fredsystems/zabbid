@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use crate::SqlitePersistence;
+use crate::Persistence;
 use crate::tests::{
     create_test_actor, create_test_cause, create_test_metadata, create_test_operator,
     create_test_pay_periods, create_test_seniority_data, create_test_start_date,
@@ -13,8 +13,8 @@ use zab_bid_audit::AuditEvent;
 use zab_bid_domain::{Area, BidYear, Crew, Initials, UserType};
 
 /// Creates a fully bootstrapped test persistence instance with bid year 2026 and area "North".
-fn create_bootstrapped_persistence() -> SqlitePersistence {
-    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+fn create_bootstrapped_persistence() -> Persistence {
+    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let mut metadata = zab_bid::BootstrapMetadata::new();
 
@@ -54,7 +54,7 @@ fn create_bootstrapped_persistence() -> SqlitePersistence {
 
 #[test]
 fn test_get_current_state_with_no_deltas() {
-    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
+    let mut persistence: Persistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create a snapshot with no users
@@ -82,7 +82,7 @@ fn test_get_current_state_with_no_deltas() {
 
 #[test]
 fn test_get_current_state_after_snapshot_with_user() {
-    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
+    let mut persistence: Persistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create initial empty snapshot
@@ -144,7 +144,7 @@ fn test_get_current_state_after_snapshot_with_user() {
 
 #[test]
 fn test_get_current_state_no_snapshot_returns_error() {
-    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
+    let mut persistence: Persistence = create_bootstrapped_persistence();
 
     // Try to retrieve current state with no users added yet
     // With canonical tables (Phase 7), an empty state is valid (no users yet)
@@ -159,7 +159,7 @@ fn test_get_current_state_no_snapshot_returns_error() {
 
 #[test]
 fn test_get_current_state_is_deterministic() {
-    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
+    let mut persistence: Persistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create initial snapshot
@@ -228,7 +228,7 @@ fn test_get_current_state_is_deterministic() {
 
 #[test]
 fn test_get_current_state_does_not_mutate() {
-    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
+    let mut persistence: Persistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create a snapshot
@@ -266,7 +266,7 @@ fn test_get_current_state_does_not_mutate() {
 
 #[test]
 fn test_get_current_state_with_multiple_users() {
-    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
+    let mut persistence: Persistence = create_bootstrapped_persistence();
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
 
     // Create initial snapshot
@@ -352,7 +352,7 @@ fn test_get_current_state_with_multiple_users() {
 
 /// Helper to bootstrap an area and add user to it.
 fn bootstrap_area_with_user(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     metadata: &zab_bid::BootstrapMetadata,
     area_name: &str,
     user_initials: &str,
@@ -409,7 +409,7 @@ fn bootstrap_area_with_user(
 
 /// Helper to create empty area state.
 fn create_empty_area_state(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     metadata: &zab_bid::BootstrapMetadata,
     area_name: &str,
 ) {
@@ -429,7 +429,7 @@ fn create_empty_area_state(
 
 #[test]
 fn test_get_current_state_different_areas_isolated() {
-    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: Persistence = Persistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
     let mut metadata = zab_bid::BootstrapMetadata::new();
 

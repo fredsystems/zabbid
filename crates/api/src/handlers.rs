@@ -15,7 +15,7 @@ use zab_bid_domain::{
     Area, BidYear, CanonicalBidYear, Crew, Initials, LeaveAccrualResult, LeaveAvailabilityResult,
     LeaveUsage, SeniorityData, UserType, calculate_leave_accrual, calculate_leave_availability,
 };
-use zab_bid_persistence::{OperatorData, SqlitePersistence};
+use zab_bid_persistence::{OperatorData, Persistence};
 
 use crate::auth::{AuthenticatedActor, AuthenticationService, AuthorizationService, Role};
 use crate::csv_preview::{CsvRowResult, preview_csv_users as preview_csv_users_impl};
@@ -73,7 +73,7 @@ pub struct RegisterUserResult {
 /// Returns an error if:
 /// - No active bid year is set
 /// - Database query fails
-fn resolve_active_bid_year(persistence: &mut SqlitePersistence) -> Result<BidYear, ApiError> {
+fn resolve_active_bid_year(persistence: &mut Persistence) -> Result<BidYear, ApiError> {
     let year: u16 = persistence.get_active_bid_year().map_err(|e| match e {
         zab_bid_persistence::PersistenceError::NotFound(_) => {
             translate_domain_error(zab_bid_domain::DomainError::NoActiveBidYear)
@@ -128,7 +128,7 @@ pub struct ApiResult<T> {
 /// - Any field validation fails
 /// - The initials are already in use within the bid year
 pub fn register_user(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     metadata: &BootstrapMetadata,
     state: &State,
     request: RegisterUserRequest,
@@ -225,7 +225,7 @@ pub fn register_user(
 /// - The actor is not authorized (not an Admin)
 /// - The command execution fails
 pub fn checkpoint(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     metadata: &BootstrapMetadata,
     state: &State,
     authenticated_actor: &AuthenticatedActor,
@@ -276,7 +276,7 @@ pub fn checkpoint(
 /// - The actor is not authorized (not an Admin)
 /// - The command execution fails
 pub fn finalize(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     metadata: &BootstrapMetadata,
     state: &State,
     authenticated_actor: &AuthenticatedActor,
@@ -328,7 +328,7 @@ pub fn finalize(
 /// - The actor is not authorized (not an Admin)
 /// - The command execution fails
 pub fn rollback(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     metadata: &BootstrapMetadata,
     state: &State,
     target_event_id: i64,
@@ -442,7 +442,7 @@ pub fn create_bid_year(
 /// - The bid year does not exist
 /// - The area already exists in the bid year
 pub fn create_area(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     metadata: &BootstrapMetadata,
     request: &CreateAreaRequest,
     authenticated_actor: &AuthenticatedActor,
@@ -1061,7 +1061,7 @@ pub fn get_bootstrap_status(
 /// - The operator is disabled
 /// - Database operations fail
 pub fn login(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     request: &LoginRequest,
 ) -> Result<LoginResponse, ApiError> {
     let (session_token, _authenticated_actor, operator): (
@@ -1102,7 +1102,7 @@ pub fn login(
 /// # Errors
 ///
 /// Returns an error if the logout fails.
-pub fn logout(persistence: &mut SqlitePersistence, session_token: &str) -> Result<(), ApiError> {
+pub fn logout(persistence: &mut Persistence, session_token: &str) -> Result<(), ApiError> {
     AuthenticationService::logout(persistence, session_token)?;
     Ok(())
 }
@@ -1123,7 +1123,7 @@ pub fn logout(persistence: &mut SqlitePersistence, session_token: &str) -> Resul
 ///
 /// Returns an error if capability computation fails.
 pub fn whoami(
-    _persistence: &mut SqlitePersistence,
+    _persistence: &mut Persistence,
     actor: &AuthenticatedActor,
     operator: &OperatorData,
 ) -> Result<WhoAmIResponse, ApiError> {
@@ -1169,7 +1169,7 @@ pub fn whoami(
 /// - The role is invalid
 /// - Database operations fail
 pub fn create_operator(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     request: CreateOperatorRequest,
     authenticated_actor: &AuthenticatedActor,
     operator: &OperatorData,
@@ -1277,7 +1277,7 @@ pub fn create_operator(
 /// - The actor is not authorized (not an Admin)
 /// - Database operations fail
 pub fn list_operators(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     authenticated_actor: &AuthenticatedActor,
     actor_operator: &OperatorData,
 ) -> Result<ListOperatorsResponse, ApiError> {
@@ -1353,7 +1353,7 @@ pub fn list_operators(
 /// - The operator does not exist
 /// - Database operations fail
 pub fn disable_operator(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     request: DisableOperatorRequest,
     authenticated_actor: &AuthenticatedActor,
     operator: &OperatorData,
@@ -1470,7 +1470,7 @@ pub fn disable_operator(
 /// - The operator does not exist
 /// - Database operations fail
 pub fn enable_operator(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     request: EnableOperatorRequest,
     authenticated_actor: &AuthenticatedActor,
     operator: &OperatorData,
@@ -1571,7 +1571,7 @@ pub fn enable_operator(
 /// - The operator is referenced by audit events
 /// - Database operations fail
 pub fn delete_operator(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     request: DeleteOperatorRequest,
     authenticated_actor: &AuthenticatedActor,
     operator: &OperatorData,
@@ -1698,7 +1698,7 @@ pub fn delete_operator(
 /// - Password confirmation does not match
 /// - Database operations fail
 pub fn change_password(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     request: &ChangePasswordRequest,
     _authenticated_actor: &AuthenticatedActor,
     operator: &OperatorData,
@@ -1805,7 +1805,7 @@ pub fn change_password(
 /// - Password confirmation does not match
 /// - Database operations fail
 pub fn reset_password(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     request: &ResetPasswordRequest,
     authenticated_actor: &AuthenticatedActor,
     operator: &OperatorData,
@@ -1922,7 +1922,7 @@ pub fn reset_password(
 ///
 /// Returns an error if database operations fail.
 pub fn check_bootstrap_status(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
 ) -> Result<crate::BootstrapAuthStatusResponse, ApiError> {
     let operator_count: i64 = persistence
         .count_operators()
@@ -1965,7 +1965,7 @@ pub fn check_bootstrap_status(
 ///
 /// Panics if the system time is before the Unix epoch.
 pub fn bootstrap_login(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     request: &crate::BootstrapLoginRequest,
 ) -> Result<crate::BootstrapLoginResponse, ApiError> {
     // Check if we're in bootstrap mode
@@ -2029,7 +2029,7 @@ pub fn bootstrap_login(
 /// - Password validation fails
 /// - Database operations fail
 pub fn create_first_admin(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     request: crate::CreateFirstAdminRequest,
 ) -> Result<crate::CreateFirstAdminResponse, ApiError> {
     // Check if we're in bootstrap mode
@@ -2101,7 +2101,7 @@ pub fn create_first_admin(
 /// - The bid year does not exist
 /// - Database operations fail
 pub fn set_active_bid_year(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     metadata: &BootstrapMetadata,
     request: &SetActiveBidYearRequest,
     authenticated_actor: &AuthenticatedActor,
@@ -2166,7 +2166,7 @@ pub fn set_active_bid_year(
 ///
 /// Returns an error if database operations fail.
 pub fn get_active_bid_year(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     metadata: &BootstrapMetadata,
 ) -> Result<GetActiveBidYearResponse, ApiError> {
     let year: u16 = persistence
@@ -2210,7 +2210,7 @@ pub fn get_active_bid_year(
 /// - The expected count is zero
 /// - Database operations fail
 pub fn set_expected_area_count(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     metadata: &BootstrapMetadata,
     request: &SetExpectedAreaCountRequest,
     authenticated_actor: &AuthenticatedActor,
@@ -2298,7 +2298,7 @@ pub fn set_expected_area_count(
 /// - The expected count is zero
 /// - Database operations fail
 pub fn set_expected_user_count(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     metadata: &BootstrapMetadata,
     request: &SetExpectedUserCountRequest,
     authenticated_actor: &AuthenticatedActor,
@@ -2406,7 +2406,7 @@ pub fn set_expected_user_count(
 /// - Validation fails
 /// - Database operations fail
 pub fn update_user(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     metadata: &BootstrapMetadata,
     state: &State,
     request: &UpdateUserRequest,
@@ -2540,7 +2540,7 @@ pub fn update_user(
 /// Returns an error if database operations fail.
 #[allow(clippy::too_many_lines)]
 pub fn get_bootstrap_completeness(
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     metadata: &BootstrapMetadata,
 ) -> Result<GetBootstrapCompletenessResponse, ApiError> {
     let active_bid_year: Option<u16> = persistence.get_active_bid_year().ok();
@@ -2740,7 +2740,7 @@ pub fn get_bootstrap_completeness(
 /// - The CSV format is invalid
 pub fn preview_csv_users(
     metadata: &BootstrapMetadata,
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     request: &PreviewCsvUsersRequest,
     authenticated_actor: &AuthenticatedActor,
 ) -> Result<PreviewCsvUsersResponse, ApiError> {
@@ -2830,7 +2830,7 @@ pub fn preview_csv_users(
 pub fn import_csv_users(
     metadata: &BootstrapMetadata,
     _state: &State,
-    persistence: &mut SqlitePersistence,
+    persistence: &mut Persistence,
     request: &ImportCsvUsersRequest,
     authenticated_actor: &AuthenticatedActor,
     operator: &OperatorData,

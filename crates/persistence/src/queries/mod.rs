@@ -43,4 +43,4 @@ pub use operators::{
     count_active_admin_operators, count_operators, get_operator_by_id, get_operator_by_login,
     get_session_by_token, is_operator_referenced, list_operators, verify_password,
 };
-pub use state::{get_current_state, get_historical_state, get_latest_snapshot, should_snapshot};
+pub use state::{get_current_state, get_historical_state, get_latest_snapshot};
