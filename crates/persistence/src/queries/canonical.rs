@@ -3,51 +3,81 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+//! Canonical entity queries.
+//!
+//! This module contains backend-agnostic queries for retrieving canonical
+//! bid years, areas, and users from their respective tables.
+//! All queries use Diesel DSL and work across all supported database backends.
+
 use diesel::prelude::*;
-use diesel::sqlite::SqliteConnection;
+use num_traits::ToPrimitive;
 use time::Date;
-use tracing::info;
 use zab_bid::BootstrapMetadata;
 use zab_bid_domain::{
     Area, BidYear, CanonicalBidYear, Crew, Initials, SeniorityData, User, UserType,
 };
 
+use crate::diesel_schema::{areas, bid_years, users};
 use crate::error::PersistenceError;
 
-// Helper row struct for PRAGMA queries (justified raw SQL use)
-#[derive(diesel::QueryableByName)]
-struct PragmaRow {
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    foreign_keys: i32,
-}
-
-/// Verifies that foreign key enforcement is enabled.
-///
-/// This function checks whether `SQLite` has foreign key enforcement active.
-/// If foreign keys are not enabled, the database cannot guarantee referential
-/// integrity constraints required by Phase 14 (e.g., preventing deletion of
-/// operators referenced by audit events).
+/// Looks up the `bid_year_id` from the year value.
 ///
 /// # Arguments
 ///
-/// * `conn` - The database connection to check
+/// * `conn` - The database connection
+/// * `year` - The year value
 ///
 /// # Errors
 ///
-/// Returns an error if foreign key enforcement is not enabled.
-pub fn verify_foreign_key_enforcement(conn: &mut SqliteConnection) -> Result<(), PersistenceError> {
-    let foreign_keys_enabled: i32 = diesel::sql_query("PRAGMA foreign_keys")
-        .get_result::<PragmaRow>(conn)?
-        .foreign_keys;
+/// Returns an error if the bid year does not exist.
+pub fn lookup_bid_year_id(conn: &mut SqliteConnection, year: u16) -> Result<i64, PersistenceError> {
+    let year_i32: i32 = year
+        .to_i32()
+        .ok_or_else(|| PersistenceError::Other("Year out of range".to_string()))?;
 
-    if foreign_keys_enabled == 0 {
-        return Err(PersistenceError::InitializationError(String::from(
-            "Foreign key enforcement is not enabled. The server cannot start without FK enforcement.",
-        )));
+    let result = bid_years::table
+        .select(bid_years::bid_year_id)
+        .filter(bid_years::year.eq(year_i32))
+        .first::<i64>(conn);
+
+    match result {
+        Ok(id) => Ok(id),
+        Err(diesel::result::Error::NotFound) => Err(PersistenceError::ReconstructionError(
+            format!("Bid year {year} does not exist"),
+        )),
+        Err(e) => Err(PersistenceError::from(e)),
     }
+}
 
-    info!("Foreign key enforcement is enabled");
-    Ok(())
+/// Looks up the `area_id` from the `bid_year_id` and `area_code`.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The bid year ID
+/// * `area_code` - The area code
+///
+/// # Errors
+///
+/// Returns an error if the area does not exist.
+pub fn lookup_area_id(
+    conn: &mut SqliteConnection,
+    bid_year_id: i64,
+    area_code: &str,
+) -> Result<i64, PersistenceError> {
+    let result = areas::table
+        .select(areas::area_id)
+        .filter(areas::bid_year_id.eq(bid_year_id))
+        .filter(areas::area_code.eq(area_code))
+        .first::<i64>(conn);
+
+    match result {
+        Ok(id) => Ok(id),
+        Err(diesel::result::Error::NotFound) => Err(PersistenceError::ReconstructionError(
+            format!("Area {area_code} in bid year ID {bid_year_id} does not exist"),
+        )),
+        Err(e) => Err(PersistenceError::from(e)),
+    }
 }
 
 /// Reconstructs bootstrap metadata from canonical tables.
@@ -72,8 +102,6 @@ pub fn verify_foreign_key_enforcement(conn: &mut SqliteConnection) -> Result<(),
 pub fn get_bootstrap_metadata(
     conn: &mut SqliteConnection,
 ) -> Result<BootstrapMetadata, PersistenceError> {
-    use crate::diesel_schema::bid_years;
-
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
 
     // Query canonical bid_years table
@@ -87,22 +115,18 @@ pub fn get_bootstrap_metadata(
         metadata.bid_years.push(BidYear::with_id(bid_year_id, year));
     }
 
-    // Query canonical areas table - need to adjust this section
-    let area_rows: Vec<(i64, i64, i32, String, Option<String>)> = {
-        use crate::diesel_schema::areas;
-
-        areas::table
-            .inner_join(bid_years::table)
-            .select((
-                areas::area_id,
-                areas::bid_year_id,
-                bid_years::year,
-                areas::area_code,
-                areas::area_name,
-            ))
-            .order((bid_years::year.asc(), areas::area_code.asc()))
-            .load::<(i64, i64, i32, String, Option<String>)>(conn)?
-    };
+    // Query canonical areas table
+    let area_rows: Vec<(i64, i64, i32, String, Option<String>)> = areas::table
+        .inner_join(bid_years::table)
+        .select((
+            areas::area_id,
+            areas::bid_year_id,
+            bid_years::year,
+            areas::area_code,
+            areas::area_name,
+        ))
+        .order((bid_years::year.asc(), areas::area_code.asc()))
+        .load::<(i64, i64, i32, String, Option<String>)>(conn)?;
 
     for (area_id, bid_year_id_val, year_value, code, name) in area_rows {
         let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
@@ -135,8 +159,6 @@ pub fn get_bootstrap_metadata(
 pub fn list_bid_years(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<CanonicalBidYear>, PersistenceError> {
-    use crate::diesel_schema::bid_years;
-
     let rows: Vec<(i32, String, i32)> = bid_years::table
         .select((
             bid_years::year,
@@ -146,7 +168,7 @@ pub fn list_bid_years(
         .order(bid_years::year.asc())
         .load::<(i32, String, i32)>(conn)?;
 
-    let mut bid_years: Vec<CanonicalBidYear> = Vec::new();
+    let mut bid_years_list: Vec<CanonicalBidYear> = Vec::new();
     for (year_value, start_date_str, num_pay_periods_value) in rows {
         let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
         let num_pay_periods: u8 = u8::try_from(num_pay_periods_value).map_err(|_| {
@@ -172,10 +194,10 @@ pub fn list_bid_years(
                 ))
             })?;
 
-        bid_years.push(canonical);
+        bid_years_list.push(canonical);
     }
 
-    Ok(bid_years)
+    Ok(bid_years_list)
 }
 
 /// Lists all areas for a given bid year.
@@ -187,40 +209,27 @@ pub fn list_bid_years(
 /// # Arguments
 ///
 /// * `conn` - The database connection
-/// * `bid_year` - The bid year to list areas for
+/// * `bid_year_id` - The canonical bid year ID
 ///
 /// # Errors
 ///
 /// Returns an error if the database cannot be queried.
 pub fn list_areas(
     conn: &mut SqliteConnection,
-    bid_year: &BidYear,
+    bid_year_id: i64,
 ) -> Result<Vec<Area>, PersistenceError> {
-    use crate::diesel_schema::areas;
-
-    // Phase 23A: Look up the bid_year_id if not already present
-    // If the bid year doesn't exist, return an empty list
-    let bid_year_id: i64 = match bid_year.bid_year_id() {
-        Some(id) => id,
-        None => match super::queries::lookup_bid_year_id(conn, bid_year.year()) {
-            Ok(id) => id,
-            Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
-            Err(e) => return Err(e),
-        },
-    };
-
     let rows: Vec<(i64, String, Option<String>)> = areas::table
         .select((areas::area_id, areas::area_code, areas::area_name))
         .filter(areas::bid_year_id.eq(bid_year_id))
         .order(areas::area_code.asc())
         .load::<(i64, String, Option<String>)>(conn)?;
 
-    let areas: Vec<Area> = rows
+    let areas_list: Vec<Area> = rows
         .into_iter()
         .map(|(area_id, code, name)| Area::with_id(area_id, &code, name))
         .collect();
 
-    Ok(areas)
+    Ok(areas_list)
 }
 
 /// Lists all users for a given `(bid_year, area)` scope.
@@ -230,20 +239,21 @@ pub fn list_areas(
 /// # Arguments
 ///
 /// * `conn` - The database connection
-/// * `bid_year` - The bid year
-/// * `area` - The area
+/// * `bid_year_id` - The canonical bid year ID
+/// * `area_id` - The canonical area ID
+/// * `bid_year` - The bid year (for constructing User objects)
+/// * `area` - The area (for constructing User objects)
 ///
 /// # Errors
 ///
 /// Returns an error if the database cannot be queried.
 pub fn list_users(
     conn: &mut SqliteConnection,
+    bid_year_id: i64,
+    area_id: i64,
     bid_year: &BidYear,
     area: &Area,
 ) -> Result<Vec<User>, PersistenceError> {
-    use crate::diesel_schema::users;
-
-    // Type alias for the complex user row tuple
     type UserRowTuple = (
         i64,
         String,
@@ -256,10 +266,6 @@ pub fn list_users(
         String,
         Option<i32>,
     );
-
-    // Phase 23A: Look up the canonical IDs
-    let bid_year_id = super::queries::lookup_bid_year_id(conn, bid_year.year())?;
-    let area_id = super::queries::lookup_area_id(conn, bid_year_id, area.id())?;
 
     let rows: Vec<UserRowTuple> = users::table
         .select((
@@ -279,7 +285,7 @@ pub fn list_users(
         .order(users::initials.asc())
         .load(conn)?;
 
-    let mut users: Vec<User> = Vec::new();
+    let mut users_list: Vec<User> = Vec::new();
     for (
         user_id,
         initials_str,
@@ -316,52 +322,13 @@ pub fn list_users(
             crew,
             seniority_data,
         );
-        users.push(user);
+        users_list.push(user);
     }
 
-    Ok(users)
+    Ok(users_list)
 }
 
-/// Sets a bid year as active, ensuring only one bid year is active at a time.
-///
-/// This method atomically updates the active status:
-/// 1. Clears the active flag from all bid years
-/// 2. Sets the active flag on the specified bid year
-///
-/// # Arguments
-///
-/// * `conn` - The database connection
-/// * `year` - The year to mark as active
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - The database cannot be updated
-/// - The bid year does not exist
-pub fn set_active_bid_year(conn: &mut SqliteConnection, year: u16) -> Result<(), PersistenceError> {
-    use crate::diesel_schema::bid_years;
-
-    // First, clear all active flags
-    diesel::update(bid_years::table)
-        .set(bid_years::is_active.eq(0))
-        .execute(conn)?;
-
-    // Then set the specified year as active
-    let rows_affected: usize = diesel::update(bid_years::table)
-        .filter(bid_years::year.eq(i32::from(year)))
-        .set(bid_years::is_active.eq(1))
-        .execute(conn)?;
-
-    if rows_affected == 0 {
-        return Err(PersistenceError::NotFound(format!(
-            "Bid year {year} not found"
-        )));
-    }
-
-    Ok(())
-}
-
-/// Gets the currently active bid year, if any.
+/// Gets the active bid year.
 ///
 /// # Arguments
 ///
@@ -369,108 +336,25 @@ pub fn set_active_bid_year(conn: &mut SqliteConnection, year: u16) -> Result<(),
 ///
 /// # Errors
 ///
-/// Returns an error if the database cannot be queried.
-pub fn get_active_bid_year(conn: &mut SqliteConnection) -> Result<Option<u16>, PersistenceError> {
-    use crate::diesel_schema::bid_years;
-
-    let result: Result<i32, diesel::result::Error> = bid_years::table
+/// Returns an error if the database cannot be queried or no active bid year exists.
+pub fn get_active_bid_year(conn: &mut SqliteConnection) -> Result<u16, PersistenceError> {
+    let result: Result<i32, _> = bid_years::table
         .select(bid_years::year)
         .filter(bid_years::is_active.eq(1))
         .first::<i32>(conn);
 
     match result {
-        Ok(year_value) => {
-            let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
-            Ok(Some(year))
+        Ok(year_i32) => {
+            let year: u16 = year_i32
+                .to_u16()
+                .ok_or_else(|| PersistenceError::Other("Year out of range".to_string()))?;
+            Ok(year)
         }
-        Err(diesel::result::Error::NotFound) => Ok(None),
+        Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(String::from(
+            "No active bid year",
+        ))),
         Err(e) => Err(PersistenceError::from(e)),
     }
-}
-
-/// Sets the expected area count for a bid year.
-///
-/// # Arguments
-///
-/// * `conn` - The database connection
-/// * `year` - The bid year
-/// * `expected_count` - The expected number of areas
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - The database cannot be updated
-/// - The bid year does not exist
-pub fn set_expected_area_count(
-    conn: &mut SqliteConnection,
-    year: u16,
-    expected_count: u32,
-) -> Result<(), PersistenceError> {
-    use crate::diesel_schema::bid_years;
-
-    let count_i32: i32 = i32::try_from(expected_count).map_err(|_| {
-        PersistenceError::Other(format!("expected_count out of i32 range: {expected_count}"))
-    })?;
-
-    let rows_affected: usize = diesel::update(bid_years::table)
-        .filter(bid_years::year.eq(i32::from(year)))
-        .set(bid_years::expected_area_count.eq(count_i32))
-        .execute(conn)?;
-
-    if rows_affected == 0 {
-        return Err(PersistenceError::NotFound(format!(
-            "Bid year {year} not found"
-        )));
-    }
-
-    Ok(())
-}
-
-/// Sets the expected user count for an area.
-///
-/// # Arguments
-///
-/// * `conn` - The database connection
-/// * `bid_year` - The bid year
-/// * `area` - The area
-/// * `expected_count` - The expected number of users
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - The database cannot be updated
-/// - The area does not exist
-pub fn set_expected_user_count(
-    conn: &mut SqliteConnection,
-    bid_year: &BidYear,
-    area: &Area,
-    expected_count: u32,
-) -> Result<(), PersistenceError> {
-    use crate::diesel_schema::areas;
-
-    // Phase 23A: Look up the canonical IDs
-    let bid_year_id = super::queries::lookup_bid_year_id(conn, bid_year.year())?;
-    let area_id = super::queries::lookup_area_id(conn, bid_year_id, area.id())?;
-
-    let count_i32: i32 = i32::try_from(expected_count).map_err(|_| {
-        PersistenceError::Other(format!("expected_count out of i32 range: {expected_count}"))
-    })?;
-
-    let rows_affected: usize = diesel::update(areas::table)
-        .filter(areas::bid_year_id.eq(bid_year_id))
-        .filter(areas::area_id.eq(area_id))
-        .set(areas::expected_user_count.eq(count_i32))
-        .execute(conn)?;
-
-    if rows_affected == 0 {
-        return Err(PersistenceError::NotFound(format!(
-            "Area '{}' in bid year {} not found",
-            area.id(),
-            bid_year.year()
-        )));
-    }
-
-    Ok(())
 }
 
 /// Gets the expected area count for a bid year.
@@ -478,60 +362,68 @@ pub fn set_expected_user_count(
 /// # Arguments
 ///
 /// * `conn` - The database connection
-/// * `year` - The bid year
+/// * `bid_year_id` - The canonical bid year ID
 ///
 /// # Errors
 ///
-/// Returns an error if the database cannot be queried.
+/// Returns an error if the database cannot be queried or the bid year doesn't exist.
 pub fn get_expected_area_count(
     conn: &mut SqliteConnection,
-    year: u16,
-) -> Result<Option<u32>, PersistenceError> {
-    use crate::diesel_schema::bid_years;
-
-    let result: Result<Option<i32>, diesel::result::Error> = bid_years::table
+    bid_year_id: i64,
+) -> Result<Option<usize>, PersistenceError> {
+    let result: Result<Option<i32>, _> = bid_years::table
         .select(bid_years::expected_area_count)
-        .filter(bid_years::year.eq(i32::from(year)))
+        .filter(bid_years::bid_year_id.eq(bid_year_id))
         .first::<Option<i32>>(conn);
 
     match result {
-        Ok(opt_count) => Ok(opt_count.and_then(|c| u32::try_from(c).ok())),
-        Err(diesel::result::Error::NotFound) => Ok(None),
+        Ok(Some(count_i32)) => {
+            let count: usize = count_i32.to_usize().ok_or_else(|| {
+                PersistenceError::DatabaseError("Count conversion failed".to_string())
+            })?;
+            Ok(Some(count))
+        }
+        Ok(None) => Ok(None),
+        Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(String::from(
+            "Bid year not found",
+        ))),
         Err(e) => Err(PersistenceError::from(e)),
     }
 }
 
-/// Gets the expected user count for an area.
+/// Gets the expected user count for a bid year and area.
 ///
 /// # Arguments
 ///
 /// * `conn` - The database connection
-/// * `bid_year` - The bid year
-/// * `area` - The area
+/// * `bid_year_id` - The canonical bid year ID
+/// * `area_id` - The canonical area ID
 ///
 /// # Errors
 ///
-/// Returns an error if the database cannot be queried.
+/// Returns an error if the database cannot be queried or the area doesn't exist.
 pub fn get_expected_user_count(
     conn: &mut SqliteConnection,
-    bid_year: &BidYear,
-    area: &Area,
-) -> Result<Option<u32>, PersistenceError> {
-    use crate::diesel_schema::areas;
-
-    // Phase 23A: Look up the canonical IDs
-    let bid_year_id = super::queries::lookup_bid_year_id(conn, bid_year.year())?;
-    let area_id = super::queries::lookup_area_id(conn, bid_year_id, area.id())?;
-
-    let result: Result<Option<i32>, diesel::result::Error> = areas::table
+    bid_year_id: i64,
+    area_id: i64,
+) -> Result<Option<usize>, PersistenceError> {
+    let result: Result<Option<i32>, _> = areas::table
         .select(areas::expected_user_count)
         .filter(areas::bid_year_id.eq(bid_year_id))
         .filter(areas::area_id.eq(area_id))
         .first::<Option<i32>>(conn);
 
     match result {
-        Ok(opt_count) => Ok(opt_count.and_then(|c| u32::try_from(c).ok())),
-        Err(diesel::result::Error::NotFound) => Ok(None),
+        Ok(Some(count_i32)) => {
+            let count: usize = count_i32.to_usize().ok_or_else(|| {
+                PersistenceError::DatabaseError("Count conversion failed".to_string())
+            })?;
+            Ok(Some(count))
+        }
+        Ok(None) => Ok(None),
+        Err(diesel::result::Error::NotFound) => {
+            Err(PersistenceError::NotFound(String::from("Area not found")))
+        }
         Err(e) => Err(PersistenceError::from(e)),
     }
 }
@@ -541,55 +433,48 @@ pub fn get_expected_user_count(
 /// # Arguments
 ///
 /// * `conn` - The database connection
-/// * `year` - The bid year
+/// * `bid_year_id` - The canonical bid year ID
 ///
 /// # Errors
 ///
 /// Returns an error if the database cannot be queried.
 pub fn get_actual_area_count(
     conn: &mut SqliteConnection,
-    year: u16,
+    bid_year_id: i64,
 ) -> Result<usize, PersistenceError> {
-    use crate::diesel_schema::areas;
-
-    // Phase 23A: Look up the canonical ID
-    let bid_year_id = super::queries::lookup_bid_year_id(conn, year)?;
-
     let count: i64 = areas::table
         .filter(areas::bid_year_id.eq(bid_year_id))
         .count()
         .get_result(conn)?;
 
-    Ok(usize::try_from(count).expect("count out of usize range"))
+    count
+        .to_usize()
+        .ok_or_else(|| PersistenceError::DatabaseError("Count conversion failed".to_string()))
 }
 
-/// Gets the actual user count for an area.
+/// Gets the actual user count for a bid year and area.
 ///
 /// # Arguments
 ///
 /// * `conn` - The database connection
-/// * `bid_year` - The bid year
-/// * `area` - The area
+/// * `bid_year_id` - The canonical bid year ID
+/// * `area_id` - The canonical area ID
 ///
 /// # Errors
 ///
 /// Returns an error if the database cannot be queried.
 pub fn get_actual_user_count(
     conn: &mut SqliteConnection,
-    bid_year: &BidYear,
-    area: &Area,
+    bid_year_id: i64,
+    area_id: i64,
 ) -> Result<usize, PersistenceError> {
-    use crate::diesel_schema::users;
-
-    // Phase 23A: Look up the canonical IDs
-    let bid_year_id = super::queries::lookup_bid_year_id(conn, bid_year.year())?;
-    let area_id = super::queries::lookup_area_id(conn, bid_year_id, area.id())?;
-
     let count: i64 = users::table
         .filter(users::bid_year_id.eq(bid_year_id))
         .filter(users::area_id.eq(area_id))
         .count()
         .get_result(conn)?;
 
-    Ok(usize::try_from(count).expect("count out of usize range"))
+    count
+        .to_usize()
+        .ok_or_else(|| PersistenceError::DatabaseError("Count conversion failed".to_string()))
 }
