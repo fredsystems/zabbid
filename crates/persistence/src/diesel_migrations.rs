@@ -29,6 +29,37 @@
 //!
 //! This approach avoids conditional compilation while ensuring both
 //! backends are fully supported at compile time.
+//!
+//! ## ⚠️ CRITICAL: Schema Parity Requirements ⚠️
+//!
+//! **Migration directories MUST remain schema-equivalent at all times.**
+//!
+//! When adding or modifying migrations:
+//!
+//! 1. Create equivalent migrations in **BOTH** directories:
+//!    - `migrations/` (`SQLite` syntax)
+//!    - `migrations_mysql/` (`MySQL` syntax)
+//!
+//! 2. Use backend-appropriate syntax, but ensure:
+//!    - Same tables
+//!    - Same columns (semantically equivalent types)
+//!    - Same constraints (nullability, uniqueness, checks)
+//!    - Same foreign keys
+//!    - Same indexes
+//!
+//! 3. Verify parity using:
+//!    ```bash
+//!    cargo xtask verify-migrations
+//!    ```
+//!
+//! **DO NOT**:
+//! - Modify only one migration directory
+//! - Assume `SQLite` migrations will work on `MySQL`
+//! - Introduce schema differences between backends
+//! - Skip verification tooling
+//!
+//! Schema divergence is a **critical failure**. Tooling enforces this invariant.
+//! See AGENTS.md § Migration Guardrails & Schema Parity Enforcement for details.
 
 use diesel::{Connection, RunQueryDsl, SqliteConnection};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};

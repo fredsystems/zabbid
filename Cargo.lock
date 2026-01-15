@@ -2070,6 +2070,8 @@ dependencies = [
  "clap-cargo",
  "clap-verbosity-flag",
  "color-eyre",
+ "diesel",
+ "diesel_migrations",
  "duct",
  "tracing",
  "tracing-log",

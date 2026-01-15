@@ -797,8 +797,97 @@ Correctness and architectural integrity take precedence over completion speed.
 Agents must NOT:
 
 - introduce backend-specific schema divergence
-- modify queries to “fit” one backend at the expense of others
+- modify queries to "fit" one backend at the expense of others
 - add compatibility hacks to satisfy a single database engine
+
+### Migration Guardrails & Schema Parity Enforcement
+
+Database migrations exist in backend-specific directories to accommodate syntax differences
+between SQLite and MySQL/MariaDB. These migrations must remain **schema-equivalent** at all times.
+
+#### Migration Directory Structure
+
+- `migrations/` — SQLite-specific migrations (default for development and testing)
+- `migrations_mysql/` — MySQL/MariaDB-specific migrations (for production and opt-in validation)
+
+#### Backend-Specific Migrations Are Allowed
+
+Separate migration directories exist because SQL syntax differs between backends:
+
+- **Auto-increment**: SQLite uses `AUTOINCREMENT`, MySQL uses `AUTO_INCREMENT`
+- **Integer types**: SQLite uses `INTEGER`, MySQL uses `BIGINT` or `INT`
+- **Text types**: SQLite uses `TEXT`, MySQL uses `VARCHAR(n)` or `TEXT`
+- **Boolean types**: SQLite uses `INTEGER`, MySQL uses `TINYINT`
+- **Storage engines**: MySQL requires explicit `ENGINE=InnoDB`
+
+These are **syntax differences only**. The resulting schemas must be semantically identical.
+
+#### Schema Equivalence Is Mandatory
+
+Backend-specific migrations must produce schemas that are:
+
+- Structurally identical (same tables, columns, relationships)
+- Semantically equivalent (same constraints, nullability, uniqueness)
+- Functionally interchangeable (same Diesel schema applies to both)
+
+Schema equivalence is **not a convention**. It is **enforced by tooling**.
+
+#### Verification Tooling
+
+Schema parity is verified via:
+
+```bash
+cargo xtask verify-migrations
+```
+
+This command:
+
+1. Provisions ephemeral databases (SQLite in-memory, MariaDB via Docker)
+2. Applies backend-specific migrations to each database
+3. Introspects resulting schemas (tables, columns, types, constraints)
+4. Normalizes backend-specific type representations
+5. Compares schemas structurally
+6. Fails hard on any mismatch
+7. Cleans up all resources (even on failure)
+
+This command must pass before any migration changes are considered complete.
+
+#### Agent Responsibilities
+
+When adding or modifying migrations, agents must:
+
+- Create equivalent migrations in **both** `migrations/` and `migrations_mysql/`
+- Use backend-appropriate syntax in each directory
+- Ensure the resulting schemas are semantically identical
+- Run `cargo xtask verify-migrations` to confirm parity
+- Never assume migrations are "close enough"
+
+Agents must NOT:
+
+- Modify only one migration directory and hope it works
+- Introduce schema differences between backends
+- Relax constraints to make one backend "easier"
+- Add backend-specific tables, columns, or relationships
+- Assume SQLite migrations will work on MySQL unchanged
+- Bypass verification tooling
+
+#### When Migrations Diverge
+
+If schema verification fails:
+
+- The agent must stop immediately
+- The agent must NOT modify runtime code to compensate
+- The agent must NOT relax schema constraints
+- The agent must fix the migration divergence at the source
+
+If the divergence appears irreconcilable without changing domain semantics, stop and ask.
+
+#### Enforcement Philosophy
+
+- Tooling enforces invariants — humans do not
+- Correctness over convenience
+- Schema parity is a **hard requirement**, not a guideline
+- Silent divergence is considered a critical failure
 
 ## When to Stop
 
