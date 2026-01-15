@@ -6,12 +6,12 @@ Complete MySQL/MariaDB support at the persistence layer by wiring the existing
 MySQL infrastructure into the persistence adapter, while preserving:
 
 - A single, canonical persistence API
-- No duplication of query or mutation logic
 - Backend-agnostic application and server code
 - Identical persistence semantics across backends
+- Zero behavioral changes
 
-Phase 24H is about **connection plumbing and adapter generalization**, not
-rewriting queries or changing behavior.
+Phase 24H is about **adapter wiring and backend dispatch**,
+**not** about rewriting queries, generalizing Diesel, or changing persistence behavior.
 
 ---
 
@@ -24,64 +24,81 @@ rewriting queries or changing behavior.
   - Foreign key enforcement checks
 - Server startup can explicitly select `mysql` backend (Phase 24G)
 - MySQL is not yet usable at runtime
-- Persistence adapter is SQLite-specific (`SqlitePersistence`)
+- Persistence adapter is currently SQLite-specific (`SqlitePersistence`)
 
 ---
 
 ## Goals
 
-1. Generalize the persistence adapter so it is backend-agnostic
-2. Avoid duplicating persistence APIs per backend
-3. Reuse all existing query and mutation modules unchanged
+1. Expose **one backend-agnostic persistence adapter** to the server
+2. Enable MySQL/MariaDB to function at parity with SQLite
+3. Preserve **all existing persistence APIs**
 4. Keep backend-specific logic fully isolated
-5. Preserve existing SQLite behavior exactly
-6. Make MySQL functionally equivalent to SQLite at the persistence boundary
+5. Avoid architectural debt that would require later refactors
+6. Make Phase 24I+ independent of database concerns
 
 ---
 
 ## Design Principles
 
-- There must be **exactly one persistence adapter type** exposed to the server
-- Backend selection happens once, at construction time
-- Queries and mutations must not know which backend they are using
-- Backend-specific details must not leak into application logic
-- No conditional logic scattered across call sites
+- There must be **exactly one persistence adapter type**
+- Backend selection happens **once**, at construction time
+- Application and server code must not branch on backend type
+- Backend-specific details must not leak beyond the adapter
+- No conditional backend logic scattered across call sites
+- Correctness > abstraction cleverness
+
+---
+
+## Diesel Backend Constraint (Critical)
+
+Diesel’s type system requires **concrete backend types at compile time**.
+
+As a result:
+
+- Query and mutation functions **MUST take concrete Diesel connection types**
+  - e.g. `&mut SqliteConnection`, `&mut MysqlConnection`
+- Query/mutation modules **MUST NOT be generic over backend traits**
+- Diesel DSL usage **MUST remain monomorphic**
+- Backend abstraction **MUST occur only at the persistence adapter boundary**
+
+Backend-agnostic behavior is achieved by:
+
+- Centralizing backend selection and dispatch in the adapter
+- Calling backend-specific query/mutation functions from explicit match arms
 
 ---
 
 ## Proposed Architecture
 
-### Persistence Adapter
+### Public Adapter
 
-Introduce a backend-agnostic adapter, conceptually:
+Introduce a backend-agnostic adapter:
 
-- `Persistence` (or equivalent neutral name)
-- Internally owns a backend-specific connection
-- Public API remains identical to the current SQLite adapter
+- `Persistence` (neutral name)
+- Public API matches the existing `SqlitePersistence` API exactly
+- Internally owns one backend connection
 
-### Backend Isolation
+### Internal Backend Wrapper
 
-Backend-specific responsibilities are limited to:
+Use a private enum to hold the concrete connection type:
 
-- Establishing a database connection
+- `enum BackendConn { Sqlite(SqliteConnection), Mysql(MysqlConnection) }`
+
+Dispatch occurs inside `impl Persistence` via `match &mut self.conn`.
+
+### Backend-Specific Responsibilities (Isolated)
+
+Backend-specific modules are limited to:
+
+- Opening a connection
 - Running migrations
-- Verifying backend-specific invariants (e.g. foreign keys)
+- Enforcing/verifying backend invariants (FK enforcement, etc.)
 
-These live exclusively in `backend::{sqlite, mysql}` modules.
+These remain exclusively in:
 
-### Dispatch Strategy
-
-Persistence methods should delegate internally based on the selected backend,
-using one of the following (final choice left to implementation):
-
-- A small internal enum wrapping backend connections
-- A private trait implemented by backend connection wrappers
-
-**Constraints:**
-
-- No duplicated persistence structs
-- No duplicated query or mutation functions
-- No Diesel queries rewritten
+- `backend::sqlite`
+- `backend::mysql`
 
 ---
 
@@ -89,21 +106,26 @@ using one of the following (final choice left to implementation):
 
 ### In Scope
 
-- Introduce a backend-agnostic persistence adapter
-- Wire MySQL connections into that adapter
-- Ensure all existing persistence methods work identically for SQLite
-- Make MySQL backend fully operational using existing Diesel DSL queries
-- Update server startup to construct the unified adapter for MySQL
-- Add minimal wiring validation tests if necessary
+- Rename or replace `SqlitePersistence` with a neutral adapter (`Persistence`)
+- Add constructors:
+  - `Persistence::new_sqlite_in_memory()`
+  - `Persistence::new_sqlite_file(path)`
+  - `Persistence::new_mysql(database_url)`
+- Wire MySQL connection initialization and migration runner into the adapter
+- Implement adapter dispatch for all persistence methods:
+  - Methods route to SQLite or MySQL implementations using `match`
+- Preserve all SQLite behavior exactly
+- Ensure the server can actually run using `--db-backend mysql`
+- Add minimal wiring validation tests if needed
 
 ### Explicitly Out of Scope
 
 - Schema changes
-- Query or mutation rewrites
-- Performance optimizations
-- Connection pooling
-- Production MySQL tuning
-- New CLI flags
+- DSL query rewrites beyond what is required to compile for MySQL
+- Making query/mutation code generic via traits
+- Performance tuning or pooling
+- Production hardening for MySQL
+- New CLI flags (Phase 24G already handled this)
 - Feature flags
 - Multi-backend runtime switching
 
@@ -113,14 +135,14 @@ using one of the following (final choice left to implementation):
 
 Required:
 
-- SQLite tests must continue to pass unchanged
-- MySQL backend must pass existing persistence tests where applicable
-- Failures must indicate missing wiring, not altered behavior
+- All existing SQLite tests continue to pass unchanged
+- MySQL backend can run the same persistence test suite where applicable
+- Failures must indicate missing wiring or backend incompatibility, not altered behavior
 
 Not Required:
 
-- New MySQL-specific behavioral tests
-- Load or stress testing
+- New MySQL-only behavioral tests
+- Load testing or stress testing
 - End-to-end production validation
 
 ---
@@ -129,11 +151,12 @@ Not Required:
 
 Phase 24H is complete when:
 
-- The server can start successfully with `--db-backend mysql`
-- The persistence adapter works identically for SQLite and MySQL
-- All existing persistence APIs remain unchanged
-- No code duplication exists between backends
-- No backend-specific logic leaks into application code
+- `zab-bid-server --db-backend mysql --database-url ...` starts successfully
+- The persistence adapter works for both SQLite and MySQL
+- Existing persistence APIs remain unchanged
+- Backend-specific logic remains isolated in `backend::*`
+- No query/mutation code is made generic over backend traits
+- No duplicated “SQLitePersistence vs MySQLPersistence” adapter structs exist
 - All tests and CI pass
 
 ---
@@ -144,11 +167,11 @@ Phase 24H completes the multi-backend persistence work:
 
 - Phase 24C: Diesel DSL everywhere
 - Phase 24D: Multi-backend validation
-- Phase 24E: Migration guardrails
-- Phase 24F: Structural refactor
+- Phase 24E: Migration guardrails & parity enforcement
+- Phase 24F: Persistence crate structural refactor
 - Phase 24G: Explicit runtime backend selection
 - Phase 24H: MySQL backend integration
 
 After Phase 24H, the persistence layer is structurally complete and
-backend-agnostic, allowing future system architecture work to proceed
-without database-related risk.
+backend-agnostic at the application boundary, allowing future system architecture
+work to proceed without database-related risk.
