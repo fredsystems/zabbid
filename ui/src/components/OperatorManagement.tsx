@@ -195,6 +195,7 @@ export function OperatorManagement({
                 onChange={(e) => setNewLoginName(e.target.value)}
                 required
                 disabled={creating}
+                autoFocus
               />
             </div>
 

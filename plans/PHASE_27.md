@@ -1,48 +1,37 @@
 # Phase 27
 
-## Phase 27 — Rounds & Group Rule Foundations (No Bidding Yet)
+## Phase 27 — Editing Semantics & Late Changes
 
 ### Goal
 
-Define the structural foundation for bidding without implementing bidding logic.
+Handle real-world late changes without breaking invariants.
 
 ---
 
-### New Entities
+### Editing Rules
 
-- `RoundGroup`
-  - `group_id` (canonical)
-  - `display_name`
-- `Round`
-  - `round_id`
-  - `order`
-  - `group_id`
-  - `available_slots`
-  - `editing_enabled`
+- After bootstrap:
+  - Adding users allowed
+  - Removing users restricted
+- If actual user count exceeds expected:
+  - Expected count auto-increments
+  - Audit event emitted
 
 ---
 
-### Rules
+### Deletion Rules
 
-- Areas (except No Bid) must have a RoundGroup assigned
-- Bootstrap incomplete until:
-  - All applicable areas assigned
-- No Bid explicitly excluded
-
----
-
-### Holidays
-
-- Holiday override structure:
-  - date
-  - slot adjustment
-  - enabled flag
-- Holidays treated uniformly (no per-holiday semantics)
+- User deletion allowed only if:
+  - No bids
+  - No leave usage
+  - Only metadata edits exist
+- Otherwise:
+  - User may be disabled only
 
 ---
 
 ### Exit Criteria
 
-- All structures persisted
-- No bidding logic implemented
-- UI supports configuration only
+- Editing rules enforced in domain
+- UI reflects allowed actions
+- No silent state changes

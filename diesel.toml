@@ -1,0 +1,12 @@
+# Copyright (C) 2026 Fred Clausen
+# Use of this source code is governed by an MIT-style
+# license that can be found in the LICENSE file or at
+# https://opensource.org/licenses/MIT.
+
+[print_schema]
+file = "crates/persistence/src/diesel_schema.rs"
+custom_type_derives = ["diesel::query_builder::QueryId"]
+sqlite_integer_primary_key_is_bigint = true
+
+[migrations_directory]
+dir = "crates/persistence/migrations"

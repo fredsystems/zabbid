@@ -71,7 +71,7 @@ fn test_get_historical_state_at_specific_timestamp() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result1, true).unwrap();
+    persistence.persist_transition(&result1).unwrap();
 
     // Register a user (non-snapshot event)
     let command2: Command = Command::RegisterUser {
@@ -91,7 +91,7 @@ fn test_get_historical_state_at_specific_timestamp() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result2, false).unwrap();
+    persistence.persist_transition(&result2).unwrap();
 
     // Create second snapshot with user
     let command3: Command = Command::Checkpoint;
@@ -104,7 +104,7 @@ fn test_get_historical_state_at_specific_timestamp() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result3, true).unwrap();
+    persistence.persist_transition(&result3).unwrap();
 
     // Query historical state at very early time - should return error (no snapshot yet)
     let early_timestamp: String = String::from("1970-01-01 00:00:00");
@@ -141,7 +141,7 @@ fn test_get_historical_state_before_any_snapshot_returns_error() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result, true).unwrap();
+    persistence.persist_transition(&result).unwrap();
 
     // Try to query before the snapshot was created
     let early_timestamp: String = String::from("2020-01-01 00:00:00");
@@ -174,17 +174,10 @@ fn test_get_historical_state_is_deterministic() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result, true).unwrap();
+    persistence.persist_transition(&result).unwrap();
 
-    // Get the timestamp
-    let timestamp: String = persistence
-        .conn
-        .query_row(
-            "SELECT created_at FROM audit_events WHERE event_id = 1",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
+    // Use a far-future timestamp that will definitely be after the persisted event
+    let timestamp: String = String::from("9999-12-31 23:59:59");
 
     // Query multiple times
     let state1: State = persistence
@@ -221,7 +214,7 @@ fn test_get_historical_state_does_not_mutate() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result, true).unwrap();
+    persistence.persist_transition(&result).unwrap();
 
     let timestamp: String = String::from("9999-12-31 23:59:59");
 

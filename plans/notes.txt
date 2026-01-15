@@ -38,3 +38,38 @@ Steps:
     * No Bid area does not have rounds or limits
     * Bootstrap is not considered complete UNTIL all areas (less no bid) have been assigned a group ID of rounds
     * Holidays typically DO NOT have a different amount of available days, but they MAY, and we should have a toggle and associated data for holidays (holidays should be treated as all the same....xmas is not any different than thanksgiving or vets day for the purposes of determining the number of slots)
+
+* Create the concept of "Bid order" and "Bid Windows"
+    - Bid order is determined *per area* using natca seniority rules, with data we already have:
+        - "Section 1. The following shall be used to determine seniority for the National Air Traffic Controllers Association:
+            a. Cumulative NATCA Bargaining Unit Time;
+            b. First Tie Breaker: NATCA Bargaining Unit Time;
+            c. Second Tie Breaker: EOD/FAA;
+            d.Third Tie Breaker: SCD;
+            e. Fourth Tie Breaker: Lottery. The lottery shall be determined at the local level"
+    - People only bid against others in their area
+    - We need to introduce the concept of "bid start date".
+    - Each "round" of bidding is M-F of a single week.
+    - Bid status (defined below) is tracked per round, per area, per user
+    - Each round resets the bid status for all users in that area
+    - Each round needs to track, and keep, the bid status of all users in that area, meaning we can view and see that person's bid history over time
+    - Each person gets an hour, starting at the bid start date (which should be a Monday), at 0800, and the day ends at 1800 hours. 10 total people per day, per area, in seniority order. Most areas end early Friday of that week.
+    - We need to track bid status:
+        - Not Started, before their bid window
+        - Not Started, in their window
+        - In Progress
+        - Completed, on time
+        - Completed, late
+        - Missed
+            - No call
+            - Missed due to management (pauses bid for that area until they bid or select to not bid)
+        - Voluntarily Not Bidding (we skip their slot)
+        - Proxy (they submit a bid early, we auto execute the bid at the end of their assigned hour, OR if they bid late their bid is processed in the hour they called in, AFTER the person whose hour it is has bid OR at the end of that hour if that person doesn't bid)
+    - This whole section is just settings rules for domain logic that will be used in the future. We just need to track the bid status per user, per round, per area at the moment.
+
+* Set up for "start bidding"
+    - Activate a round
+    - Because I am going to have to simulate time passing for testing, I need the ability to "play" a bid round
+        - This means that I can set the current time to any time I want, and the system behaves as if that is the current time
+        - I need the ability to input all bids for an hour, and "press a button" to move to the next hour
+        - This is ONLY for testing, and should be hidden behind a "time-play" feature flag

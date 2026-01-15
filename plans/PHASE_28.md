@@ -1,33 +1,48 @@
 # Phase 28
 
-## Phase 28 — Public-Facing UI Foundations
+## Phase 28 — Rounds & Group Rule Foundations (No Bidding Yet)
 
 ### Goal
 
-Prepare the unauthenticated, public-facing experience.
+Define the structural foundation for bidding without implementing bidding logic.
 
 ---
 
-### Scope
+### New Entities
 
-- `/` public landing page
-- Read-only views
-- No authentication required
-- No visibility into No Bid area
+- `RoundGroup`
+  - `group_id` (canonical)
+  - `display_name`
+- `Round`
+  - `round_id`
+  - `order`
+  - `group_id`
+  - `available_slots`
+  - `editing_enabled`
+
+---
+
+### Rules
+
+- Areas (except No Bid) must have a RoundGroup assigned
+- Bootstrap incomplete until:
+  - All applicable areas assigned
+- No Bid explicitly excluded
+
+---
+
+### Holidays
+
+- Holiday override structure:
+  - date
+  - slot adjustment
+  - enabled flag
+- Holidays treated uniformly (no per-holiday semantics)
 
 ---
 
 ### Exit Criteria
 
-- Public UI functional
-- Admin UI unaffected
-
----
-
-## Rationale for Ordering
-
-- Identity first prevents future rewrites
-- State machines before UI avoid hacks
-- No Bid before CSV expansion prevents data leaks
-- Rounds before bidding avoids premature logic
-- UI polish last saves time
+- All structures persisted
+- No bidding logic implemented
+- UI supports configuration only

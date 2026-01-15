@@ -11,6 +11,8 @@
 import type {
   BidYearInfo,
   BootstrapStatusResponse,
+  CreateAreaResponse,
+  CreateBidYearResponse,
   ErrorResponse,
   GetActiveBidYearResponse,
   GetBootstrapCompletenessResponse,
@@ -21,6 +23,7 @@ import type {
   ListUsersResponse,
   OperatorInfo,
   PreviewCsvUsersResponse,
+  RegisterUserResponse,
   SetActiveBidYearResponse,
   SetExpectedAreaCountResponse,
   SetExpectedUserCountResponse,
@@ -121,8 +124,8 @@ export async function listBidYears(): Promise<BidYearInfo[]> {
 /**
  * List all areas for a specific bid year.
  */
-export async function listAreas(bidYear: number): Promise<ListAreasResponse> {
-  const url = `${API_BASE}/areas?bid_year=${encodeURIComponent(bidYear)}`;
+export async function listAreas(bidYearId: number): Promise<ListAreasResponse> {
+  const url = `${API_BASE}/areas?bid_year_id=${encodeURIComponent(bidYearId)}`;
   return fetchJson<ListAreasResponse>(url);
 }
 
@@ -131,12 +134,9 @@ export async function listAreas(bidYear: number): Promise<ListAreasResponse> {
  */
 export async function listUsers(
   sessionToken: string,
-  bidYear: number,
-  area: string,
+  areaId: number,
 ): Promise<ListUsersResponse> {
-  const url = `${API_BASE}/users?bid_year=${encodeURIComponent(
-    bidYear,
-  )}&area=${encodeURIComponent(area)}`;
+  const url = `${API_BASE}/users?area_id=${encodeURIComponent(areaId)}`;
   return fetchJson<ListUsersResponse>(url, {
     headers: {
       Authorization: `Bearer ${sessionToken}`,
@@ -148,13 +148,11 @@ export async function listUsers(
  * Get detailed leave availability for a specific user.
  */
 export async function getLeaveAvailability(
-  bidYear: number,
-  area: string,
-  initials: string,
+  userId: number,
 ): Promise<LeaveAvailabilityResponse> {
-  const url = `${API_BASE}/leave/availability?bid_year=${encodeURIComponent(
-    bidYear,
-  )}&area=${encodeURIComponent(area)}&initials=${encodeURIComponent(initials)}`;
+  const url = `${API_BASE}/leave/availability?user_id=${encodeURIComponent(
+    userId,
+  )}`;
   return fetchJson<LeaveAvailabilityResponse>(url);
 }
 
@@ -407,7 +405,7 @@ export async function getActiveBidYear(): Promise<GetActiveBidYearResponse> {
  */
 export async function setActiveBidYear(
   sessionToken: string,
-  year: number,
+  bidYearId: number,
 ): Promise<SetActiveBidYearResponse> {
   return fetchJson<SetActiveBidYearResponse>(
     `${API_BASE}/bootstrap/bid-years/active`,
@@ -419,8 +417,8 @@ export async function setActiveBidYear(
       },
       body: JSON.stringify({
         cause_id: `set-active-bid-year-${Date.now()}`,
-        cause_description: `Set active bid year to ${year}`,
-        year,
+        cause_description: `Set active bid year`,
+        bid_year_id: bidYearId,
       }),
     },
   );
@@ -455,7 +453,7 @@ export async function setExpectedAreaCount(
  */
 export async function setExpectedUserCount(
   sessionToken: string,
-  area: string,
+  areaId: number,
   expectedCount: number,
 ): Promise<SetExpectedUserCountResponse> {
   return fetchJson<SetExpectedUserCountResponse>(
@@ -468,8 +466,8 @@ export async function setExpectedUserCount(
       },
       body: JSON.stringify({
         cause_id: `set-expected-user-count-${Date.now()}`,
-        cause_description: `Set expected user count for ${area} to ${expectedCount}`,
-        area,
+        cause_description: `Set expected user count for area ${areaId} to ${expectedCount}`,
+        area_id: areaId,
         expected_count: expectedCount,
       }),
     },
@@ -525,11 +523,7 @@ export async function createBidYear(
   year: number,
   startDate: string,
   numPayPeriods: number,
-): Promise<{
-  success: boolean;
-  message: string | null;
-  event_id: number | null;
-}> {
+): Promise<CreateBidYearResponse> {
   return fetchJson(`${API_BASE}/bid_years`, {
     method: "POST",
     headers: {
@@ -551,13 +545,9 @@ export async function createBidYear(
  */
 export async function createArea(
   sessionToken: string,
-  areaId: string,
-): Promise<{
-  success: boolean;
-  message: string | null;
-  event_id: number | null;
-}> {
-  return fetchJson(`${API_BASE}/areas`, {
+  areaCode: string,
+): Promise<CreateAreaResponse> {
+  return fetchJson<CreateAreaResponse>(`${API_BASE}/areas`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -565,8 +555,8 @@ export async function createArea(
     },
     body: JSON.stringify({
       cause_id: `create-area-${Date.now()}`,
-      cause_description: `Create area ${areaId}`,
-      area_id: areaId,
+      cause_description: `Create area ${areaCode}`,
+      area_id: areaCode,
     }),
   });
 }
@@ -578,7 +568,8 @@ export async function registerUser(
   sessionToken: string,
   initials: string,
   name: string,
-  area: string,
+  areaId: number,
+  areaCode: string,
   userType: string,
   crew: number | null,
   cumulativeNatcaBuDate: string,
@@ -586,11 +577,7 @@ export async function registerUser(
   eodFaaDate: string,
   serviceComputationDate: string,
   lotteryValue: number | null,
-): Promise<{
-  success: boolean;
-  message: string | null;
-  event_id: number | null;
-}> {
+): Promise<RegisterUserResponse> {
   return fetchJson(`${API_BASE}/users`, {
     method: "POST",
     headers: {
@@ -599,10 +586,10 @@ export async function registerUser(
     },
     body: JSON.stringify({
       cause_id: `register-user-${Date.now()}`,
-      cause_description: `Register user ${initials} in ${area}`,
+      cause_description: `Register user ${initials} in ${areaCode}`,
       initials,
       name,
-      area,
+      area_id: areaId,
       user_type: userType,
       crew,
       cumulative_natca_bu_date: cumulativeNatcaBuDate,

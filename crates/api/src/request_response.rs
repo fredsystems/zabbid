@@ -19,8 +19,10 @@ pub struct CreateBidYearRequest {
 }
 
 /// API response for a successful bid year creation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CreateBidYearResponse {
+    /// The canonical numeric identifier.
+    pub bid_year_id: i64,
     /// The created bid year.
     pub year: u16,
     /// The start date of the bid year.
@@ -41,12 +43,16 @@ pub struct CreateAreaRequest {
 }
 
 /// API response for a successful area creation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CreateAreaResponse {
-    /// The bid year.
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year (display value).
     pub bid_year: u16,
-    /// The area identifier.
-    pub area_id: String,
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The area code (display value).
+    pub area_code: String,
     /// A success message.
     pub message: String,
 }
@@ -81,21 +87,29 @@ pub struct RegisterUserRequest {
 /// API response for a successful user registration.
 ///
 /// This DTO is distinct from domain types and represents the API contract.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RegisterUserResponse {
-    /// The bid year the user was registered for.
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year the user was registered for (display value).
     pub bid_year: u16,
+    /// The user's canonical identifier.
+    pub user_id: i64,
     /// The user's initials.
     pub initials: String,
     /// The user's name.
     pub name: String,
     /// A success message.
     pub message: String,
+    /// The event ID of the persisted audit event.
+    pub event_id: i64,
 }
 
 /// Canonical bid year information.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BidYearInfo {
+    /// The canonical numeric identifier.
+    pub bid_year_id: i64,
     /// The year value.
     pub year: u16,
     /// The start date of the bid year.
@@ -111,7 +125,7 @@ pub struct BidYearInfo {
 }
 
 /// API response for listing bid years.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ListBidYearsResponse {
     /// The list of bid years with canonical metadata.
     pub bid_years: Vec<BidYearInfo>,
@@ -120,53 +134,65 @@ pub struct ListBidYearsResponse {
 /// API request to list areas for a bid year.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListAreasRequest {
-    /// The bid year to list areas for.
-    pub bid_year: u16,
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
 }
 
 /// Information about a single area.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AreaInfo {
-    /// The area identifier.
-    pub area_id: String,
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The area code (display value).
+    pub area_code: String,
+    /// The area name (optional).
+    pub area_name: Option<String>,
     /// The number of users in this area.
     pub user_count: usize,
 }
 
 /// API response for listing areas.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ListAreasResponse {
-    /// The bid year.
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year (display value).
     pub bid_year: u16,
     /// The list of areas with metadata.
     pub areas: Vec<AreaInfo>,
 }
 
-/// API request to list users for a bid year and area.
+/// API request to list users for an area.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListUsersRequest {
-    /// The bid year.
-    pub bid_year: u16,
-    /// The area identifier.
-    pub area: String,
+    /// The canonical area identifier.
+    pub area_id: i64,
 }
 
 /// API response for listing users.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ListUsersResponse {
-    /// The bid year.
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year (display value).
     pub bid_year: u16,
-    /// The area identifier.
-    pub area: String,
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The area code (display value).
+    pub area_code: String,
     /// The list of users.
     pub users: Vec<UserInfo>,
 }
 
 /// User information for listing.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UserInfo {
     /// The user's canonical internal identifier.
     pub user_id: i64,
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The canonical area identifier.
+    pub area_id: i64,
     /// The user's initials.
     pub initials: String,
     /// The user's name.
@@ -194,6 +220,8 @@ pub struct UserInfo {
 /// Bootstrap status summary for a single bid year.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BidYearStatusInfo {
+    /// The canonical numeric identifier.
+    pub bid_year_id: i64,
     /// The year value.
     pub year: u16,
     /// The number of areas in this bid year.
@@ -205,10 +233,14 @@ pub struct BidYearStatusInfo {
 /// Area summary for bootstrap status.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AreaStatusInfo {
-    /// The bid year this area belongs to.
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year this area belongs to (display value).
     pub bid_year: u16,
-    /// The area identifier.
-    pub area_id: String,
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The area code (display value).
+    pub area_code: String,
     /// The number of users in this area.
     pub user_count: usize,
 }
@@ -227,18 +259,16 @@ pub struct BootstrapStatusResponse {
 /// API request to get leave availability for a user.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetLeaveAvailabilityRequest {
-    /// The bid year.
-    pub bid_year: u16,
-    /// The area identifier.
-    pub area: String,
-    /// The user's initials.
-    pub initials: String,
+    /// The canonical user identifier.
+    pub user_id: i64,
 }
 
 /// API response for leave availability.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GetLeaveAvailabilityResponse {
-    /// The bid year.
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year (display value).
     pub bid_year: u16,
     /// The user's canonical internal identifier.
     pub user_id: i64,
@@ -499,14 +529,16 @@ pub struct CreateFirstAdminResponse {
 /// API request to set the active bid year.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SetActiveBidYearRequest {
-    /// The year to mark as active.
-    pub year: u16,
+    /// The canonical bid year identifier to mark as active.
+    pub bid_year_id: i64,
 }
 
 /// API response for setting the active bid year.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SetActiveBidYearResponse {
-    /// The year that was set as active.
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The year that was set as active (display value).
     pub year: u16,
     /// Success message.
     pub message: String,
@@ -515,7 +547,9 @@ pub struct SetActiveBidYearResponse {
 /// API response for getting the active bid year.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GetActiveBidYearResponse {
-    /// The currently active year, if any.
+    /// The canonical bid year identifier, if any.
+    pub bid_year_id: Option<i64>,
+    /// The currently active year, if any (display value).
     pub year: Option<u16>,
 }
 
@@ -529,7 +563,9 @@ pub struct SetExpectedAreaCountRequest {
 /// API response for setting the expected area count.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SetExpectedAreaCountResponse {
-    /// The bid year.
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year (display value).
     pub bid_year: u16,
     /// The expected area count that was set.
     pub expected_count: u32,
@@ -540,8 +576,8 @@ pub struct SetExpectedAreaCountResponse {
 /// API request to set the expected user count for an area in the active bid year.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SetExpectedUserCountRequest {
-    /// The area identifier.
-    pub area: String,
+    /// The canonical area identifier.
+    pub area_id: i64,
     /// The expected number of users.
     pub expected_count: u32,
 }
@@ -549,10 +585,14 @@ pub struct SetExpectedUserCountRequest {
 /// API response for setting the expected user count.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SetExpectedUserCountResponse {
-    /// The bid year.
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year (display value).
     pub bid_year: u16,
-    /// The area identifier.
-    pub area: String,
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The area code (display value).
+    pub area_code: String,
     /// The expected user count that was set.
     pub expected_count: u32,
     /// Success message.
@@ -568,8 +608,8 @@ pub struct UpdateUserRequest {
     pub initials: String,
     /// The user's name.
     pub name: String,
-    /// The user's area identifier.
-    pub area: String,
+    /// The canonical area identifier.
+    pub area_id: i64,
     /// The user's type classification (CPC, CPC-IT, Dev-R, Dev-D).
     pub user_type: String,
     /// The user's crew number (1-7, optional).
@@ -589,7 +629,9 @@ pub struct UpdateUserRequest {
 /// API response for successful user update.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UpdateUserResponse {
-    /// The bid year.
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year (display value).
     pub bid_year: u16,
     /// The user's canonical internal identifier.
     pub user_id: i64,
@@ -608,12 +650,16 @@ pub enum BlockingReason {
     NoActiveBidYear,
     /// Expected area count not set.
     ExpectedAreaCountNotSet {
-        /// The bid year.
+        /// The canonical bid year identifier.
+        bid_year_id: i64,
+        /// The bid year (display value).
         bid_year: u16,
     },
     /// Actual area count does not match expected.
     AreaCountMismatch {
-        /// The bid year.
+        /// The canonical bid year identifier.
+        bid_year_id: i64,
+        /// The bid year (display value).
         bid_year: u16,
         /// Expected count.
         expected: u32,
@@ -622,17 +668,25 @@ pub enum BlockingReason {
     },
     /// Expected user count not set for an area.
     ExpectedUserCountNotSet {
-        /// The bid year.
+        /// The canonical bid year identifier.
+        bid_year_id: i64,
+        /// The bid year (display value).
         bid_year: u16,
-        /// The area identifier.
-        area: String,
+        /// The canonical area identifier.
+        area_id: i64,
+        /// The area code (display value).
+        area_code: String,
     },
     /// Actual user count does not match expected for an area.
     UserCountMismatch {
-        /// The bid year.
+        /// The canonical bid year identifier.
+        bid_year_id: i64,
+        /// The bid year (display value).
         bid_year: u16,
-        /// The area identifier.
-        area: String,
+        /// The canonical area identifier.
+        area_id: i64,
+        /// The area code (display value).
+        area_code: String,
         /// Expected count.
         expected: u32,
         /// Actual count.
@@ -643,7 +697,9 @@ pub enum BlockingReason {
 /// Completeness status for a bid year.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BidYearCompletenessInfo {
-    /// The bid year.
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year (display value).
     pub year: u16,
     /// Whether this bid year is active.
     pub is_active: bool,
@@ -660,10 +716,14 @@ pub struct BidYearCompletenessInfo {
 /// Completeness status for an area.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AreaCompletenessInfo {
-    /// The bid year.
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year (display value).
     pub bid_year: u16,
-    /// The area identifier.
-    pub area: String,
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The area code (display value).
+    pub area_code: String,
     /// Expected user count, if set.
     pub expected_user_count: Option<u32>,
     /// Actual user count.
@@ -677,7 +737,9 @@ pub struct AreaCompletenessInfo {
 /// API response for bootstrap completeness status.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GetBootstrapCompletenessResponse {
-    /// The currently active bid year, if any.
+    /// The canonical identifier of the currently active bid year, if any.
+    pub active_bid_year_id: Option<i64>,
+    /// The currently active bid year, if any (display value).
     pub active_bid_year: Option<u16>,
     /// Completeness information for all bid years.
     pub bid_years: Vec<BidYearCompletenessInfo>,

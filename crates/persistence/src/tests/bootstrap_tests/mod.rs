@@ -134,7 +134,7 @@ fn test_persist_bootstrap_area() {
 
 #[test]
 fn test_get_bootstrap_metadata_empty() {
-    let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
 
     assert_eq!(metadata.bid_years.len(), 0);
@@ -331,7 +331,7 @@ fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&user_result, false).unwrap();
+    persistence.persist_transition(&user_result).unwrap();
 
     // Bootstrap metadata should only include bid year and area, not user
     let retrieved_metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
@@ -342,7 +342,7 @@ fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
 
 #[test]
 fn test_list_bid_years_empty() {
-    let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     let bid_years: Vec<CanonicalBidYear> = persistence.list_bid_years().unwrap();
 
     assert_eq!(bid_years.len(), 0);
@@ -396,7 +396,7 @@ fn test_list_bid_years() {
 
 #[test]
 fn test_list_areas_empty() {
-    let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    let mut persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
     let areas: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
 
     assert_eq!(areas.len(), 0);
@@ -607,11 +607,8 @@ fn test_bootstrap_read_operations_do_not_mutate() {
     .unwrap();
     persistence.persist_bootstrap(&result).unwrap();
 
-    // Get initial event count
-    let initial_count: i64 = persistence
-        .conn
-        .query_row("SELECT COUNT(*) FROM audit_events", [], |row| row.get(0))
-        .unwrap();
+    // Get initial event count using public API
+    let initial_count: usize = persistence.get_global_audit_events().unwrap().len();
 
     // Perform multiple reads
     let _metadata1: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
@@ -621,11 +618,8 @@ fn test_bootstrap_read_operations_do_not_mutate() {
     let _bid_years2: Vec<CanonicalBidYear> = persistence.list_bid_years().unwrap();
     let _areas2: Vec<Area> = persistence.list_areas(&BidYear::new(2026)).unwrap();
 
-    // Verify event count unchanged
-    let final_count: i64 = persistence
-        .conn
-        .query_row("SELECT COUNT(*) FROM audit_events", [], |row| row.get(0))
-        .unwrap();
+    // Verify event count unchanged using public API
+    let final_count: usize = persistence.get_global_audit_events().unwrap().len();
 
     assert_eq!(initial_count, final_count);
 }
@@ -700,7 +694,7 @@ fn test_list_users() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result, false).unwrap();
+    persistence.persist_transition(&result).unwrap();
 
     // List users
     let users: Vec<User> = persistence

@@ -323,6 +323,7 @@ function BootstrapLoginPage({ onBootstrapLogin }: BootstrapLoginPageProps) {
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="admin"
                 required
+                autoFocus
               />
             </div>
             <div className="form-group">
@@ -415,6 +416,7 @@ function CreateFirstAdminPage({ onComplete }: CreateFirstAdminPageProps) {
                 value={loginName}
                 onChange={(e) => setLoginName(e.target.value)}
                 required
+                autoFocus
               />
             </div>
             <div className="form-group">
@@ -518,6 +520,7 @@ function LoginPage({ onLogin }: LoginPageProps) {
                 value={loginName}
                 onChange={(e) => setLoginName(e.target.value)}
                 required
+                autoFocus
               />
             </div>
             <div className="form-group">
@@ -614,7 +617,7 @@ function AuthenticatedAdminApp({
             }
           />
           <Route
-            path="bid-year/:year/areas"
+            path="bid-year/:bidYearId/areas"
             element={
               <AreaView
                 connectionState={connectionState}
@@ -623,7 +626,7 @@ function AuthenticatedAdminApp({
             }
           />
           <Route
-            path="bid-year/:year/area/:areaId/users"
+            path="bid-year/:bidYearId/areas/:areaId/users"
             element={
               <UserListView
                 sessionToken={authState.sessionToken}
@@ -633,7 +636,7 @@ function AuthenticatedAdminApp({
             }
           />
           <Route
-            path="bid-year/:year/area/:areaId/user/:initials"
+            path="bid-year/:bidYearId/areas/:areaId/users/:userId"
             element={
               <UserDetailView
                 connectionState={connectionState}

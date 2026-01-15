@@ -41,20 +41,27 @@ pub struct StateData {
 }
 
 /// Type alias for audit event row data from `SQLite`.
-/// Contains: (`event_id`, `bid_year`, `area`, `actor_operator_id`, `actor_login_name`,
-/// `actor_display_name`, `actor_json`, `cause_json`, `action_json`, `before_json`, `after_json`)
+///
+/// Phase 23A: Now includes `bid_year_id` and `area_id` in addition to display values.
+///
+/// Contains: (`event_id`, `bid_year_id`, `area_id`, `year`, `area_code`,
+/// `actor_operator_id`, `actor_login_name`, `actor_display_name`,
+/// `actor_json`, `cause_json`, `action_json`, `before_json`, `after_json`)
+#[allow(dead_code)]
 pub type AuditEventRow = (
-    i64,
-    u16,
-    String,
-    i64,
-    String,
-    String,
-    String,
-    String,
-    String,
-    String,
-    String,
+    i64,         // event_id
+    i64,         // bid_year_id
+    Option<i64>, // area_id (nullable for CreateBidYear events - Phase 23A)
+    u16,         // year
+    String,      // area_code
+    i64,         // actor_operator_id
+    String,      // actor_login_name
+    String,      // actor_display_name
+    String,      // actor_json
+    String,      // cause_json
+    String,      // action_json
+    String,      // before_json
+    String,      // after_json
 );
 
 /// Serializable representation of an Operator.

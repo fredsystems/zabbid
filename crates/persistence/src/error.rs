@@ -8,6 +8,12 @@
 pub enum PersistenceError {
     /// A database error occurred.
     DatabaseError(String),
+    /// Database connection failed.
+    DatabaseConnectionFailed(String),
+    /// Database migration failed.
+    MigrationFailed(String),
+    /// Query execution failed.
+    QueryFailed(String),
     /// The requested event was not found.
     EventNotFound(i64),
     /// The requested snapshot was not found.
@@ -16,8 +22,10 @@ pub enum PersistenceError {
     ReconstructionError(String),
     /// Serialization/deserialization error.
     SerializationError(String),
-    /// Initialization error (e.g., foreign key enforcement not enabled).
+    /// Initialization error.
     InitializationError(String),
+    /// Foreign key enforcement is not enabled.
+    ForeignKeyEnforcementNotEnabled,
     /// The requested operator was not found.
     OperatorNotFound(String),
     /// The requested session was not found.
@@ -36,6 +44,11 @@ impl std::fmt::Display for PersistenceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DatabaseError(msg) => write!(f, "Database error: {msg}"),
+            Self::DatabaseConnectionFailed(msg) => {
+                write!(f, "Database connection failed: {msg}")
+            }
+            Self::MigrationFailed(msg) => write!(f, "Migration failed: {msg}"),
+            Self::QueryFailed(msg) => write!(f, "Query failed: {msg}"),
             Self::EventNotFound(id) => write!(f, "Event not found: {id}"),
             Self::SnapshotNotFound { bid_year, area } => {
                 write!(f, "Snapshot not found for bid_year={bid_year}, area={area}")
@@ -43,6 +56,9 @@ impl std::fmt::Display for PersistenceError {
             Self::ReconstructionError(msg) => write!(f, "State reconstruction error: {msg}"),
             Self::SerializationError(msg) => write!(f, "Serialization error: {msg}"),
             Self::InitializationError(msg) => write!(f, "Initialization error: {msg}"),
+            Self::ForeignKeyEnforcementNotEnabled => {
+                write!(f, "Foreign key enforcement is not enabled")
+            }
             Self::OperatorNotFound(msg) => write!(f, "Operator not found: {msg}"),
             Self::SessionNotFound(msg) => write!(f, "Session not found: {msg}"),
             Self::SessionExpired(msg) => write!(f, "Session expired: {msg}"),
@@ -60,9 +76,18 @@ impl std::fmt::Display for PersistenceError {
 
 impl std::error::Error for PersistenceError {}
 
-impl From<rusqlite::Error> for PersistenceError {
-    fn from(err: rusqlite::Error) -> Self {
-        Self::DatabaseError(err.to_string())
+impl From<diesel::result::Error> for PersistenceError {
+    fn from(err: diesel::result::Error) -> Self {
+        match err {
+            diesel::result::Error::NotFound => Self::NotFound("Record not found".to_string()),
+            _ => Self::DatabaseError(err.to_string()),
+        }
+    }
+}
+
+impl From<diesel::ConnectionError> for PersistenceError {
+    fn from(err: diesel::ConnectionError) -> Self {
+        Self::DatabaseConnectionFailed(err.to_string())
     }
 }
 

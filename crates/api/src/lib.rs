@@ -12,6 +12,7 @@
     clippy::all
 )]
 #![allow(deprecated)]
+#![allow(clippy::multiple_crate_versions)]
 
 mod auth;
 mod capabilities;
@@ -63,9 +64,9 @@ pub use capabilities::{
 
 // Re-export public functions from handlers module
 pub use handlers::{
-    ApiResult, bootstrap_login, change_password, check_bootstrap_status, checkpoint, create_area,
-    create_bid_year, create_first_admin, create_operator, delete_operator, disable_operator,
-    enable_operator, finalize, get_active_bid_year, get_bootstrap_completeness,
+    ApiResult, RegisterUserResult, bootstrap_login, change_password, check_bootstrap_status,
+    checkpoint, create_area, create_bid_year, create_first_admin, create_operator, delete_operator,
+    disable_operator, enable_operator, finalize, get_active_bid_year, get_bootstrap_completeness,
     get_bootstrap_status, get_current_state, get_historical_state, get_leave_availability,
     import_csv_users, list_areas, list_bid_years, list_operators, list_users, login, logout,
     preview_csv_users, register_user, reset_password, rollback, set_active_bid_year,

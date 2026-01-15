@@ -156,8 +156,19 @@ fn test_create_area_emits_audit_event() {
             .unwrap()
             .contains("NORTH")
     );
-    assert_eq!(bootstrap_result.audit_event.bid_year.year(), 2026);
-    assert_eq!(bootstrap_result.audit_event.area.id(), "NORTH");
+    assert_eq!(
+        bootstrap_result
+            .audit_event
+            .bid_year
+            .as_ref()
+            .unwrap()
+            .year(),
+        2026
+    );
+    assert_eq!(
+        bootstrap_result.audit_event.area.as_ref().unwrap().id(),
+        "NORTH"
+    );
 }
 
 #[test]
