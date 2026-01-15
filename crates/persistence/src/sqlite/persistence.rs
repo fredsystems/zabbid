@@ -4,8 +4,9 @@
 // https://opensource.org/licenses/MIT.
 
 use diesel::dsl::sql;
-use diesel::sql_types::{BigInt, Integer, Nullable, Text};
-use diesel::{RunQueryDsl, SqliteConnection, sql_query};
+use diesel::prelude::*;
+use diesel::sql_types::BigInt;
+use diesel::{RunQueryDsl, SqliteConnection};
 use num_traits::ToPrimitive;
 use tracing::{debug, info};
 use zab_bid::{BootstrapResult, State, TransitionResult};
@@ -13,21 +14,13 @@ use zab_bid_audit::AuditEvent;
 use zab_bid_domain::{Area, CanonicalBidYear};
 
 use crate::data_models::{ActionData, ActorData, CauseData, StateData, StateSnapshotData};
+use crate::diesel_schema;
 use crate::error::PersistenceError;
-
-#[derive(diesel::QueryableByName)]
-struct LastInsertRowid {
-    #[diesel(sql_type = BigInt)]
-    last_insert_rowid: i64,
-}
 
 /// Helper function to get the last inserted row ID (Diesel DSL alternative).
 ///
 /// `SQLite` doesn't support `RETURNING` clauses, so we must query `last_insert_rowid()`.
 /// This is a justified use of raw SQL as Diesel has no direct API for this.
-///
-/// Note: Currently unused but available for future migrations.
-#[allow(dead_code)]
 fn get_last_insert_rowid(conn: &mut SqliteConnection) -> Result<i64, PersistenceError> {
     Ok(diesel::select(sql::<BigInt>("last_insert_rowid()")).get_result(conn)?)
 }
@@ -131,17 +124,15 @@ pub fn persist_bootstrap(
                 })?;
 
             // Insert bid year and get generated ID
-            sql_query(
-                "INSERT INTO bid_years (year, start_date, num_pay_periods) VALUES (?1, ?2, ?3)",
-            )
-            .bind::<Integer, _>(year_i32)
-            .bind::<Text, _>(&start_date_str)
-            .bind::<Integer, _>(num_pay_periods_i32)
-            .execute(conn)?;
+            diesel::insert_into(diesel_schema::bid_years::table)
+                .values((
+                    diesel_schema::bid_years::year.eq(year_i32),
+                    diesel_schema::bid_years::start_date.eq(&start_date_str),
+                    diesel_schema::bid_years::num_pay_periods.eq(num_pay_periods_i32),
+                ))
+                .execute(conn)?;
 
-            let bid_year_id: i64 = sql_query("SELECT last_insert_rowid() as last_insert_rowid")
-                .get_result::<LastInsertRowid>(conn)?
-                .last_insert_rowid;
+            let bid_year_id: i64 = get_last_insert_rowid(conn)?;
 
             debug!(
                 bid_year_id,
@@ -176,21 +167,19 @@ pub fn persist_bootstrap(
             )?;
 
             // Insert area and get generated ID
-            sql_query("INSERT INTO areas (bid_year_id, area_code) VALUES (?1, ?2)")
-                .bind::<BigInt, _>(bid_year_id)
-                .bind::<Text, _>(
-                    result
+            diesel::insert_into(diesel_schema::areas::table)
+                .values((
+                    diesel_schema::areas::bid_year_id.eq(bid_year_id),
+                    diesel_schema::areas::area_code.eq(result
                         .audit_event
                         .area
                         .as_ref()
                         .expect("CreateArea must have area")
-                        .id(),
-                )
+                        .id()),
+                ))
                 .execute(conn)?;
 
-            let area_id: i64 = sql_query("SELECT last_insert_rowid() as last_insert_rowid")
-                .get_result::<LastInsertRowid>(conn)?
-                .last_insert_rowid;
+            let area_id: i64 = get_last_insert_rowid(conn)?;
 
             debug!(
                 area_id,
@@ -370,31 +359,24 @@ fn persist_audit_event_with_ids(
     let before_json: String = serde_json::to_string(&before_data)?;
     let after_json: String = serde_json::to_string(&after_data)?;
 
-    sql_query(
-        "INSERT INTO audit_events (
-            bid_year_id, area_id, year, area_code,
-            actor_operator_id, actor_login_name, actor_display_name,
-            actor_json, cause_json, action_json,
-            before_snapshot_json, after_snapshot_json
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-    )
-    .bind::<Nullable<BigInt>, _>(bid_year_id)
-    .bind::<Nullable<BigInt>, _>(area_id)
-    .bind::<Integer, _>(year)
-    .bind::<Text, _>(area_code)
-    .bind::<BigInt, _>(actor_operator_id)
-    .bind::<Text, _>(actor_login_name)
-    .bind::<Text, _>(actor_display_name)
-    .bind::<Text, _>(actor_json)
-    .bind::<Text, _>(cause_json)
-    .bind::<Text, _>(action_json)
-    .bind::<Text, _>(before_json)
-    .bind::<Text, _>(after_json)
-    .execute(conn)?;
+    diesel::insert_into(diesel_schema::audit_events::table)
+        .values((
+            diesel_schema::audit_events::bid_year_id.eq(bid_year_id),
+            diesel_schema::audit_events::area_id.eq(area_id),
+            diesel_schema::audit_events::year.eq(year),
+            diesel_schema::audit_events::area_code.eq(area_code),
+            diesel_schema::audit_events::actor_operator_id.eq(actor_operator_id),
+            diesel_schema::audit_events::actor_login_name.eq(actor_login_name),
+            diesel_schema::audit_events::actor_display_name.eq(actor_display_name),
+            diesel_schema::audit_events::actor_json.eq(actor_json),
+            diesel_schema::audit_events::cause_json.eq(cause_json),
+            diesel_schema::audit_events::action_json.eq(action_json),
+            diesel_schema::audit_events::before_snapshot_json.eq(before_json),
+            diesel_schema::audit_events::after_snapshot_json.eq(after_json),
+        ))
+        .execute(conn)?;
 
-    let event_id: i64 = sql_query("SELECT last_insert_rowid() as last_insert_rowid")
-        .get_result::<LastInsertRowid>(conn)?
-        .last_insert_rowid;
+    let event_id: i64 = get_last_insert_rowid(conn)?;
 
     Ok(event_id)
 }
@@ -431,15 +413,14 @@ fn persist_state_snapshot_tx(
 
     let state_json: String = serde_json::to_string(&state_data)?;
 
-    sql_query(
-        "INSERT INTO state_snapshots (bid_year_id, area_id, event_id, state_json)
-         VALUES (?1, ?2, ?3, ?4)",
-    )
-    .bind::<BigInt, _>(bid_year_id)
-    .bind::<BigInt, _>(area_id)
-    .bind::<BigInt, _>(event_id)
-    .bind::<Text, _>(state_json)
-    .execute(conn)?;
+    diesel::insert_into(diesel_schema::state_snapshots::table)
+        .values((
+            diesel_schema::state_snapshots::bid_year_id.eq(bid_year_id),
+            diesel_schema::state_snapshots::area_id.eq(area_id),
+            diesel_schema::state_snapshots::event_id.eq(event_id),
+            diesel_schema::state_snapshots::state_json.eq(state_json),
+        ))
+        .execute(conn)?;
 
     Ok(())
 }
@@ -485,29 +466,25 @@ fn insert_new_user_tx(conn: &mut SqliteConnection, state: &State) -> Result<(), 
     let service_computation_date: &str = &user.seniority_data.service_computation_date;
 
     // Insert new user and let SQLite assign user_id
-    sql_query(
-        "INSERT INTO users (
-            bid_year_id, area_id, initials, name, user_type, crew,
-            cumulative_natca_bu_date, natca_bu_date,
-            eod_faa_date, service_computation_date, lottery_value
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-    )
-    .bind::<BigInt, _>(bid_year_id)
-    .bind::<BigInt, _>(area_id)
-    .bind::<Text, _>(user.initials.value())
-    .bind::<Text, _>(&user.name)
-    .bind::<Text, _>(user.user_type.as_str())
-    .bind::<Nullable<Integer>, _>(
-        user.crew
-            .as_ref()
-            .map(|c| c.number().to_i32().expect("Crew number out of range")),
-    )
-    .bind::<Text, _>(cumulative_natca_bu_date)
-    .bind::<Text, _>(natca_bu_date)
-    .bind::<Text, _>(eod_faa_date)
-    .bind::<Text, _>(service_computation_date)
-    .bind::<Nullable<Integer>, _>(user.seniority_data.lottery_value.and_then(|v| v.to_i32()))
-    .execute(conn)?;
+    diesel::insert_into(diesel_schema::users::table)
+        .values((
+            diesel_schema::users::bid_year_id.eq(bid_year_id),
+            diesel_schema::users::area_id.eq(area_id),
+            diesel_schema::users::initials.eq(user.initials.value()),
+            diesel_schema::users::name.eq(&user.name),
+            diesel_schema::users::user_type.eq(user.user_type.as_str()),
+            diesel_schema::users::crew.eq(user
+                .crew
+                .as_ref()
+                .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+            diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
+            diesel_schema::users::natca_bu_date.eq(natca_bu_date),
+            diesel_schema::users::eod_faa_date.eq(eod_faa_date),
+            diesel_schema::users::service_computation_date.eq(service_computation_date),
+            diesel_schema::users::lottery_value
+                .eq(user.seniority_data.lottery_value.and_then(|v| v.to_i32())),
+        ))
+        .execute(conn)?;
 
     Ok(())
 }
@@ -541,10 +518,12 @@ fn sync_canonical_users_tx(
         crate::sqlite::queries::lookup_area_id_tx(conn, bid_year_id, state.area.id())?;
 
     // Delete all existing users for this (bid_year_id, area_id)
-    sql_query("DELETE FROM users WHERE bid_year_id = ?1 AND area_id = ?2")
-        .bind::<BigInt, _>(bid_year_id)
-        .bind::<BigInt, _>(area_id)
-        .execute(conn)?;
+    diesel::delete(
+        diesel_schema::users::table
+            .filter(diesel_schema::users::bid_year_id.eq(bid_year_id))
+            .filter(diesel_schema::users::area_id.eq(area_id)),
+    )
+    .execute(conn)?;
 
     // Insert all users from the new state
     for user in &state.users {
@@ -556,59 +535,47 @@ fn sync_canonical_users_tx(
 
         if let Some(user_id) = user.user_id {
             // User has an existing user_id, insert with explicit ID
-            sql_query(
-                "INSERT INTO users (
-                    user_id, bid_year_id, area_id, initials, name, user_type, crew,
-                    cumulative_natca_bu_date, natca_bu_date,
-                    eod_faa_date, service_computation_date, lottery_value
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            )
-            .bind::<BigInt, _>(user_id)
-            .bind::<BigInt, _>(bid_year_id)
-            .bind::<BigInt, _>(area_id)
-            .bind::<Text, _>(user.initials.value())
-            .bind::<Text, _>(&user.name)
-            .bind::<Text, _>(user.user_type.as_str())
-            .bind::<Nullable<Integer>, _>(
-                user.crew
-                    .as_ref()
-                    .map(|c| c.number().to_i32().expect("Crew number out of range")),
-            )
-            .bind::<Text, _>(cumulative_natca_bu_date)
-            .bind::<Text, _>(natca_bu_date)
-            .bind::<Text, _>(eod_faa_date)
-            .bind::<Text, _>(service_computation_date)
-            .bind::<Nullable<Integer>, _>(
-                user.seniority_data.lottery_value.and_then(|v| v.to_i32()),
-            )
-            .execute(conn)?;
+            diesel::insert_into(diesel_schema::users::table)
+                .values((
+                    diesel_schema::users::user_id.eq(user_id),
+                    diesel_schema::users::bid_year_id.eq(bid_year_id),
+                    diesel_schema::users::area_id.eq(area_id),
+                    diesel_schema::users::initials.eq(user.initials.value()),
+                    diesel_schema::users::name.eq(&user.name),
+                    diesel_schema::users::user_type.eq(user.user_type.as_str()),
+                    diesel_schema::users::crew.eq(user
+                        .crew
+                        .as_ref()
+                        .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+                    diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
+                    diesel_schema::users::natca_bu_date.eq(natca_bu_date),
+                    diesel_schema::users::eod_faa_date.eq(eod_faa_date),
+                    diesel_schema::users::service_computation_date.eq(service_computation_date),
+                    diesel_schema::users::lottery_value
+                        .eq(user.seniority_data.lottery_value.and_then(|v| v.to_i32())),
+                ))
+                .execute(conn)?;
         } else {
             // User has no user_id, insert and let SQLite assign one
-            sql_query(
-                "INSERT INTO users (
-                    bid_year_id, area_id, initials, name, user_type, crew,
-                    cumulative_natca_bu_date, natca_bu_date,
-                    eod_faa_date, service_computation_date, lottery_value
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-            )
-            .bind::<BigInt, _>(bid_year_id)
-            .bind::<BigInt, _>(area_id)
-            .bind::<Text, _>(user.initials.value())
-            .bind::<Text, _>(&user.name)
-            .bind::<Text, _>(user.user_type.as_str())
-            .bind::<Nullable<Integer>, _>(
-                user.crew
-                    .as_ref()
-                    .map(|c| c.number().to_i32().expect("Crew number out of range")),
-            )
-            .bind::<Text, _>(cumulative_natca_bu_date)
-            .bind::<Text, _>(natca_bu_date)
-            .bind::<Text, _>(eod_faa_date)
-            .bind::<Text, _>(service_computation_date)
-            .bind::<Nullable<Integer>, _>(
-                user.seniority_data.lottery_value.and_then(|v| v.to_i32()),
-            )
-            .execute(conn)?;
+            diesel::insert_into(diesel_schema::users::table)
+                .values((
+                    diesel_schema::users::bid_year_id.eq(bid_year_id),
+                    diesel_schema::users::area_id.eq(area_id),
+                    diesel_schema::users::initials.eq(user.initials.value()),
+                    diesel_schema::users::name.eq(&user.name),
+                    diesel_schema::users::user_type.eq(user.user_type.as_str()),
+                    diesel_schema::users::crew.eq(user
+                        .crew
+                        .as_ref()
+                        .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+                    diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
+                    diesel_schema::users::natca_bu_date.eq(natca_bu_date),
+                    diesel_schema::users::eod_faa_date.eq(eod_faa_date),
+                    diesel_schema::users::service_computation_date.eq(service_computation_date),
+                    diesel_schema::users::lottery_value
+                        .eq(user.seniority_data.lottery_value.and_then(|v| v.to_i32())),
+                ))
+                .execute(conn)?;
         }
     }
 
