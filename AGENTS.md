@@ -131,6 +131,46 @@ If unsure, prefer clarity over mechanical consistency and ask.
 - Test infrastructure should be provisioned via the development environment, not ad-hoc setup
 - If required infrastructure is unavailable, stop and ask rather than altering behavior
 
+### External Database Testing Rules
+
+- External databases (e.g. MariaDB, MySQL) are **runtime test dependencies**, not feature-gated components
+- Code must compile with support for all database backends enabled by default
+- Tests that require external databases must:
+  - be explicitly marked with `#[ignore]`
+  - fail fast if required environment variables are missing
+  - never run as part of `cargo test` by default
+
+- External database tests must be executed **only** via explicit tooling
+  (e.g. `cargo xtask test-mariadb`)
+
+- Agents must NOT:
+  - use Cargo feature flags to gate database backends
+  - conditionally compile code to avoid missing databases
+  - modify production code to “accommodate” test infrastructure
+
+If a test requires an external database and no explicit execution path exists,
+the agent must stop and request guidance.
+
+### xtask Responsibilities
+
+- `xtask` is the authoritative orchestration layer for:
+  - external service lifecycle (e.g. Docker containers)
+  - environment validation (tools, daemons, credentials)
+  - explicit opt-in test execution
+
+- Agents may assume:
+  - `xtask` may start and stop containers
+  - `xtask` may set environment variables
+  - `xtask` may gate tests by intent
+
+- Agents must NOT:
+  - embed Docker or service lifecycle logic into tests
+  - rely on ambient system state
+  - assume CI or local environments are identical
+
+If external infrastructure is required and no `xtask` entry point exists,
+the correct action is to add one or stop and ask.
+
 ## AI-Specific Rules
 
 - Do NOT invent APIs
@@ -738,6 +778,27 @@ Correctness and architectural integrity take precedence over completion speed.
 - Default to Diesel DSL for all persistence queries.
   Raw SQL is allowed only when the DSL cannot express the query cleanly, safely, or without obscuring intent.
 - Any raw SQL must be narrowly scoped and documented with the reason DSL was rejected.
+- If Diesel CLI or migration tooling is required, it must be provided via the Nix environment or xtask; agents must not assume its presence.
+- SQLite-specific helpers such as `last_insert_rowid()` are acceptable when required by backend limitations, but must be narrowly scoped and isolated behind Diesel abstractions.
+
+### Multi-Backend Database Policy
+
+- SQLite is the default testing backend and must support in-memory operation
+- Other backends (e.g. MariaDB/MySQL) must:
+  - be supported by the same Diesel schema and queries
+  - be validated via explicit, opt-in tests
+
+- Diesel is the canonical persistence abstraction
+- Backend-specific behavior must be:
+  - isolated
+  - documented
+  - tested explicitly
+
+Agents must NOT:
+
+- introduce backend-specific schema divergence
+- modify queries to “fit” one backend at the expense of others
+- add compatibility hacks to satisfy a single database engine
 
 ## When to Stop
 
@@ -748,5 +809,8 @@ If any of the following are true:
 - The solution requires guessing intent
 - The change affects auditability or domain rules in unclear ways
 - Failures appear to be caused by missing tools, packages, or environment configuration
+- A test failure appears to be caused by backend-specific behavior
+- A database backend requires additional services not provisioned by xtask
+- The agent is tempted to alter schema or persistence logic to satisfy a test
 
 → Ask the user.
