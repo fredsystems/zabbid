@@ -71,24 +71,34 @@
       ##########################################################################
       ## CHECKS
       ##########################################################################
-      checks = lib.genAttrs systems (system: {
-        pre-commit = precommit.lib.mkCheck {
-          inherit system;
-          src = ./.;
+      checks = lib.genAttrs systems (
+        system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in
+        {
+          pre-commit = precommit.lib.mkCheck {
+            inherit system;
 
-          check_rust = true;
-          check_docker = false;
-          check_python = true;
-          check_javascript = true;
+            src = ./.;
 
-          enableXtask = true;
+            check_rust = true;
+            check_docker = false;
+            check_python = true;
+            check_javascript = true;
 
-          extraExcludes = [
-            ".dictionary.txt"
-            "typos.toml"
-          ];
-        };
-      });
+            enableXtask = true;
+            extraLibPathPkgs = [
+              pkgs.mariadb-connector-c
+            ];
+
+            extraExcludes = [
+              ".dictionary.txt"
+              "typos.toml"
+            ];
+          };
+        }
+      );
 
       ##########################################################################
       ## DEV SHELLS
@@ -111,6 +121,12 @@
                 cargo-llvm-cov
                 sqlite
                 nodejs
+                diesel-cli
+                docker
+                mariadb.client
+                mariadb
+                pkg-config
+                mariadb-connector-c
               ]
               ++ (chk.passthru.devPackages or [ ])
               ++ chk.enabledPackages;

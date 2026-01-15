@@ -59,6 +59,10 @@ pub fn create_test_bidder_operator() -> OperatorData {
 }
 
 /// Creates a test metadata with a bid year and area.
+///
+/// WARNING: This creates metadata without canonical IDs and should not be used
+/// for tests that call handlers expecting canonical state.
+/// Use `setup_test_persistence()` instead for complete bootstrap.
 pub fn create_test_metadata() -> BootstrapMetadata {
     let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
     let bid_year: BidYear = BidYear::new(2026);
@@ -310,7 +314,190 @@ pub fn setup_test_persistence() -> Result<SqlitePersistence, zab_bid_persistence
     persistence.persist_bootstrap(&area_result)?;
 
     // Set the bid year as active
-    persistence.set_active_bid_year(2026)?;
+    persistence.set_active_bid_year(&active_bid_year)?;
 
     Ok(persistence)
+}
+
+/// Bootstraps a bid year and area in persistence and returns the updated metadata.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer to bootstrap into
+/// * `year` - The bid year to create
+/// * `area_code` - The area code to create
+/// * `operator_id` - The operator ID to use for audit events
+///
+/// # Returns
+///
+/// Updated `BootstrapMetadata` with canonical IDs from persistence.
+///
+/// # Errors
+///
+/// Returns an error if bootstrap operations fail.
+#[allow(dead_code)]
+pub fn bootstrap_bid_year_and_area(
+    persistence: &mut SqlitePersistence,
+    year: u16,
+    area_code: &str,
+    operator_id: i64,
+) -> Result<BootstrapMetadata, zab_bid_persistence::PersistenceError> {
+    use zab_bid::{BootstrapMetadata, BootstrapResult, Command, apply_bootstrap};
+    use zab_bid_audit::{Actor, Cause};
+
+    let mut metadata = BootstrapMetadata::new();
+
+    let actor = Actor::with_operator(
+        String::from("test-admin"),
+        String::from("admin"),
+        operator_id,
+        String::from("test-operator"),
+        String::from("Test Operator"),
+    );
+    let cause = Cause::new(String::from("test-setup"), String::from("Test setup"));
+
+    // Bootstrap bid year
+    let create_bid_year_cmd = Command::CreateBidYear {
+        year,
+        start_date: create_test_start_date_for_year(i32::from(year)),
+        num_pay_periods: create_test_pay_periods(),
+    };
+
+    let placeholder_bid_year = BidYear::new(year);
+    let bid_year_result: BootstrapResult = apply_bootstrap(
+        &metadata,
+        &placeholder_bid_year,
+        create_bid_year_cmd,
+        actor.clone(),
+        cause.clone(),
+    )
+    .map_err(|e| zab_bid_persistence::PersistenceError::Other(format!("Bootstrap failed: {e}")))?;
+
+    persistence.persist_bootstrap(&bid_year_result)?;
+    metadata = bid_year_result.new_metadata;
+
+    // Bootstrap area
+    let create_area_cmd = Command::CreateArea {
+        area_id: area_code.to_string(),
+    };
+
+    let active_bid_year = BidYear::new(year);
+    let area_result: BootstrapResult =
+        apply_bootstrap(&metadata, &active_bid_year, create_area_cmd, actor, cause).map_err(
+            |e| zab_bid_persistence::PersistenceError::Other(format!("Bootstrap failed: {e}")),
+        )?;
+
+    persistence.persist_bootstrap(&area_result)?;
+
+    // Retrieve and return complete metadata with canonical IDs
+    persistence.get_bootstrap_metadata()
+}
+
+/// Canonical ID collection returned from bootstrap operations.
+///
+/// This structure provides explicit access to the canonical identifiers
+/// created during bootstrap, eliminating the need for tests to search
+/// through metadata or fabricate IDs.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct BootstrapIds {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The canonical area identifier.
+    pub area_id: i64,
+}
+
+/// Bootstraps a bid year and area, returning canonical IDs explicitly.
+///
+/// This helper creates a bid year and area in persistence and returns
+/// the canonical IDs that tests should use for all subsequent operations.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer to bootstrap into
+/// * `year` - The bid year to create
+/// * `area_code` - The area code to create
+/// * `operator_id` - The operator ID to use for audit events
+///
+/// # Returns
+///
+/// `BootstrapIds` containing `bid_year_id` and `area_id`.
+///
+/// # Errors
+///
+/// Returns an error if bootstrap operations fail.
+#[allow(dead_code)]
+pub fn bootstrap_with_ids(
+    persistence: &mut SqlitePersistence,
+    year: u16,
+    area_code: &str,
+    operator_id: i64,
+) -> Result<BootstrapIds, zab_bid_persistence::PersistenceError> {
+    let _metadata = bootstrap_bid_year_and_area(persistence, year, area_code, operator_id)?;
+
+    // Query canonical IDs from persistence
+    let bid_year_id: i64 = persistence.get_bid_year_id(year)?;
+    let area_id: i64 = persistence.get_area_id(bid_year_id, area_code)?;
+
+    Ok(BootstrapIds {
+        bid_year_id,
+        area_id,
+    })
+}
+
+/// Bootstraps only a bid year, returning its canonical ID.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer to bootstrap into
+/// * `year` - The bid year to create
+/// * `operator_id` - The operator ID to use for audit events
+///
+/// # Returns
+///
+/// The canonical `bid_year_id`.
+///
+/// # Errors
+///
+/// Returns an error if bootstrap operations fail.
+#[allow(dead_code)]
+pub fn bootstrap_bid_year_only(
+    persistence: &mut SqlitePersistence,
+    year: u16,
+    operator_id: i64,
+) -> Result<i64, zab_bid_persistence::PersistenceError> {
+    use zab_bid::{BootstrapMetadata, BootstrapResult, Command, apply_bootstrap};
+    use zab_bid_audit::{Actor, Cause};
+
+    let metadata = BootstrapMetadata::new();
+
+    let actor = Actor::with_operator(
+        String::from("test-admin"),
+        String::from("admin"),
+        operator_id,
+        String::from("test-operator"),
+        String::from("Test Operator"),
+    );
+    let cause = Cause::new(String::from("test-setup"), String::from("Test setup"));
+
+    let create_bid_year_cmd = Command::CreateBidYear {
+        year,
+        start_date: create_test_start_date_for_year(i32::from(year)),
+        num_pay_periods: create_test_pay_periods(),
+    };
+
+    let placeholder_bid_year = BidYear::new(year);
+    let bid_year_result: BootstrapResult = apply_bootstrap(
+        &metadata,
+        &placeholder_bid_year,
+        create_bid_year_cmd,
+        actor,
+        cause,
+    )
+    .map_err(|e| zab_bid_persistence::PersistenceError::Other(format!("Bootstrap failed: {e}")))?;
+
+    persistence.persist_bootstrap(&bid_year_result)?;
+
+    // Query canonical ID from persistence
+    persistence.get_bid_year_id(year)
 }

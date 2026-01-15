@@ -3,6 +3,73 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+//! Persistence layer for the ZAB Bidding System.
+//!
+//! This crate provides database persistence for audit events, state snapshots,
+//! and canonical domain entities. It is built on Diesel and supports multiple
+//! database backends.
+//!
+//! ## Database Backend Support
+//!
+//! ### Supported Backends
+//!
+//! - **`SQLite`** (default) — Used for development, unit tests, and integration tests
+//! - **`MariaDB`/`MySQL`** — Validated via explicit opt-in tests
+//!
+//! ### Default Backend: `SQLite`
+//!
+//! `SQLite` is the primary backend for:
+//! - All standard development workflows
+//! - Unit and integration tests
+//! - Fast, deterministic, in-memory testing
+//!
+//! `SQLite` support is always available and requires no external infrastructure.
+//!
+//! ### Additional Backend: `MariaDB`/`MySQL`
+//!
+//! `MySQL`/`MariaDB` support is compiled by default (no feature flags) but validated
+//! only via explicit opt-in tests. See the `backend::mysql` module for details.
+//!
+//! To run `MySQL` validation tests:
+//! ```bash
+//! cargo xtask test-mariadb
+//! ```
+//!
+//! This command:
+//! 1. Starts a `MariaDB` container via `Docker`
+//! 2. Runs migrations
+//! 3. Executes backend validation tests marked with `#[ignore]`
+//! 4. Cleans up the container
+//!
+//! ### Compilation Requirements
+//!
+//! `MySQL` support requires `MySQL` client development libraries at compile time.
+//! These are provided by the `Nix` development environment (`flake.nix`).
+//!
+//! After updating the `Nix` environment:
+//! ```bash
+//! direnv allow
+//! ```
+//!
+//! ### Migration Strategy
+//!
+//! Due to `SQL` syntax differences between backends, we maintain separate
+//! migration directories:
+//!
+//! - `migrations/` — `SQLite`-specific (default)
+//! - `migrations_mysql/` — `MySQL`/`MariaDB`-specific
+//!
+//! Both produce identical schema semantics but use backend-appropriate syntax.
+//! See the `backend` module for details.
+//!
+//! ## Testing Philosophy
+//!
+//! - Standard tests (`cargo test`) run against `SQLite` only
+//! - Backend validation tests are explicitly marked `#[ignore]`
+//! - External database tests never run automatically
+//! - All infrastructure is orchestrated by `xtask`, not embedded in tests
+//! - Tests fail fast if required infrastructure is missing
+
 #![deny(
     clippy::pedantic,
     clippy::cargo,
@@ -11,43 +78,144 @@
     clippy::correctness,
     clippy::all
 )]
+#![allow(clippy::multiple_crate_versions)]
 
+use diesel::prelude::*;
+use diesel::{MysqlConnection, SqliteConnection};
+use std::path::Path;
+use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
+use zab_bid_audit::AuditEvent;
+use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials, User};
+
+/// Macro to generate monomorphic backend-specific query/mutation functions.
+///
+/// This macro generates two separate functions from a single function body:
+/// - One suffixed with `_sqlite` taking `&mut SqliteConnection`
+/// - One suffixed with `_mysql` taking `&mut MysqlConnection`
+///
+/// This approach is required because Diesel's type system requires concrete
+/// backend types at compile time and cannot handle generic backend functions.
+///
+/// # Constraints
+///
+/// - The macro ONLY duplicates function bodies and substitutes connection types
+/// - No logic, branching, or dispatch occurs within the macro
+/// - Backend dispatch happens exclusively in the Persistence adapter
+/// - The generated functions are completely monomorphic
+///
+/// # Usage
+///
+/// ```ignore
+/// backend_fn! {
+///     pub fn my_query(conn: &mut _, param: i64) -> Result<String, PersistenceError> {
+///         // Function body using conn - same for both backends
+///         diesel_schema::table::table
+///             .filter(diesel_schema::table::id.eq(param))
+///             .first::<String>(conn)
+///             .map_err(Into::into)
+///     }
+/// }
+/// ```
+///
+/// This generates:
+/// - `my_query_sqlite(&mut SqliteConnection, i64) -> Result<String, PersistenceError>`
+/// - `my_query_mysql(&mut MysqlConnection, i64) -> Result<String, PersistenceError>`
+macro_rules! backend_fn {
+    (
+        $(#[$meta:meta])*
+        $vis:vis fn $name:ident (
+            $conn:ident : &mut _
+            $(, $param:ident : $param_ty:ty)* $(,)?
+        ) -> $ret:ty
+        $body:block
+    ) => {
+        pastey::paste! {
+            // Generate SQLite version
+            $(#[$meta])*
+            $vis fn [<$name _sqlite>] (
+                $conn: &mut SqliteConnection
+                $(, $param : $param_ty)*
+            ) -> $ret
+            $body
+
+            // Generate MySQL version
+            $(#[$meta])*
+            $vis fn [<$name _mysql>] (
+                $conn: &mut MysqlConnection
+                $(, $param : $param_ty)*
+            ) -> $ret
+            $body
+        }
+    };
+}
+
+mod backend;
 mod data_models;
+mod diesel_schema;
 mod error;
-mod sqlite;
+mod mutations;
+mod queries;
 
 #[cfg(test)]
 mod tests;
 
-use rusqlite::Connection;
-use std::path::Path;
-use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
-use zab_bid_audit::AuditEvent;
-use zab_bid_domain::{Area, BidYear, CanonicalBidYear, User};
-
 pub use data_models::{OperatorData, SessionData};
 pub use error::PersistenceError;
 
-/// Persistence adapter for audit events and state snapshots.
-pub struct SqlitePersistence {
-    pub(crate) conn: Connection,
+use backend::PersistenceBackend;
+
+/// Type alias for backward compatibility.
+/// All new code should use `Persistence` directly.
+pub type SqlitePersistence = Persistence;
+
+/// Internal enum for backend-specific database connections.
+///
+/// This enum allows the persistence adapter to work with either `SQLite` or `MySQL`
+/// backends while maintaining a single public API.
+enum BackendConnection {
+    Sqlite(SqliteConnection),
+    Mysql(MysqlConnection),
 }
 
-impl SqlitePersistence {
-    /// Creates a new persistence adapter with an in-memory database.
+/// Persistence adapter for audit events and state snapshots.
+///
+/// This adapter is backend-agnostic and works with both `SQLite` and `MySQL`/`MariaDB`.
+/// Backend selection happens once at construction time and is transparent to callers.
+pub struct Persistence {
+    conn: BackendConnection,
+}
+
+impl Persistence {
+    /// Creates a new persistence adapter with an in-memory `SQLite` database.
+    ///
+    /// Uses a shared in-memory database via `Diesel`.
     ///
     /// # Errors
     ///
     /// Returns an error if the database cannot be initialized.
     pub fn new_in_memory() -> Result<Self, PersistenceError> {
-        let conn: Connection = Connection::open_in_memory()?;
-        // Enable foreign key constraints
-        conn.pragma_update(None, "foreign_keys", "ON")?;
-        sqlite::initialize_schema(&conn)?;
-        Ok(Self { conn })
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        // Create a unique shared in-memory database name per call so tests are isolated.
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| PersistenceError::InitializationError(e.to_string()))?
+            .as_nanos();
+        let db_name = format!("memdb_{nanos}");
+        let shared_memory_url = format!("file:{db_name}?mode=memory&cache=shared");
+
+        // Initialize database with Diesel migrations
+        let mut conn: SqliteConnection = backend::sqlite::initialize_database(&shared_memory_url)?;
+
+        // Verify foreign key enforcement is active
+        backend::sqlite::verify_foreign_key_enforcement(&mut conn)?;
+
+        Ok(Self {
+            conn: BackendConnection::Sqlite(conn),
+        })
     }
 
-    /// Creates a new persistence adapter with a file-based database.
+    /// Creates a new persistence adapter with a file-based `SQLite` database.
     ///
     /// # Arguments
     ///
@@ -57,35 +225,69 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database cannot be opened or initialized.
     pub fn new_with_file<P: AsRef<Path>>(path: P) -> Result<Self, PersistenceError> {
-        let conn: Connection = Connection::open(path)?;
+        let path_str = path.as_ref().to_str().ok_or_else(|| {
+            PersistenceError::InitializationError("Invalid database path".to_string())
+        })?;
+
+        // Initialize database with Diesel migrations
+        let mut conn: SqliteConnection = backend::sqlite::initialize_database(path_str)?;
+
         // Enable WAL mode for better read concurrency
-        conn.pragma_update(None, "journal_mode", "WAL")?;
-        // Enable foreign key constraints
-        conn.pragma_update(None, "foreign_keys", "ON")?;
-        sqlite::initialize_schema(&conn)?;
+        backend::sqlite::enable_wal_mode(&mut conn)?;
+
         // Verify foreign key enforcement is active
-        sqlite::verify_foreign_key_enforcement(&conn)?;
-        Ok(Self { conn })
+        backend::sqlite::verify_foreign_key_enforcement(&mut conn)?;
+
+        Ok(Self {
+            conn: BackendConnection::Sqlite(conn),
+        })
+    }
+
+    /// Creates a new persistence adapter with a `MySQL`/`MariaDB` database.
+    ///
+    /// # Arguments
+    ///
+    /// * `database_url` - The `MySQL` connection URL (e.g., `mysql://user:pass@host/db`)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be opened or initialized.
+    pub fn new_with_mysql(database_url: &str) -> Result<Self, PersistenceError> {
+        // Initialize database with Diesel migrations
+        let mut conn: MysqlConnection = backend::mysql::initialize_database(database_url)?;
+
+        // Verify foreign key enforcement is active
+        backend::mysql::verify_foreign_key_enforcement(&mut conn)?;
+
+        Ok(Self {
+            conn: BackendConnection::Mysql(conn),
+        })
     }
 
     /// Verifies that foreign key enforcement is enabled.
     ///
-    /// This is a startup-time check required by Phase 14 to ensure
+    /// This is a startup-time check required to ensure
     /// referential integrity constraints are enforced.
     ///
     /// # Errors
     ///
     /// Returns an error if foreign key enforcement is not enabled.
-    pub fn verify_foreign_key_enforcement(&self) -> Result<(), PersistenceError> {
-        sqlite::verify_foreign_key_enforcement(&self.conn)
+    pub fn verify_foreign_key_enforcement(&mut self) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => conn.verify_foreign_key_enforcement(),
+            BackendConnection::Mysql(conn) => conn.verify_foreign_key_enforcement(),
+        }
     }
+
+    // ========================================================================
+    // Transitions & Bootstrap
+    // ========================================================================
 
     /// Persists a transition result (audit event and optionally a full snapshot).
     ///
     /// # Arguments
     ///
     /// * `result` - The transition result to persist
-    /// * `should_snapshot` - Whether to persist a full state snapshot
     ///
     /// # Returns
     ///
@@ -93,22 +295,23 @@ impl SqlitePersistence {
     ///
     /// # Errors
     ///
-    /// Returns an error if persistence fails. No partial writes occur.
+    /// Returns an error if persistence fails.
     pub fn persist_transition(
         &mut self,
         result: &TransitionResult,
-        should_snapshot: bool,
     ) -> Result<i64, PersistenceError> {
-        let tx = self.conn.transaction()?;
-        let event_id: i64 = sqlite::persist_transition(&tx, result, should_snapshot)?;
-        tx.commit()?;
-        Ok(event_id)
+        let should_snapshot = queries::state::should_snapshot(&result.audit_event.action.name);
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::persist_transition_sqlite(conn, result, should_snapshot)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::persist_transition_mysql(conn, result, should_snapshot)
+            }
+        }
     }
 
-    /// Persists a standalone audit event.
-    ///
-    /// This is used for operator lifecycle events and other system-level actions
-    /// that don't go through the standard transition flow.
+    /// Persists an audit event.
     ///
     /// # Arguments
     ///
@@ -122,10 +325,10 @@ impl SqlitePersistence {
     ///
     /// Returns an error if persistence fails.
     pub fn persist_audit_event(&mut self, event: &AuditEvent) -> Result<i64, PersistenceError> {
-        let tx = self.conn.transaction()?;
-        let event_id: i64 = sqlite::persist_audit_event(&tx, event)?;
-        tx.commit()?;
-        Ok(event_id)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => mutations::persist_audit_event_sqlite(conn, event),
+            BackendConnection::Mysql(conn) => mutations::persist_audit_event_mysql(conn, event),
+        }
     }
 
     /// Persists a bootstrap result (audit event for bid year/area creation).
@@ -140,13 +343,17 @@ impl SqlitePersistence {
     ///
     /// # Errors
     ///
-    /// Returns an error if persistence fails. No partial writes occur.
+    /// Returns an error if persistence fails.
     pub fn persist_bootstrap(&mut self, result: &BootstrapResult) -> Result<i64, PersistenceError> {
-        let tx = self.conn.transaction()?;
-        let event_id: i64 = sqlite::persist_bootstrap(&tx, result)?;
-        tx.commit()?;
-        Ok(event_id)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => mutations::persist_bootstrap_sqlite(conn, result),
+            BackendConnection::Mysql(conn) => mutations::persist_bootstrap_mysql(conn, result),
+        }
     }
+
+    // ========================================================================
+    // Audit Event Queries
+    // ========================================================================
 
     /// Retrieves an audit event by ID.
     ///
@@ -157,11 +364,16 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the event is not found or cannot be deserialized.
-    pub fn get_audit_event(&self, event_id: i64) -> Result<AuditEvent, PersistenceError> {
-        sqlite::get_audit_event(&self.conn, event_id)
+    pub fn get_audit_event(&mut self, event_id: i64) -> Result<AuditEvent, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::audit::get_audit_event_sqlite(conn, event_id)
+            }
+            BackendConnection::Mysql(conn) => queries::audit::get_audit_event_mysql(conn, event_id),
+        }
     }
 
-    /// Retrieves the most recent state snapshot for a `(bid_year, area)` scope.
+    /// Retrieves the most recent state snapshot for a `(BidYear, Area)` scope.
     ///
     /// # Arguments
     ///
@@ -172,14 +384,25 @@ impl SqlitePersistence {
     ///
     /// Returns an error if no snapshot exists or cannot be deserialized.
     pub fn get_latest_snapshot(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<(State, i64), PersistenceError> {
-        sqlite::get_latest_snapshot(&self.conn, bid_year, area)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let bid_year_id = queries::lookup_bid_year_id_sqlite(conn, bid_year.year())?;
+                let area_id = queries::lookup_area_id_sqlite(conn, bid_year_id, area.id())?;
+                queries::get_latest_snapshot_sqlite(conn, bid_year_id, area_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                let bid_year_id = queries::lookup_bid_year_id_mysql(conn, bid_year.year())?;
+                let area_id = queries::lookup_area_id_mysql(conn, bid_year_id, area.id())?;
+                queries::get_latest_snapshot_mysql(conn, bid_year_id, area_id)
+            }
+        }
     }
 
-    /// Retrieves all audit events for a `(bid_year, area)` scope after a given event ID.
+    /// Retrieves all audit events for a `(BidYear, Area)` scope after a given event ID.
     ///
     /// # Arguments
     ///
@@ -191,17 +414,26 @@ impl SqlitePersistence {
     ///
     /// Returns an error if events cannot be retrieved or deserialized.
     pub fn get_events_after(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
         after_event_id: i64,
     ) -> Result<Vec<AuditEvent>, PersistenceError> {
-        sqlite::get_events_after(&self.conn, bid_year, area, after_event_id)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let bid_year_id = queries::lookup_bid_year_id_sqlite(conn, bid_year.year())?;
+                let area_id = queries::lookup_area_id_sqlite(conn, bid_year_id, area.id())?;
+                queries::get_events_after_sqlite(conn, bid_year_id, area_id, after_event_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                let bid_year_id = queries::lookup_bid_year_id_mysql(conn, bid_year.year())?;
+                let area_id = queries::lookup_area_id_mysql(conn, bid_year_id, area.id())?;
+                queries::get_events_after_mysql(conn, bid_year_id, area_id, after_event_id)
+            }
+        }
     }
 
-    /// Retrieves the current effective state for a given `(bid_year, area)` scope.
-    ///
-    /// This queries the canonical `users` table to reconstruct the current state.
+    /// Retrieves the current effective state for a given `(BidYear, Area)` scope.
     ///
     /// # Arguments
     ///
@@ -212,21 +444,25 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn get_current_state(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<State, PersistenceError> {
-        sqlite::get_current_state(&self.conn, bid_year, area)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let bid_year_id = queries::lookup_bid_year_id_sqlite(conn, bid_year.year())?;
+                let area_id = queries::lookup_area_id_sqlite(conn, bid_year_id, area.id())?;
+                queries::get_current_state_sqlite(conn, bid_year_id, area_id, bid_year, area)
+            }
+            BackendConnection::Mysql(conn) => {
+                let bid_year_id = queries::lookup_bid_year_id_mysql(conn, bid_year.year())?;
+                let area_id = queries::lookup_area_id_mysql(conn, bid_year_id, area.id())?;
+                queries::get_current_state_mysql(conn, bid_year_id, area_id, bid_year, area)
+            }
+        }
     }
 
-    /// Retrieves the effective state for a given `(bid_year, area)` scope at a specific timestamp.
-    ///
-    /// This is a read-only operation that returns the most recent snapshot at or before
-    /// the target timestamp. In the current implementation, snapshots represent complete
-    /// state at specific points, and non-snapshot events are for audit trail purposes only.
-    ///
-    /// If the timestamp does not correspond exactly to a snapshot, the most recent
-    /// prior snapshot defines the state.
+    /// Retrieves the effective state for a given `(BidYear, Area)` scope at a specific timestamp.
     ///
     /// # Arguments
     ///
@@ -238,18 +474,26 @@ impl SqlitePersistence {
     ///
     /// Returns an error if no snapshot exists before the timestamp.
     pub fn get_historical_state(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
         timestamp: &str,
     ) -> Result<State, PersistenceError> {
-        sqlite::get_historical_state(&self.conn, bid_year, area, timestamp)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let bid_year_id = queries::lookup_bid_year_id_sqlite(conn, bid_year.year())?;
+                let area_id = queries::lookup_area_id_sqlite(conn, bid_year_id, area.id())?;
+                queries::get_historical_state_sqlite(conn, bid_year_id, area_id, timestamp)
+            }
+            BackendConnection::Mysql(conn) => {
+                let bid_year_id = queries::lookup_bid_year_id_mysql(conn, bid_year.year())?;
+                let area_id = queries::lookup_area_id_mysql(conn, bid_year_id, area.id())?;
+                queries::get_historical_state_mysql(conn, bid_year_id, area_id, timestamp)
+            }
+        }
     }
 
-    /// Retrieves the ordered audit event timeline for a given `(bid_year, area)` scope.
-    ///
-    /// This is a read-only operation that returns all audit events in strict
-    /// chronological order. Rollback events appear as first-class events in the timeline.
+    /// Retrieves the ordered audit event timeline for a given `(BidYear, Area)` scope.
     ///
     /// # Arguments
     ///
@@ -260,51 +504,85 @@ impl SqlitePersistence {
     ///
     /// Returns an error if events cannot be retrieved or deserialized.
     pub fn get_audit_timeline(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<Vec<AuditEvent>, PersistenceError> {
-        sqlite::get_audit_timeline(&self.conn, bid_year, area)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                // Look up the canonical IDs - if they don't exist, return empty timeline
+                let bid_year_id = match queries::lookup_bid_year_id_sqlite(conn, bid_year.year()) {
+                    Ok(id) => id,
+                    Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
+                    Err(e) => return Err(e),
+                };
+                let area_id = match queries::lookup_area_id_sqlite(conn, bid_year_id, area.id()) {
+                    Ok(id) => id,
+                    Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
+                    Err(e) => return Err(e),
+                };
+
+                queries::get_audit_timeline_sqlite(conn, bid_year_id, area_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                // Look up the canonical IDs - if they don't exist, return empty timeline
+                let bid_year_id = match queries::lookup_bid_year_id_mysql(conn, bid_year.year()) {
+                    Ok(id) => id,
+                    Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
+                    Err(e) => return Err(e),
+                };
+                let area_id = match queries::lookup_area_id_mysql(conn, bid_year_id, area.id()) {
+                    Ok(id) => id,
+                    Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
+                    Err(e) => return Err(e),
+                };
+
+                queries::get_audit_timeline_mysql(conn, bid_year_id, area_id)
+            }
+        }
     }
 
-    /// Reconstructs bootstrap metadata from canonical tables.
+    /// Retrieves all global audit events (events with no bid year or area scope).
     ///
-    /// This method queries the canonical `bid_years` and `areas` tables to retrieve
-    /// the set of bid years and areas that have been created.
+    /// # Errors
+    ///
+    /// Returns an error if events cannot be retrieved or deserialized.
+    pub fn get_global_audit_events(&mut self) -> Result<Vec<AuditEvent>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::get_global_audit_events_sqlite(conn),
+            BackendConnection::Mysql(conn) => queries::get_global_audit_events_mysql(conn),
+        }
+    }
+
+    // ========================================================================
+    // Bootstrap & Canonical Queries
+    // ========================================================================
+
+    /// Reconstructs bootstrap metadata from canonical tables.
     ///
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a bid year value from the database is outside the valid `u16` range.
-    /// This should not occur in normal operation as bid years are validated on creation.
-    pub fn get_bootstrap_metadata(&self) -> Result<BootstrapMetadata, PersistenceError> {
-        sqlite::get_bootstrap_metadata(&self.conn)
+    pub fn get_bootstrap_metadata(&mut self) -> Result<BootstrapMetadata, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::get_bootstrap_metadata_sqlite(conn),
+            BackendConnection::Mysql(conn) => queries::get_bootstrap_metadata_mysql(conn),
+        }
     }
 
-    /// Lists all bid years that have been created with their canonical metadata.
-    ///
-    /// This queries the canonical `bid_years` table directly and returns full
-    /// canonical bid year definitions including start date and pay period count.
+    /// Lists all bid years that have been created.
     ///
     /// # Errors
     ///
-    /// Returns an error if the database cannot be queried or if the data cannot
-    /// be reconstructed into valid `CanonicalBidYear` instances.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a bid year value from the database cannot be converted to `u16`.
-    /// This should never happen in practice as the schema enforces valid ranges.
-    pub fn list_bid_years(&self) -> Result<Vec<CanonicalBidYear>, PersistenceError> {
-        sqlite::list_bid_years(&self.conn)
+    /// Returns an error if the database cannot be queried.
+    pub fn list_bid_years(&mut self) -> Result<Vec<CanonicalBidYear>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::list_bid_years_sqlite(conn),
+            BackendConnection::Mysql(conn) => queries::list_bid_years_mysql(conn),
+        }
     }
 
     /// Lists all areas for a given bid year.
-    ///
-    /// This queries the canonical `areas` table directly.
     ///
     /// # Arguments
     ///
@@ -313,13 +591,34 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
-    pub fn list_areas(&self, bid_year: &BidYear) -> Result<Vec<Area>, PersistenceError> {
-        sqlite::list_areas(&self.conn, bid_year)
+    pub fn list_areas(&mut self, bid_year: &BidYear) -> Result<Vec<Area>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let bid_year_id = match bid_year.bid_year_id() {
+                    Some(id) => id,
+                    None => match queries::lookup_bid_year_id_sqlite(conn, bid_year.year()) {
+                        Ok(id) => id,
+                        Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
+                        Err(e) => return Err(e),
+                    },
+                };
+                queries::list_areas_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                let bid_year_id = match bid_year.bid_year_id() {
+                    Some(id) => id,
+                    None => match queries::lookup_bid_year_id_mysql(conn, bid_year.year()) {
+                        Ok(id) => id,
+                        Err(PersistenceError::ReconstructionError(_)) => return Ok(Vec::new()),
+                        Err(e) => return Err(e),
+                    },
+                };
+                queries::list_areas_mysql(conn, bid_year_id)
+            }
+        }
     }
 
-    /// Lists all users for a given `(bid_year, area)` scope.
-    ///
-    /// This queries the canonical `users` table directly.
+    /// Lists all users for a given `(BidYear, Area)` scope.
     ///
     /// # Arguments
     ///
@@ -330,16 +629,29 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn list_users(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<Vec<User>, PersistenceError> {
-        sqlite::list_users(&self.conn, bid_year, area)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let bid_year_id = queries::lookup_bid_year_id_sqlite(conn, bid_year.year())?;
+                let area_id = queries::lookup_area_id_sqlite(conn, bid_year_id, area.id())?;
+                queries::list_users_sqlite(conn, bid_year_id, area_id, bid_year, area)
+            }
+            BackendConnection::Mysql(conn) => {
+                let bid_year_id = queries::lookup_bid_year_id_mysql(conn, bid_year.year())?;
+                let area_id = queries::lookup_area_id_mysql(conn, bid_year_id, area.id())?;
+                queries::list_users_mysql(conn, bid_year_id, area_id, bid_year, area)
+            }
+        }
     }
 
+    // ========================================================================
+    // Completeness Queries
+    // ========================================================================
+
     /// Counts users per area for a given bid year.
-    ///
-    /// Returns a vector of tuples containing (`area_id`, `user_count`).
     ///
     /// # Arguments
     ///
@@ -349,45 +661,60 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn count_users_by_area(
-        &self,
+        &mut self,
         bid_year: &BidYear,
     ) -> Result<Vec<(String, usize)>, PersistenceError> {
-        sqlite::count_users_by_area(&self.conn, bid_year)
+        let bid_year_id = bid_year.bid_year_id().ok_or_else(|| {
+            PersistenceError::ReconstructionError(
+                "BidYear must have a bid_year_id to count users".to_string(),
+            )
+        })?;
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::count_users_by_area_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => queries::count_users_by_area_mysql(conn, bid_year_id),
+        }
     }
 
     /// Counts areas per bid year.
     ///
-    /// Returns a vector of tuples containing (`bid_year`, `area_count`).
-    ///
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
-    pub fn count_areas_by_bid_year(&self) -> Result<Vec<(u16, usize)>, PersistenceError> {
-        sqlite::count_areas_by_bid_year(&self.conn)
+    pub fn count_areas_by_bid_year(&mut self) -> Result<Vec<(u16, usize)>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::count_areas_by_bid_year_sqlite(conn),
+            BackendConnection::Mysql(conn) => queries::count_areas_by_bid_year_mysql(conn),
+        }
     }
 
     /// Counts total users per bid year across all areas.
     ///
-    /// Returns a vector of tuples containing (`bid_year`, `total_user_count`).
-    ///
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
-    pub fn count_users_by_bid_year(&self) -> Result<Vec<(u16, usize)>, PersistenceError> {
-        sqlite::count_users_by_bid_year(&self.conn)
+    pub fn count_users_by_bid_year(&mut self) -> Result<Vec<(u16, usize)>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::count_users_by_bid_year_sqlite(conn),
+            BackendConnection::Mysql(conn) => queries::count_users_by_bid_year_mysql(conn),
+        }
     }
 
     /// Counts users per (`bid_year`, `area_id`) combination.
-    ///
-    /// Returns a vector of tuples containing (`bid_year`, `area_id`, `user_count`).
     ///
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
     pub fn count_users_by_bid_year_and_area(
-        &self,
+        &mut self,
     ) -> Result<Vec<(u16, String, usize)>, PersistenceError> {
-        sqlite::count_users_by_bid_year_and_area(&self.conn)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::count_users_by_bid_year_and_area_sqlite(conn)
+            }
+            BackendConnection::Mysql(conn) => queries::count_users_by_bid_year_and_area_mysql(conn),
+        }
     }
 
     /// Determines if a given action requires a full snapshot.
@@ -400,28 +727,26 @@ impl SqlitePersistence {
     ///
     /// `true` if the action requires a snapshot, `false` otherwise.
     #[must_use]
-    pub fn should_snapshot(action_name: &str) -> bool {
-        sqlite::should_snapshot(action_name)
+    pub fn should_snapshot(&self, action_name: &str) -> bool {
+        queries::should_snapshot(action_name)
     }
 
     // ========================================================================
-    // Operator and Session Management (Phase 14)
+    // Operator Queries
     // ========================================================================
 
     /// Creates a new operator.
-    ///
-    /// The `login_name` is normalized to uppercase for case-insensitive uniqueness.
     ///
     /// # Arguments
     ///
     /// * `login_name` - The login name (will be normalized)
     /// * `display_name` - The display name
+    /// * `password` - The plain-text password (will be hashed)
     /// * `role` - The role (Admin or Bidder)
     ///
     /// # Errors
     ///
-    /// Returns an error if the operator cannot be created or if the login name
-    /// already exists.
+    /// Returns an error if the operator cannot be created.
     pub fn create_operator(
         &mut self,
         login_name: &str,
@@ -429,12 +754,17 @@ impl SqlitePersistence {
         password: &str,
         role: &str,
     ) -> Result<i64, PersistenceError> {
-        sqlite::create_operator(&self.conn, login_name, display_name, password, role)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::create_operator_sqlite(conn, login_name, display_name, password, role)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::create_operator_mysql(conn, login_name, display_name, password, role)
+            }
+        }
     }
 
     /// Retrieves an operator by login name.
-    ///
-    /// The `login_name` is normalized to uppercase for case-insensitive lookup.
     ///
     /// # Arguments
     ///
@@ -443,12 +773,18 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    /// Returns `Ok(None)` if the operator is not found.
     pub fn get_operator_by_login(
-        &self,
+        &mut self,
         login_name: &str,
     ) -> Result<Option<OperatorData>, PersistenceError> {
-        sqlite::get_operator_by_login(&self.conn, login_name)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::operators::get_operator_by_login_sqlite(conn, login_name)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::operators::get_operator_by_login_mysql(conn, login_name)
+            }
+        }
     }
 
     /// Retrieves an operator by ID.
@@ -460,12 +796,18 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    /// Returns `Ok(None)` if the operator is not found.
     pub fn get_operator_by_id(
-        &self,
+        &mut self,
         operator_id: i64,
     ) -> Result<Option<OperatorData>, PersistenceError> {
-        sqlite::get_operator_by_id(&self.conn, operator_id)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::operators::get_operator_by_id_sqlite(conn, operator_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::operators::get_operator_by_id_mysql(conn, operator_id)
+            }
+        }
     }
 
     /// Updates the last login timestamp for an operator.
@@ -478,12 +820,15 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database update fails.
     pub fn update_last_login(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
-        sqlite::update_last_login(&self.conn, operator_id)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::update_last_login_sqlite(conn, operator_id)
+            }
+            BackendConnection::Mysql(conn) => mutations::update_last_login_mysql(conn, operator_id),
+        }
     }
 
     /// Disables an operator.
-    ///
-    /// This sets `is_disabled` to true and records the `disabled_at` timestamp.
     ///
     /// # Arguments
     ///
@@ -493,7 +838,12 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database update fails.
     pub fn disable_operator(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
-        sqlite::disable_operator(&self.conn, operator_id)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::disable_operator_sqlite(conn, operator_id)
+            }
+            BackendConnection::Mysql(conn) => mutations::disable_operator_mysql(conn, operator_id),
+        }
     }
 
     /// Re-enables a disabled operator.
@@ -506,12 +856,13 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database update fails.
     pub fn enable_operator(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
-        sqlite::enable_operator(&self.conn, operator_id)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => mutations::enable_operator_sqlite(conn, operator_id),
+            BackendConnection::Mysql(conn) => mutations::enable_operator_mysql(conn, operator_id),
+        }
     }
 
-    /// Deletes an operator.
-    ///
-    /// This operation will fail if the operator is referenced by any audit events.
+    /// Deletes an operator if they are not referenced by any audit events.
     ///
     /// # Arguments
     ///
@@ -519,10 +870,12 @@ impl SqlitePersistence {
     ///
     /// # Errors
     ///
-    /// Returns `PersistenceError::OperatorReferenced` if the operator is referenced
-    /// by audit events. Returns other errors if the database delete fails.
+    /// Returns an error if the operator is referenced or doesn't exist.
     pub fn delete_operator(&mut self, operator_id: i64) -> Result<(), PersistenceError> {
-        sqlite::delete_operator(&self.conn, operator_id)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => mutations::delete_operator_sqlite(conn, operator_id),
+            BackendConnection::Mysql(conn) => mutations::delete_operator_mysql(conn, operator_id),
+        }
     }
 
     /// Lists all operators.
@@ -530,8 +883,11 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    pub fn list_operators(&self) -> Result<Vec<OperatorData>, PersistenceError> {
-        sqlite::list_operators(&self.conn)
+    pub fn list_operators(&mut self) -> Result<Vec<OperatorData>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::operators::list_operators_sqlite(conn),
+            BackendConnection::Mysql(conn) => queries::operators::list_operators_mysql(conn),
+        }
     }
 
     /// Checks if an operator is referenced by any audit events.
@@ -543,8 +899,15 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    pub fn is_operator_referenced(&self, operator_id: i64) -> Result<bool, PersistenceError> {
-        sqlite::is_operator_referenced(&self.conn, operator_id)
+    pub fn is_operator_referenced(&mut self, operator_id: i64) -> Result<bool, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::operators::is_operator_referenced_sqlite(conn, operator_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::operators::is_operator_referenced_mysql(conn, operator_id)
+            }
+        }
     }
 
     /// Counts the total number of operators.
@@ -552,21 +915,27 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    pub fn count_operators(&self) -> Result<i64, PersistenceError> {
-        sqlite::count_operators(&self.conn)
+    pub fn count_operators(&mut self) -> Result<i64, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::operators::count_operators_sqlite(conn),
+            BackendConnection::Mysql(conn) => queries::operators::count_operators_mysql(conn),
+        }
     }
 
     /// Counts the number of active admin operators.
     ///
-    /// An active admin operator is one where:
-    /// - `role` is 'Admin'
-    /// - `is_disabled` is false
-    ///
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    pub fn count_active_admin_operators(&self) -> Result<i64, PersistenceError> {
-        sqlite::count_active_admin_operators(&self.conn)
+    pub fn count_active_admin_operators(&mut self) -> Result<i64, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::operators::count_active_admin_operators_sqlite(conn)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::operators::count_active_admin_operators_mysql(conn)
+            }
+        }
     }
 
     /// Verifies a password against a stored hash.
@@ -579,8 +948,12 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if password verification fails.
-    pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, PersistenceError> {
-        sqlite::verify_password(password, password_hash)
+    pub fn verify_password(
+        &self,
+        password: &str,
+        password_hash: &str,
+    ) -> Result<bool, PersistenceError> {
+        queries::operators::verify_password(password, password_hash)
     }
 
     /// Updates an operator's password.
@@ -592,18 +965,23 @@ impl SqlitePersistence {
     ///
     /// # Errors
     ///
-    /// Returns an error if the password cannot be hashed or the update fails.
+    /// Returns an error if the update fails.
     pub fn update_password(
         &mut self,
         operator_id: i64,
         new_password: &str,
     ) -> Result<(), PersistenceError> {
-        sqlite::update_password(&self.conn, operator_id, new_password)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::update_password_sqlite(conn, operator_id, new_password)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::update_password_mysql(conn, operator_id, new_password)
+            }
+        }
     }
 
     /// Deletes all sessions for a specific operator.
-    ///
-    /// This is used when an operator's password is changed to invalidate all active sessions.
     ///
     /// # Arguments
     ///
@@ -616,8 +994,19 @@ impl SqlitePersistence {
         &mut self,
         operator_id: i64,
     ) -> Result<usize, PersistenceError> {
-        sqlite::delete_sessions_for_operator(&self.conn, operator_id)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::delete_sessions_for_operator_sqlite(conn, operator_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::delete_sessions_for_operator_mysql(conn, operator_id)
+            }
+        }
     }
+
+    // ========================================================================
+    // Session Management
+    // ========================================================================
 
     /// Creates a new session for an operator.
     ///
@@ -636,7 +1025,14 @@ impl SqlitePersistence {
         operator_id: i64,
         expires_at: &str,
     ) -> Result<i64, PersistenceError> {
-        sqlite::create_session(&self.conn, session_token, operator_id, expires_at)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::create_session_sqlite(conn, session_token, operator_id, expires_at)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::create_session_mysql(conn, session_token, operator_id, expires_at)
+            }
+        }
     }
 
     /// Retrieves a session by token.
@@ -648,12 +1044,18 @@ impl SqlitePersistence {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    /// Returns `Ok(None)` if the session is not found.
     pub fn get_session_by_token(
-        &self,
+        &mut self,
         session_token: &str,
     ) -> Result<Option<SessionData>, PersistenceError> {
-        sqlite::get_session_by_token(&self.conn, session_token)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::operators::get_session_by_token_sqlite(conn, session_token)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::operators::get_session_by_token_mysql(conn, session_token)
+            }
+        }
     }
 
     /// Updates the last activity timestamp for a session.
@@ -666,12 +1068,17 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database update fails.
     pub fn update_session_activity(&mut self, session_id: i64) -> Result<(), PersistenceError> {
-        sqlite::update_session_activity(&self.conn, session_id)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::update_session_activity_sqlite(conn, session_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::update_session_activity_mysql(conn, session_id)
+            }
+        }
     }
 
     /// Deletes a session by token.
-    ///
-    /// This is used for logout operations.
     ///
     /// # Arguments
     ///
@@ -681,25 +1088,31 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database delete fails.
     pub fn delete_session(&mut self, session_token: &str) -> Result<(), PersistenceError> {
-        sqlite::delete_session(&self.conn, session_token)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::delete_session_sqlite(conn, session_token)
+            }
+            BackendConnection::Mysql(conn) => mutations::delete_session_mysql(conn, session_token),
+        }
     }
 
     /// Deletes all expired sessions.
-    ///
-    /// This is a cleanup operation that should be run periodically.
     ///
     /// # Errors
     ///
     /// Returns an error if the database delete fails.
     pub fn delete_expired_sessions(&mut self) -> Result<usize, PersistenceError> {
-        sqlite::delete_expired_sessions(&self.conn)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => mutations::delete_expired_sessions_sqlite(conn),
+            BackendConnection::Mysql(conn) => mutations::delete_expired_sessions_mysql(conn),
+        }
     }
 
     // ========================================================================
-    // Phase 18: Bootstrap Workflow Completion Methods
+    // Bootstrap Configuration
     // ========================================================================
 
-    /// Sets a bid year as active, ensuring only one bid year is active at a time.
+    /// Sets a bid year as active.
     ///
     /// # Arguments
     ///
@@ -707,49 +1120,88 @@ impl SqlitePersistence {
     ///
     /// # Errors
     ///
-    /// Returns an error if the database cannot be updated or the bid year does not exist.
-    pub fn set_active_bid_year(&mut self, year: u16) -> Result<(), PersistenceError> {
-        sqlite::set_active_bid_year(&self.conn, year)
+    /// Returns an error if the bid year doesn't exist or update fails.
+    pub fn set_active_bid_year(&mut self, bid_year: &BidYear) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_sqlite(conn, bid_year.year())?;
+                mutations::set_active_bid_year_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_mysql(conn, bid_year.year())?;
+                mutations::set_active_bid_year_mysql(conn, bid_year_id)
+            }
+        }
     }
 
-    /// Gets the currently active bid year, if any.
+    /// Gets the active bid year.
     ///
     /// # Errors
     ///
-    /// Returns an error if the database cannot be queried.
-    pub fn get_active_bid_year(&self) -> Result<Option<u16>, PersistenceError> {
-        sqlite::get_active_bid_year(&self.conn)
+    /// Returns an error if no active bid year exists.
+    pub fn get_active_bid_year(&mut self) -> Result<u16, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::canonical::get_active_bid_year_sqlite(conn),
+            BackendConnection::Mysql(conn) => queries::canonical::get_active_bid_year_mysql(conn),
+        }
     }
 
     /// Sets the expected area count for a bid year.
     ///
     /// # Arguments
     ///
-    /// * `year` - The bid year
-    /// * `expected_count` - The expected number of areas
+    /// * `bid_year` - The bid year
+    /// * `count` - The expected number of areas
     ///
     /// # Errors
     ///
-    /// Returns an error if the database cannot be updated or the bid year does not exist.
+    /// Returns an error if the database cannot be updated or the bid year doesn't exist.
     pub fn set_expected_area_count(
         &mut self,
-        year: u16,
-        expected_count: u32,
+        bid_year: &BidYear,
+        count: usize,
     ) -> Result<(), PersistenceError> {
-        sqlite::set_expected_area_count(&self.conn, year, expected_count)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_sqlite(conn, bid_year.year())?;
+                mutations::set_expected_area_count_sqlite(conn, bid_year_id, count)
+            }
+            BackendConnection::Mysql(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_mysql(conn, bid_year.year())?;
+                mutations::set_expected_area_count_mysql(conn, bid_year_id, count)
+            }
+        }
     }
 
     /// Gets the expected area count for a bid year.
     ///
     /// # Arguments
     ///
-    /// * `year` - The bid year
+    /// * `bid_year` - The bid year
     ///
     /// # Errors
     ///
-    /// Returns an error if the database cannot be queried.
-    pub fn get_expected_area_count(&self, year: u16) -> Result<Option<u32>, PersistenceError> {
-        sqlite::get_expected_area_count(&self.conn, year)
+    /// Returns an error if the bid year doesn't exist.
+    pub fn get_expected_area_count(
+        &mut self,
+        bid_year: &BidYear,
+    ) -> Result<Option<usize>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_sqlite(conn, bid_year.year())?;
+                queries::canonical::get_expected_area_count_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_mysql(conn, bid_year.year())?;
+                queries::canonical::get_expected_area_count_mysql(conn, bid_year_id)
+            }
+        }
     }
 
     /// Sets the expected user count for an area.
@@ -758,18 +1210,33 @@ impl SqlitePersistence {
     ///
     /// * `bid_year` - The bid year
     /// * `area` - The area
-    /// * `expected_count` - The expected number of users
+    /// * `count` - The expected number of users
     ///
     /// # Errors
     ///
-    /// Returns an error if the database cannot be updated or the area does not exist.
+    /// Returns an error if the database cannot be updated or the area doesn't exist.
     pub fn set_expected_user_count(
         &mut self,
         bid_year: &BidYear,
         area: &Area,
-        expected_count: u32,
+        count: usize,
     ) -> Result<(), PersistenceError> {
-        sqlite::set_expected_user_count(&self.conn, bid_year, area, expected_count)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_sqlite(conn, bid_year.year())?;
+                let area_id =
+                    queries::canonical::lookup_area_id_sqlite(conn, bid_year_id, area.id())?;
+                mutations::set_expected_user_count_sqlite(conn, bid_year_id, area_id, count)
+            }
+            BackendConnection::Mysql(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_mysql(conn, bid_year.year())?;
+                let area_id =
+                    queries::canonical::lookup_area_id_mysql(conn, bid_year_id, area.id())?;
+                mutations::set_expected_user_count_mysql(conn, bid_year_id, area_id, count)
+            }
+        }
     }
 
     /// Gets the expected user count for an area.
@@ -781,26 +1248,52 @@ impl SqlitePersistence {
     ///
     /// # Errors
     ///
-    /// Returns an error if the database cannot be queried.
+    /// Returns an error if the area doesn't exist.
     pub fn get_expected_user_count(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
-    ) -> Result<Option<u32>, PersistenceError> {
-        sqlite::get_expected_user_count(&self.conn, bid_year, area)
+    ) -> Result<Option<usize>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_sqlite(conn, bid_year.year())?;
+                let area_id =
+                    queries::canonical::lookup_area_id_sqlite(conn, bid_year_id, area.id())?;
+                queries::canonical::get_expected_user_count_sqlite(conn, bid_year_id, area_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_mysql(conn, bid_year.year())?;
+                let area_id =
+                    queries::canonical::lookup_area_id_mysql(conn, bid_year_id, area.id())?;
+                queries::canonical::get_expected_user_count_mysql(conn, bid_year_id, area_id)
+            }
+        }
     }
 
     /// Gets the actual area count for a bid year.
     ///
     /// # Arguments
     ///
-    /// * `year` - The bid year
+    /// * `bid_year` - The bid year
     ///
     /// # Errors
     ///
     /// Returns an error if the database cannot be queried.
-    pub fn get_actual_area_count(&self, year: u16) -> Result<usize, PersistenceError> {
-        sqlite::get_actual_area_count(&self.conn, year)
+    pub fn get_actual_area_count(&mut self, bid_year: &BidYear) -> Result<usize, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_sqlite(conn, bid_year.year())?;
+                queries::canonical::get_actual_area_count_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_mysql(conn, bid_year.year())?;
+                queries::canonical::get_actual_area_count_mysql(conn, bid_year_id)
+            }
+        }
     }
 
     /// Gets the actual user count for an area.
@@ -814,19 +1307,34 @@ impl SqlitePersistence {
     ///
     /// Returns an error if the database cannot be queried.
     pub fn get_actual_user_count(
-        &self,
+        &mut self,
         bid_year: &BidYear,
         area: &Area,
     ) -> Result<usize, PersistenceError> {
-        sqlite::get_actual_user_count(&self.conn, bid_year, area)
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_sqlite(conn, bid_year.year())?;
+                let area_id =
+                    queries::canonical::lookup_area_id_sqlite(conn, bid_year_id, area.id())?;
+                queries::canonical::get_actual_user_count_sqlite(conn, bid_year_id, area_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                let bid_year_id =
+                    queries::canonical::lookup_bid_year_id_mysql(conn, bid_year.year())?;
+                let area_id =
+                    queries::canonical::lookup_area_id_mysql(conn, bid_year_id, area.id())?;
+                queries::canonical::get_actual_user_count_mysql(conn, bid_year_id, area_id)
+            }
+        }
     }
 
-    /// Updates an existing user's information using `user_id` as the canonical identifier.
+    /// Updates an existing user's information.
     ///
     /// # Arguments
     ///
     /// * `user_id` - The user's canonical internal identifier
-    /// * `initials` - The user's initials (mutable field)
+    /// * `initials` - The user's initials
     /// * `name` - The user's name
     /// * `area` - The user's area
     /// * `user_type` - The user's type classification
@@ -839,12 +1347,12 @@ impl SqlitePersistence {
     ///
     /// # Errors
     ///
-    /// Returns an error if the database cannot be updated or the user does not exist.
+    /// Returns an error if the user doesn't exist or update fails.
     #[allow(clippy::too_many_arguments)]
     pub fn update_user(
         &mut self,
         user_id: i64,
-        initials: &zab_bid_domain::Initials,
+        initials: &Initials,
         name: &str,
         area: &Area,
         user_type: &str,
@@ -855,43 +1363,193 @@ impl SqlitePersistence {
         service_computation_date: &str,
         lottery_value: Option<u32>,
     ) -> Result<(), PersistenceError> {
-        let crew_i32: Option<i32> = crew.map(i32::from);
-        let lottery_i32: Option<i32> = lottery_value.and_then(|v| i32::try_from(v).ok());
-
-        let rows_affected: usize = self.conn.execute(
-            "UPDATE users SET
-                initials = ?1,
-                name = ?2,
-                area_id = ?3,
-                user_type = ?4,
-                crew = ?5,
-                cumulative_natca_bu_date = ?6,
-                natca_bu_date = ?7,
-                eod_faa_date = ?8,
-                service_computation_date = ?9,
-                lottery_value = ?10
-             WHERE user_id = ?11",
-            rusqlite::params![
-                initials.value(),
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => mutations::update_user_sqlite(
+                conn,
+                user_id,
+                initials,
                 name,
-                area.id(),
+                area,
                 user_type,
-                crew_i32,
+                crew,
                 cumulative_natca_bu_date,
                 natca_bu_date,
                 eod_faa_date,
                 service_computation_date,
-                lottery_i32,
+                lottery_value,
+            ),
+            BackendConnection::Mysql(conn) => mutations::update_user_mysql(
+                conn,
                 user_id,
-            ],
-        )?;
-
-        if rows_affected == 0 {
-            return Err(PersistenceError::NotFound(format!(
-                "User with user_id {user_id} not found"
-            )));
+                initials,
+                name,
+                area,
+                user_type,
+                crew,
+                cumulative_natca_bu_date,
+                natca_bu_date,
+                eod_faa_date,
+                service_computation_date,
+                lottery_value,
+            ),
         }
+    }
 
-        Ok(())
+    // ========================================================================
+    // Canonical ID Lookups (Test Support)
+    // ========================================================================
+
+    /// Queries the canonical `bid_year_id` for a given year.
+    ///
+    /// # Arguments
+    ///
+    /// * `year` - The year to query
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bid year is not found or the query fails.
+    pub fn get_bid_year_id(&mut self, year: u16) -> Result<i64, PersistenceError> {
+        use diesel_schema::bid_years;
+
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let result: Result<i64, diesel::result::Error> = bid_years::table
+                    .select(bid_years::bid_year_id)
+                    .filter(bid_years::year.eq(i32::from(year)))
+                    .first::<i64>(conn);
+
+                match result {
+                    Ok(id) => Ok(id),
+                    Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(
+                        format!("Bid year {year} does not exist"),
+                    )),
+                    Err(e) => Err(PersistenceError::from(e)),
+                }
+            }
+            BackendConnection::Mysql(conn) => {
+                let result: Result<i64, diesel::result::Error> = bid_years::table
+                    .select(bid_years::bid_year_id)
+                    .filter(bid_years::year.eq(i32::from(year)))
+                    .first::<i64>(conn);
+
+                match result {
+                    Ok(id) => Ok(id),
+                    Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(
+                        format!("Bid year {year} does not exist"),
+                    )),
+                    Err(e) => Err(PersistenceError::from(e)),
+                }
+            }
+        }
+    }
+
+    /// Queries the canonical `area_id` for a given bid year and area code.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year identifier
+    /// * `area_code` - The area code
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the area is not found or the query fails.
+    pub fn get_area_id(
+        &mut self,
+        bid_year_id: i64,
+        area_code: &str,
+    ) -> Result<i64, PersistenceError> {
+        use diesel_schema::areas;
+
+        let normalized_code: String = area_code.to_uppercase();
+
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let result: Result<i64, diesel::result::Error> = areas::table
+                    .select(areas::area_id)
+                    .filter(areas::bid_year_id.eq(bid_year_id))
+                    .filter(areas::area_code.eq(&normalized_code))
+                    .first::<i64>(conn);
+
+                match result {
+                    Ok(id) => Ok(id),
+                    Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(
+                        format!("Area {area_code} does not exist"),
+                    )),
+                    Err(e) => Err(PersistenceError::from(e)),
+                }
+            }
+            BackendConnection::Mysql(conn) => {
+                let result: Result<i64, diesel::result::Error> = areas::table
+                    .select(areas::area_id)
+                    .filter(areas::bid_year_id.eq(bid_year_id))
+                    .filter(areas::area_code.eq(&normalized_code))
+                    .first::<i64>(conn);
+
+                match result {
+                    Ok(id) => Ok(id),
+                    Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(
+                        format!("Area {area_code} does not exist"),
+                    )),
+                    Err(e) => Err(PersistenceError::from(e)),
+                }
+            }
+        }
+    }
+
+    /// Queries the canonical `user_id` for a given bid year, area, and initials.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year identifier
+    /// * `area_id` - The canonical area identifier
+    /// * `initials` - The user initials
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user is not found or the query fails.
+    pub fn get_user_id(
+        &mut self,
+        bid_year_id: i64,
+        area_id: i64,
+        initials: &Initials,
+    ) -> Result<i64, PersistenceError> {
+        use diesel_schema::users;
+
+        let normalized_initials: String = initials.value().to_uppercase();
+
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let result: Result<i64, diesel::result::Error> = users::table
+                    .select(users::user_id)
+                    .filter(users::bid_year_id.eq(bid_year_id))
+                    .filter(users::area_id.eq(area_id))
+                    .filter(users::initials.eq(&normalized_initials))
+                    .first::<i64>(conn);
+
+                match result {
+                    Ok(id) => Ok(id),
+                    Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(
+                        format!("User {} does not exist", initials.value()),
+                    )),
+                    Err(e) => Err(PersistenceError::from(e)),
+                }
+            }
+            BackendConnection::Mysql(conn) => {
+                let result: Result<i64, diesel::result::Error> = users::table
+                    .select(users::user_id)
+                    .filter(users::bid_year_id.eq(bid_year_id))
+                    .filter(users::area_id.eq(area_id))
+                    .filter(users::initials.eq(&normalized_initials))
+                    .first::<i64>(conn);
+
+                match result {
+                    Ok(id) => Ok(id),
+                    Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(
+                        format!("User {} does not exist", initials.value()),
+                    )),
+                    Err(e) => Err(PersistenceError::from(e)),
+                }
+            }
+        }
     }
 }

@@ -292,7 +292,7 @@ impl AuthenticationService {
 
         // Verify password
         let password_valid: bool =
-            SqlitePersistence::verify_password(password, &operator.password_hash).map_err(|e| {
+            persistence.verify_password(password, &operator.password_hash).map_err(|e| {
                 tracing::warn!(login_name = %operator.login_name, error = %e, "Password verification error");
                 AuthError::AuthenticationFailed {
                     reason: String::from("invalid_credentials"),
@@ -323,14 +323,19 @@ impl AuthenticationService {
         // Calculate expiration time
         let expires_at: OffsetDateTime =
             OffsetDateTime::now_utc() + Self::DEFAULT_SESSION_EXPIRATION;
-        let expires_at_str: String = expires_at
-            .format(&time::format_description::well_known::Iso8601::DEFAULT)
-            .map_err(|e| {
-                tracing::error!(error = %e, "Failed to format expiration time");
-                AuthError::AuthenticationFailed {
-                    reason: String::from("invalid_credentials"),
-                }
-            })?;
+
+        // Format with microsecond precision for MySQL compatibility
+        // MySQL DATETIME supports up to 6 decimal places (microseconds), not 9 (nanoseconds)
+        let expires_at_str: String = format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}",
+            expires_at.year(),
+            u8::from(expires_at.month()),
+            expires_at.day(),
+            expires_at.hour(),
+            expires_at.minute(),
+            expires_at.second(),
+            expires_at.nanosecond() / 1000 // Convert nanoseconds to microseconds
+        );
 
         // Create session
         persistence
@@ -383,13 +388,35 @@ impl AuthenticationService {
             })?;
 
         // Check if session is expired
-        let expires_at: OffsetDateTime = OffsetDateTime::parse(
-            &session.expires_at,
-            &time::format_description::well_known::Iso8601::DEFAULT,
-        )
-        .map_err(|e| AuthError::AuthenticationFailed {
-            reason: format!("Failed to parse session expiration: {e}"),
-        })?;
+        // Parse SQL datetime format with optional microseconds
+        // MySQL DATETIME stores as "YYYY-MM-DD HH:MM:SS" (no fractional seconds without DATETIME(6))
+        // SQLite and MySQL DATETIME(6) store as "YYYY-MM-DD HH:MM:SS.uuuuuu"
+        let expires_at: OffsetDateTime = if session.expires_at.contains('.') {
+            // Has microseconds
+            let format = time::format_description::parse(
+                "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond]",
+            )
+            .map_err(|e| AuthError::AuthenticationFailed {
+                reason: format!("Failed to create datetime format: {e}"),
+            })?;
+            time::PrimitiveDateTime::parse(&session.expires_at, &format)
+                .map_err(|e| AuthError::AuthenticationFailed {
+                    reason: format!("Failed to parse session expiration: {e}"),
+                })?
+                .assume_utc()
+        } else {
+            // No microseconds
+            let format =
+                time::format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]")
+                    .map_err(|e| AuthError::AuthenticationFailed {
+                        reason: format!("Failed to create datetime format: {e}"),
+                    })?;
+            time::PrimitiveDateTime::parse(&session.expires_at, &format)
+                .map_err(|e| AuthError::AuthenticationFailed {
+                    reason: format!("Failed to parse session expiration: {e}"),
+                })?
+                .assume_utc()
+        };
 
         if OffsetDateTime::now_utc() > expires_at {
             return Err(AuthError::AuthenticationFailed {

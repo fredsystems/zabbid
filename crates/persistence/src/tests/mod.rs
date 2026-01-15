@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+mod backend_validation_tests;
 mod bootstrap_tests;
 mod initialization_tests;
 mod operator_tests;
@@ -89,4 +90,68 @@ pub fn create_test_operator(persistence: &mut crate::SqlitePersistence) -> i64 {
     persistence
         .create_operator("test-operator", "Test Operator", "password", "Admin")
         .expect("Failed to create test operator")
+}
+
+/// Creates a test bid year and area in the persistence layer.
+///
+/// This bootstraps the canonical bid year and area, which is required for Phase 23A+
+/// since audit events must reference existing canonical entities.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `year` - The bid year number
+/// * `area_code` - The area code
+///
+/// # Panics
+///
+/// Panics if bootstrap fails.
+pub fn create_test_bid_year_and_area(
+    persistence: &mut crate::SqlitePersistence,
+    year: u16,
+    area_code: &str,
+) {
+    use zab_bid::{Command, apply_bootstrap};
+
+    let metadata: BootstrapMetadata = BootstrapMetadata::new();
+
+    // Bootstrap bid year
+    let create_bid_year_cmd: Command = Command::CreateBidYear {
+        year,
+        start_date: create_test_start_date_for_year(i32::from(year)),
+        num_pay_periods: create_test_pay_periods(),
+    };
+    let bid_year_result = apply_bootstrap(
+        &metadata,
+        &BidYear::new(year),
+        create_bid_year_cmd,
+        create_test_actor(),
+        create_test_cause(),
+    )
+    .expect("Failed to create test bid year");
+
+    persistence
+        .persist_bootstrap(&bid_year_result)
+        .expect("Failed to persist test bid year");
+
+    // Update metadata for area creation
+    let mut metadata = metadata;
+    metadata.bid_years.push(BidYear::new(year));
+
+    // Bootstrap area
+    let create_area_cmd: Command = Command::CreateArea {
+        area_id: area_code.to_string(),
+    };
+    let area_result = apply_bootstrap(
+        &metadata,
+        &BidYear::new(year),
+        create_area_cmd,
+        create_test_actor(),
+        create_test_cause(),
+    )
+    .expect("Failed to create test area");
+
+    persistence
+        .persist_bootstrap(&area_result)
+        .expect("Failed to persist test area");
 }

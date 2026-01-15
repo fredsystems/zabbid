@@ -21,17 +21,28 @@ clap-cargo = "0.18.3"
 clap-verbosity-flag = "3.0.4"
 color-eyre = "0.6.5"
 csv = "1.3.1"
+diesel = { version = "2.3.5", features = [
+    "sqlite",
+    "returning_clauses_for_sqlite_3_35",
+    "mysql",
+] }
+diesel_migrations = "2.3.1"
 duct = "1.1.1"
 futures = "0.3.31"
 num-traits = "0.2.19"
+pastey = "0.2.1"
 rand = "0.9.0"
-rusqlite = { version = "0.38.0", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 thiserror = "2.0.9"
-time = { version = "0.3.44", features = ["serde", "macros", "parsing", "formatting"] }
+time = { version = "0.3.45", features = [
+    "serde",
+    "macros",
+    "parsing",
+    "formatting",
+] }
 tokio = { version = "1.43.0", features = ["full"] }
-tower = "0.5.2"
+tower = "0.5.3"
 tracing = "0.1.41"
 tracing-log = "0.2.0"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }

@@ -33,23 +33,47 @@ export function UserListView({
   connectionState,
   lastEvent,
 }: UserListViewProps) {
-  const { year, areaId } = useParams<{ year: string; areaId: string }>();
+  const { bidYearId, areaId } = useParams<{
+    bidYearId: string;
+    areaId: string;
+  }>();
   const navigate = useNavigate();
+  const [bidYearIdNum, setBidYearIdNum] = useState<number | null>(null);
+  const [areaIdNum, setAreaIdNum] = useState<number | null>(null);
+  const [bidYear, setBidYear] = useState<number | null>(null);
+  const [areaCode, setAreaCode] = useState<string | null>(null);
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const previousConnectionState = useRef<ConnectionState | null>(null);
 
-  const bidYear = year ? parseInt(year, 10) : null;
+  // Parse and validate IDs on mount
+  useEffect(() => {
+    if (!bidYearId || !areaId) {
+      setError("Invalid bid year ID or area ID");
+      setLoading(false);
+      return;
+    }
+
+    const parsedBidYearId = parseInt(bidYearId, 10);
+    const parsedAreaId = parseInt(areaId, 10);
+
+    if (Number.isNaN(parsedBidYearId) || Number.isNaN(parsedAreaId)) {
+      setError("Invalid bid year ID or area ID");
+      setLoading(false);
+      return;
+    }
+
+    setBidYearIdNum(parsedBidYearId);
+    setAreaIdNum(parsedAreaId);
+  }, [bidYearId, areaId]);
 
   useEffect(() => {
-    if (!bidYear || !areaId || !sessionToken) {
+    if (areaIdNum === null || !sessionToken) {
       if (!sessionToken) {
         setError("Not authenticated");
-      } else {
-        setError("Invalid bid year or area");
+        setLoading(false);
       }
-      setLoading(false);
       return;
     }
 
@@ -57,8 +81,10 @@ export function UserListView({
       try {
         setLoading(true);
         setError(null);
-        const response = await listUsers(sessionToken, bidYear, areaId);
+        const response = await listUsers(sessionToken, areaIdNum);
         setUsers(response.users);
+        setBidYear(response.bid_year);
+        setAreaCode(response.area_code);
       } catch (err) {
         if (err instanceof NetworkError) {
           setError(
@@ -73,7 +99,7 @@ export function UserListView({
     };
 
     void loadUsers();
-  }, [bidYear, areaId, sessionToken]);
+  }, [areaIdNum, sessionToken]);
 
   // Auto-refresh when connection is restored
   useEffect(() => {
@@ -87,14 +113,16 @@ export function UserListView({
     const wasNotConnected = previousConnectionState.current !== "connected";
     const nowConnected = connectionState === "connected";
 
-    if (wasNotConnected && nowConnected && bidYear && areaId && sessionToken) {
+    if (wasNotConnected && nowConnected && areaIdNum !== null && sessionToken) {
       console.log("[UserListView] Connection established, refreshing data");
       const loadUsers = async () => {
         try {
           setLoading(true);
           setError(null);
-          const response = await listUsers(sessionToken, bidYear, areaId);
+          const response = await listUsers(sessionToken, areaIdNum);
           setUsers(response.users);
+          setBidYear(response.bid_year);
+          setAreaCode(response.area_code);
         } catch (err) {
           if (err instanceof NetworkError) {
             setError(
@@ -113,25 +141,35 @@ export function UserListView({
     }
 
     previousConnectionState.current = connectionState;
-  }, [connectionState, bidYear, areaId, sessionToken]);
+  }, [connectionState, areaIdNum, sessionToken]);
 
   // Refresh when relevant live events occur
   useEffect(() => {
-    if (!lastEvent || !bidYear || !areaId || !sessionToken) return;
+    if (
+      !lastEvent ||
+      areaIdNum === null ||
+      bidYear === null ||
+      areaCode === null ||
+      !sessionToken
+    )
+      return;
 
+    // Events contain display values (bid_year as number, area as string code)
     if (
       (lastEvent.type === "user_registered" &&
         lastEvent.bid_year === bidYear &&
-        lastEvent.area === areaId) ||
+        lastEvent.area === areaCode) ||
       (lastEvent.type === "user_updated" &&
         lastEvent.bid_year === bidYear &&
-        lastEvent.area === areaId)
+        lastEvent.area === areaCode)
     ) {
       console.log("[UserListView] Relevant event received, refreshing data");
       const loadUsers = async () => {
         try {
-          const response = await listUsers(sessionToken, bidYear, areaId);
+          const response = await listUsers(sessionToken, areaIdNum);
           setUsers(response.users);
+          setBidYear(response.bid_year);
+          setAreaCode(response.area_code);
         } catch (err) {
           // Silently fail on live event refresh - connection state will show the issue
           console.error("Failed to refresh after live event:", err);
@@ -139,14 +177,14 @@ export function UserListView({
       };
       void loadUsers();
     }
-  }, [lastEvent, bidYear, areaId, sessionToken]);
+  }, [lastEvent, areaIdNum, bidYear, areaCode, sessionToken]);
 
-  if (!bidYear || !areaId) {
+  if (bidYearIdNum === null || areaIdNum === null) {
     return (
       <div className="error">
         <h2>Invalid Parameters</h2>
-        <p>The bid year or area parameter is missing or invalid.</p>
-        <button type="button" onClick={() => navigate("/")}>
+        <p>The bid year ID or area ID parameter is missing or invalid.</p>
+        <button type="button" onClick={() => navigate("/admin")}>
           Back to Overview
         </button>
       </div>
@@ -170,7 +208,7 @@ export function UserListView({
         )}
         <button
           type="button"
-          onClick={() => navigate(`/admin/bid-year/${bidYear}/areas`)}
+          onClick={() => navigate(`/admin/bid-year/${bidYearIdNum}/areas`)}
         >
           Back to Areas
         </button>
@@ -186,11 +224,12 @@ export function UserListView({
     <div className="user-list-view">
       <div className="view-header">
         <h2>
-          Users in Area {areaId} - Bid Year {bidYear}
+          Users in Area {areaCode ?? areaIdNum} - Bid Year{" "}
+          {bidYear ?? bidYearIdNum}
         </h2>
         <button
           type="button"
-          onClick={() => navigate(`/admin/bid-year/${bidYear}/areas`)}
+          onClick={() => navigate(`/admin/bid-year/${bidYearIdNum}/areas`)}
         >
           Back to Areas
         </button>
@@ -199,8 +238,8 @@ export function UserListView({
       {users.length === 0 && (
         <div className="info-message">
           <p>
-            No users registered for area {areaId} in bid year {bidYear}. Use the
-            API or CLI to register users.
+            No users registered for area {areaCode ?? areaIdNum} in bid year{" "}
+            {bidYear ?? bidYearIdNum}. Use the API or CLI to register users.
           </p>
         </div>
       )}
@@ -265,9 +304,7 @@ export function UserListView({
 
                 <div className="card-footer">
                   <Link
-                    to={`/admin/bid-year/${bidYear}/area/${encodeURIComponent(
-                      areaId,
-                    )}/user/${encodeURIComponent(user.initials)}`}
+                    to={`/admin/bid-year/${bidYearIdNum}/areas/${areaIdNum}/users/${user.user_id}`}
                   >
                     View Details
                   </Link>

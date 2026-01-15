@@ -68,7 +68,7 @@ fn test_get_current_state_with_no_deltas() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result, true).unwrap();
+    persistence.persist_transition(&result).unwrap();
 
     // Retrieve current state
     let current_state: State = persistence
@@ -96,7 +96,7 @@ fn test_get_current_state_after_snapshot_with_user() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result1, true).unwrap();
+    persistence.persist_transition(&result1).unwrap();
 
     // Register a user (delta event, no snapshot)
     let command2: Command = Command::RegisterUser {
@@ -116,7 +116,7 @@ fn test_get_current_state_after_snapshot_with_user() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result2, false).unwrap();
+    persistence.persist_transition(&result2).unwrap();
 
     // Create another snapshot to capture the state with the user
     let command3: Command = Command::Checkpoint;
@@ -129,7 +129,7 @@ fn test_get_current_state_after_snapshot_with_user() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result3, true).unwrap();
+    persistence.persist_transition(&result3).unwrap();
 
     // Retrieve current state - should include the user from most recent snapshot
     let current_state: State = persistence
@@ -144,7 +144,7 @@ fn test_get_current_state_after_snapshot_with_user() {
 
 #[test]
 fn test_get_current_state_no_snapshot_returns_error() {
-    let persistence: SqlitePersistence = create_bootstrapped_persistence();
+    let mut persistence: SqlitePersistence = create_bootstrapped_persistence();
 
     // Try to retrieve current state with no users added yet
     // With canonical tables (Phase 7), an empty state is valid (no users yet)
@@ -173,7 +173,7 @@ fn test_get_current_state_is_deterministic() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result1, true).unwrap();
+    persistence.persist_transition(&result1).unwrap();
 
     // Add a user
     let command2: Command = Command::RegisterUser {
@@ -193,7 +193,7 @@ fn test_get_current_state_is_deterministic() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result2, false).unwrap();
+    persistence.persist_transition(&result2).unwrap();
 
     // Create another snapshot
     let command3: Command = Command::Checkpoint;
@@ -206,7 +206,7 @@ fn test_get_current_state_is_deterministic() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result3, true).unwrap();
+    persistence.persist_transition(&result3).unwrap();
 
     // Retrieve state multiple times
     let state1: State = persistence
@@ -242,7 +242,7 @@ fn test_get_current_state_does_not_mutate() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result, true).unwrap();
+    persistence.persist_transition(&result).unwrap();
 
     // Count events before read
     let timeline_before: Vec<AuditEvent> = persistence
@@ -280,7 +280,7 @@ fn test_get_current_state_with_multiple_users() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result1, true).unwrap();
+    persistence.persist_transition(&result1).unwrap();
 
     // Add first user
     let command2: Command = Command::RegisterUser {
@@ -300,7 +300,7 @@ fn test_get_current_state_with_multiple_users() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result2, false).unwrap();
+    persistence.persist_transition(&result2).unwrap();
 
     // Add second user
     let command3: Command = Command::RegisterUser {
@@ -320,7 +320,7 @@ fn test_get_current_state_with_multiple_users() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result3, false).unwrap();
+    persistence.persist_transition(&result3).unwrap();
 
     // Create snapshot with both users
     let command4: Command = Command::Checkpoint;
@@ -333,7 +333,7 @@ fn test_get_current_state_with_multiple_users() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result4, true).unwrap();
+    persistence.persist_transition(&result4).unwrap();
 
     // Retrieve current state
     let current_state: State = persistence
@@ -371,7 +371,7 @@ fn bootstrap_area_with_user(
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&res1, true).unwrap();
+    persistence.persist_transition(&res1).unwrap();
 
     // Register user
     let cmd2: Command = Command::RegisterUser {
@@ -391,7 +391,7 @@ fn bootstrap_area_with_user(
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&res2, false).unwrap();
+    persistence.persist_transition(&res2).unwrap();
 
     // Final checkpoint
     let cmd3: Command = Command::Checkpoint;
@@ -404,7 +404,7 @@ fn bootstrap_area_with_user(
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&res3, true).unwrap();
+    persistence.persist_transition(&res3).unwrap();
 }
 
 /// Helper to create empty area state.
@@ -424,7 +424,7 @@ fn create_empty_area_state(
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&res, true).unwrap();
+    persistence.persist_transition(&res).unwrap();
 }
 
 #[test]

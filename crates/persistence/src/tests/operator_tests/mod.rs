@@ -7,7 +7,6 @@
 
 use crate::{PersistenceError, SqlitePersistence};
 use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
-use zab_bid_domain::{Area, BidYear};
 
 #[test]
 fn test_enable_operator_succeeds() {
@@ -97,10 +96,8 @@ fn test_delete_operator_fails_when_referenced_by_audit_event() {
     let action = Action::new(String::from("TestAction"), None);
     let before = StateSnapshot::new(String::from("before"));
     let after = StateSnapshot::new(String::from("after"));
-    let bid_year = BidYear::new(0);
-    let area = Area::new("_operator_management");
 
-    let audit_event = AuditEvent::new(actor, cause, action, before, after, bid_year, area);
+    let audit_event = AuditEvent::new_global(actor, cause, action, before, after);
 
     persistence.persist_audit_event(&audit_event).unwrap();
 
@@ -172,10 +169,8 @@ fn test_is_operator_referenced_returns_true_when_referenced() {
     let action = Action::new(String::from("TestAction"), None);
     let before = StateSnapshot::new(String::from("before"));
     let after = StateSnapshot::new(String::from("after"));
-    let bid_year = BidYear::new(0);
-    let area = Area::new("_operator_management");
 
-    let audit_event = AuditEvent::new(actor, cause, action, before, after, bid_year, area);
+    let audit_event = AuditEvent::new_global(actor, cause, action, before, after);
 
     persistence.persist_audit_event(&audit_event).unwrap();
 

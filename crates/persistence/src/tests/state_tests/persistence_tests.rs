@@ -5,8 +5,9 @@
 
 use crate::SqlitePersistence;
 use crate::tests::{
-    create_test_actor, create_test_cause, create_test_metadata, create_test_operator,
-    create_test_pay_periods, create_test_seniority_data, create_test_start_date,
+    create_test_actor, create_test_bid_year_and_area, create_test_cause, create_test_metadata,
+    create_test_operator, create_test_pay_periods, create_test_seniority_data,
+    create_test_start_date,
 };
 use zab_bid::{
     BootstrapMetadata, BootstrapResult, Command, State, TransitionResult, apply, apply_bootstrap,
@@ -82,7 +83,7 @@ fn test_persist_and_retrieve_audit_event() {
     )
     .unwrap();
 
-    let event_id: i64 = persistence.persist_transition(&result, false).unwrap();
+    let event_id: i64 = persistence.persist_transition(&result).unwrap();
 
     let retrieved: AuditEvent = persistence.get_audit_event(event_id).unwrap();
     assert_eq!(retrieved.event_id, Some(event_id));
@@ -105,7 +106,7 @@ fn test_persist_with_snapshot() {
     )
     .unwrap();
 
-    let event_id: i64 = persistence.persist_transition(&result, true).unwrap();
+    let event_id: i64 = persistence.persist_transition(&result).unwrap();
 
     let (snapshot, snapshot_event_id): (State, i64) = persistence
         .get_latest_snapshot(&BidYear::new(2026), &Area::new("North"))
@@ -132,7 +133,7 @@ fn test_get_events_after() {
         create_test_cause(),
     )
     .unwrap();
-    let event_id1: i64 = persistence.persist_transition(&result1, true).unwrap();
+    let event_id1: i64 = persistence.persist_transition(&result1).unwrap();
 
     // Create second event
     let command2: Command = Command::Finalize;
@@ -145,7 +146,7 @@ fn test_get_events_after() {
         create_test_cause(),
     )
     .unwrap();
-    let _event_id2: i64 = persistence.persist_transition(&result2, true).unwrap();
+    let _event_id2: i64 = persistence.persist_transition(&result2).unwrap();
 
     // Retrieve events after first
     let events: Vec<AuditEvent> = persistence
@@ -158,10 +159,11 @@ fn test_get_events_after() {
 
 #[test]
 fn test_should_snapshot_detection() {
-    assert!(SqlitePersistence::should_snapshot("Checkpoint"));
-    assert!(SqlitePersistence::should_snapshot("Finalize"));
-    assert!(SqlitePersistence::should_snapshot("Rollback"));
-    assert!(!SqlitePersistence::should_snapshot("RegisterUser"));
+    let persistence: SqlitePersistence = SqlitePersistence::new_in_memory().unwrap();
+    assert!(persistence.should_snapshot("Checkpoint"));
+    assert!(persistence.should_snapshot("Finalize"));
+    assert!(persistence.should_snapshot("Rollback"));
+    assert!(!persistence.should_snapshot("RegisterUser"));
 }
 
 #[test]
@@ -175,6 +177,7 @@ fn test_atomic_persistence_failure() {
     // Try to create a new one and verify it works
     persistence = SqlitePersistence::new_in_memory().unwrap();
     create_test_operator(&mut persistence);
+    create_test_bid_year_and_area(&mut persistence, 2026, "North");
 
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let command: Command = Command::Checkpoint;
@@ -189,7 +192,7 @@ fn test_atomic_persistence_failure() {
     .unwrap();
 
     // This should succeed
-    assert!(persistence.persist_transition(&result, true).is_ok());
+    assert!(persistence.persist_transition(&result).is_ok());
 }
 
 #[test]
@@ -208,7 +211,7 @@ fn test_state_reconstruction_with_snapshot_then_deltas() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result1, true).unwrap();
+    persistence.persist_transition(&result1).unwrap();
 
     // Add user (delta)
     let command2: Command = Command::RegisterUser {
@@ -228,7 +231,7 @@ fn test_state_reconstruction_with_snapshot_then_deltas() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result2, false).unwrap();
+    persistence.persist_transition(&result2).unwrap();
 
     // Create another snapshot
     let command3: Command = Command::Checkpoint;
@@ -241,7 +244,7 @@ fn test_state_reconstruction_with_snapshot_then_deltas() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result3, true).unwrap();
+    persistence.persist_transition(&result3).unwrap();
 
     // Current state should use most recent snapshot
     let current_state: State = persistence

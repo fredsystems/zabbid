@@ -38,9 +38,30 @@ export interface UserCapabilities {
 }
 
 /**
+ * Response for registering a new user.
+ * Note: user_id and bid_year_id are populated by the server after persistence.
+ */
+export interface RegisterUserResponse {
+  /** The canonical bid year identifier (populated after persistence) */
+  bid_year_id: number | null;
+  /** The bid year the user was registered for (display value) */
+  bid_year: number;
+  /** The user's canonical identifier (populated after persistence) */
+  user_id: number | null;
+  /** The user's initials */
+  initials: string;
+  /** The user's name */
+  name: string;
+  /** Success message */
+  message: string;
+}
+
+/**
  * Bid year information with canonical metadata and aggregate counts.
  */
 export interface BidYearInfo {
+  /** The canonical numeric identifier */
+  bid_year_id: number;
   /** The year value (e.g., 2026) */
   year: number;
   /** The start date of the bid year (ISO 8601) */
@@ -63,11 +84,44 @@ export interface ListBidYearsResponse {
 }
 
 /**
+ * Response for creating a new bid year.
+ */
+export interface CreateBidYearResponse {
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The created bid year (display value) */
+  year: number;
+  /** The start date of the bid year */
+  start_date: string;
+  /** The number of pay periods */
+  num_pay_periods: number;
+  /** The derived end date of the bid year (inclusive) */
+  end_date: string;
+  /** Success message */
+  message: string;
+}
+export interface CreateAreaResponse {
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year (display value) */
+  bid_year: number;
+  /** The canonical area identifier */
+  area_id: number;
+  /** The area code (display value) */
+  area_code: string;
+  /** A success message */
+  message: string;
+}
+/**
  * Information about a single area.
  */
 export interface AreaInfo {
-  /** The area identifier */
-  area_id: string;
+  /** The canonical area identifier */
+  area_id: number;
+  /** The area code (display value) */
+  area_code: string;
+  /** The area name (optional) */
+  area_name: string | null;
   /** The number of users in this area */
   user_count: number;
 }
@@ -76,7 +130,9 @@ export interface AreaInfo {
  * Response for listing areas in a bid year.
  */
 export interface ListAreasResponse {
-  /** The bid year */
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year (display value) */
   bid_year: number;
   /** The list of areas with metadata */
   areas: AreaInfo[];
@@ -88,6 +144,10 @@ export interface ListAreasResponse {
 export interface UserInfo {
   /** The user's canonical internal identifier */
   user_id: number;
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The canonical area identifier */
+  area_id: number;
   /** The user's initials */
   initials: string;
   /** The user's name */
@@ -116,10 +176,14 @@ export interface UserInfo {
  * Response for listing users in an area.
  */
 export interface ListUsersResponse {
-  /** The bid year */
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year (display value) */
   bid_year: number;
-  /** The area identifier */
-  area: string;
+  /** The canonical area identifier */
+  area_id: number;
+  /** The area code (display value) */
+  area_code: string;
   /** The list of users with leave information */
   users: UserInfo[];
 }
@@ -128,7 +192,9 @@ export interface ListUsersResponse {
  * Detailed leave availability information for a specific user.
  */
 export interface LeaveAvailabilityResponse {
-  /** The bid year */
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year (display value) */
   bid_year: number;
   /** The user's canonical internal identifier */
   user_id: number;
@@ -156,6 +222,8 @@ export interface LeaveAvailabilityResponse {
  * Bootstrap status for a single bid year.
  */
 export interface BidYearStatusInfo {
+  /** The canonical numeric identifier */
+  bid_year_id: number;
   /** The year value */
   year: number;
   /** The number of areas in this bid year */
@@ -168,10 +236,14 @@ export interface BidYearStatusInfo {
  * Area summary for bootstrap status.
  */
 export interface AreaStatusInfo {
-  /** The bid year this area belongs to */
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year this area belongs to (display value) */
   bid_year: number;
-  /** The area identifier */
-  area_id: string;
+  /** The canonical area identifier */
+  area_id: number;
+  /** The area code (display value) */
+  area_code: string;
   /** The number of users in this area */
   user_count: number;
 }
@@ -233,19 +305,34 @@ export type ConnectionState =
  */
 export type BlockingReason =
   | "NoActiveBidYear"
-  | { ExpectedAreaCountNotSet: { bid_year: number } }
+  | {
+      ExpectedAreaCountNotSet: {
+        bid_year_id: number;
+        bid_year: number;
+      };
+    }
   | {
       AreaCountMismatch: {
+        bid_year_id: number;
         bid_year: number;
         expected: number;
         actual: number;
       };
     }
-  | { ExpectedUserCountNotSet: { bid_year: number; area: string } }
+  | {
+      ExpectedUserCountNotSet: {
+        bid_year_id: number;
+        bid_year: number;
+        area_id: number;
+        area_code: string;
+      };
+    }
   | {
       UserCountMismatch: {
+        bid_year_id: number;
         bid_year: number;
-        area: string;
+        area_id: number;
+        area_code: string;
         expected: number;
         actual: number;
       };
@@ -255,7 +342,9 @@ export type BlockingReason =
  * Completeness status for a bid year.
  */
 export interface BidYearCompletenessInfo {
-  /** The bid year */
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year (display value) */
   year: number;
   /** Whether this bid year is active */
   is_active: boolean;
@@ -273,10 +362,14 @@ export interface BidYearCompletenessInfo {
  * Completeness status for an area.
  */
 export interface AreaCompletenessInfo {
-  /** The bid year */
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year (display value) */
   bid_year: number;
-  /** The area identifier */
-  area: string;
+  /** The canonical area identifier */
+  area_id: number;
+  /** The area code (display value) */
+  area_code: string;
   /** Expected user count, if set */
   expected_user_count: number | null;
   /** Actual user count */
@@ -291,7 +384,9 @@ export interface AreaCompletenessInfo {
  * Bootstrap completeness response.
  */
 export interface GetBootstrapCompletenessResponse {
-  /** The currently active bid year, if any */
+  /** The canonical ID of the currently active bid year, if any */
+  active_bid_year_id: number | null;
+  /** The currently active bid year (display value), if any */
   active_bid_year: number | null;
   /** Completeness information for all bid years */
   bid_years: BidYearCompletenessInfo[];
@@ -307,7 +402,9 @@ export interface GetBootstrapCompletenessResponse {
  * Response for getting the active bid year.
  */
 export interface GetActiveBidYearResponse {
-  /** The currently active bid year, if any */
+  /** The canonical ID of the currently active bid year, if any */
+  active_bid_year_id: number | null;
+  /** The currently active bid year (display value), if any */
   active_bid_year: number | null;
 }
 
@@ -315,7 +412,9 @@ export interface GetActiveBidYearResponse {
  * Response for setting the active bid year.
  */
 export interface SetActiveBidYearResponse {
-  /** The year that was set as active */
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The year that was set as active (display value) */
   year: number;
   /** Success message */
   message: string;
@@ -325,7 +424,9 @@ export interface SetActiveBidYearResponse {
  * Response for setting expected area count.
  */
 export interface SetExpectedAreaCountResponse {
-  /** The bid year */
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year (display value) */
   bid_year: number;
   /** The expected area count that was set */
   expected_count: number;
@@ -337,9 +438,13 @@ export interface SetExpectedAreaCountResponse {
  * Response for setting expected user count.
  */
 export interface SetExpectedUserCountResponse {
-  /** The bid year */
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year (display value) */
   bid_year: number;
-  /** The area identifier */
+  /** The canonical area identifier */
+  area_id: number;
+  /** The area code (display value) */
   area: string;
   /** The expected user count that was set */
   expected_count: number;
@@ -351,7 +456,9 @@ export interface SetExpectedUserCountResponse {
  * Response for updating a user.
  */
 export interface UpdateUserResponse {
-  /** The bid year */
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year (display value) */
   bid_year: number;
   /** The user's canonical internal identifier */
   user_id: number;
@@ -394,7 +501,9 @@ export interface CsvRowPreview {
  * Response for CSV preview.
  */
 export interface PreviewCsvUsersResponse {
-  /** The bid year being validated against */
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year being validated against (display value) */
   bid_year: number;
   /** Per-row validation results */
   rows: CsvRowPreview[];
@@ -469,7 +578,9 @@ export interface CsvImportRowResult {
  * Response for CSV import.
  */
 export interface ImportCsvUsersResponse {
-  /** The bid year imported into */
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year imported into (display value) */
   bid_year: number;
   /** Total number of rows selected for import */
   total_selected: number;

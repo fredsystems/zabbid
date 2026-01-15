@@ -31,34 +31,83 @@ use tokio::sync::Mutex;
 use tracing::{error, info};
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_api::{
-    ApiError, ApiResult, BootstrapStatusResponse, CreateAreaRequest, CreateBidYearRequest,
-    CsvImportRowStatus, GetActiveBidYearResponse, GetBootstrapCompletenessResponse,
-    GetLeaveAvailabilityResponse, ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest,
-    ListAreasResponse, ListBidYearsResponse, ListUsersResponse, PreviewCsvUsersRequest,
-    PreviewCsvUsersResponse, RegisterUserRequest, RegisterUserResponse, SetActiveBidYearRequest,
-    SetActiveBidYearResponse, SetExpectedAreaCountRequest, SetExpectedAreaCountResponse,
-    SetExpectedUserCountRequest, SetExpectedUserCountResponse, UpdateUserRequest,
-    UpdateUserResponse, checkpoint, create_area, create_bid_year, finalize, get_active_bid_year,
-    get_bootstrap_completeness, get_bootstrap_status, get_current_state, get_historical_state,
-    get_leave_availability, import_csv_users, list_areas, list_bid_years, list_users,
-    preview_csv_users, register_user, rollback, set_active_bid_year, set_expected_area_count,
-    set_expected_user_count, update_user,
+    ApiError, ApiResult, BootstrapStatusResponse, CreateAreaRequest, CreateAreaResponse,
+    CreateBidYearRequest, CreateBidYearResponse, CsvImportRowStatus, GetActiveBidYearResponse,
+    GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse, ImportCsvUsersRequest,
+    ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
+    ListUsersResponse, PreviewCsvUsersRequest, PreviewCsvUsersResponse, RegisterUserRequest,
+    RegisterUserResponse, RegisterUserResult, SetActiveBidYearRequest, SetActiveBidYearResponse,
+    SetExpectedAreaCountRequest, SetExpectedAreaCountResponse, SetExpectedUserCountRequest,
+    SetExpectedUserCountResponse, UpdateUserRequest, UpdateUserResponse, checkpoint, create_area,
+    create_bid_year, finalize, get_active_bid_year, get_bootstrap_completeness,
+    get_bootstrap_status, get_current_state, get_historical_state, get_leave_availability,
+    import_csv_users, list_areas, list_bid_years, list_users, preview_csv_users, register_user,
+    rollback, set_active_bid_year, set_expected_area_count, set_expected_user_count, update_user,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials};
-use zab_bid_persistence::{PersistenceError, SqlitePersistence};
+use zab_bid_persistence::{Persistence, PersistenceError};
 
 /// ZAB Bid Server - HTTP server for the ZAB Bidding System
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    /// Database backend to use (sqlite or mysql)
+    #[arg(long, default_value = "sqlite")]
+    db_backend: String,
+
     /// Path to the `SQLite` database file. If not provided, uses in-memory database.
+    /// Only valid when --db-backend=sqlite.
     #[arg(short, long)]
     database: Option<String>,
 
+    /// `MySQL` database URL (required when --db-backend=mysql)
+    #[arg(long)]
+    database_url: Option<String>,
+
     /// Port to bind the server to
-    #[arg(short, long, default_value_t = 3000)]
+    #[arg(short, long, default_value_t = 8080)]
     port: u16,
+}
+
+impl Args {
+    /// Validates argument combinations based on selected backend.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Unknown backend is specified
+    /// - `MySQL` backend is selected without --database-url
+    /// - `SQLite` backend is used with --database-url
+    /// - `MySQL` backend is used with --database
+    fn validate(&self) -> Result<(), String> {
+        match self.db_backend.as_str() {
+            "sqlite" => {
+                if self.database_url.is_some() {
+                    return Err(
+                        "SQLite backend does not support --database-url. Use --database instead."
+                            .to_string(),
+                    );
+                }
+                Ok(())
+            }
+            "mysql" => {
+                if self.database_url.is_none() {
+                    return Err("MySQL backend requires --database-url".to_string());
+                }
+                if self.database.is_some() {
+                    return Err(
+                        "MySQL backend does not support --database. Use --database-url instead."
+                            .to_string(),
+                    );
+                }
+                Ok(())
+            }
+            unknown => Err(format!(
+                "Unknown database backend: '{unknown}'. Valid options: sqlite, mysql"
+            )),
+        }
+    }
 }
 
 /// Application state shared across handlers.
@@ -68,7 +117,7 @@ struct Args {
 #[derive(Clone)]
 struct AppState {
     /// The persistence layer for audit events and state snapshots.
-    persistence: Arc<Mutex<SqlitePersistence>>,
+    persistence: Arc<Mutex<Persistence>>,
     /// Live event broadcaster for streaming state changes to connected clients.
     live_events: Arc<LiveEventBroadcaster>,
 }
@@ -86,8 +135,8 @@ struct RegisterUserApiRequest {
     initials: String,
     /// The user's name.
     name: String,
-    /// The user's area identifier.
-    area: String,
+    /// The user's area canonical ID.
+    area_id: i64,
     /// The user's type classification.
     user_type: String,
     /// The user's crew identifier.
@@ -111,10 +160,8 @@ struct AdminActionRequest {
     cause_id: String,
     /// The cause description.
     cause_description: String,
-    /// The bid year scope.
-    bid_year: u16,
-    /// The area scope.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
     /// The target event ID (only for rollback).
     #[serde(skip_serializing_if = "Option::is_none")]
     target_event_id: Option<i64>,
@@ -149,135 +196,22 @@ struct CreateAreaApiRequest {
 /// Query parameters for listing areas.
 #[derive(Debug, Deserialize)]
 struct ListAreasQuery {
-    /// The bid year.
-    bid_year: u16,
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
 }
 
 /// Query parameters for listing users.
 #[derive(Debug, Deserialize)]
 struct ListUsersQuery {
-    /// The bid year.
-    bid_year: u16,
-    /// The area.
-    area: String,
-}
-
-/// Bid year information for API responses.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct BidYearInfoApiResponse {
-    /// The year value.
-    year: u16,
-    /// The start date (ISO 8601).
-    start_date: String,
-    /// The number of pay periods.
-    num_pay_periods: u8,
-    /// The end date (ISO 8601).
-    end_date: String,
-    /// The number of areas in this bid year.
-    area_count: usize,
-    /// The total number of users across all areas in this bid year.
-    total_user_count: usize,
-}
-
-/// API response for listing bid years.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ListBidYearsApiResponse {
-    /// The list of bid years with canonical metadata.
-    bid_years: Vec<BidYearInfoApiResponse>,
-}
-
-/// API response for listing areas.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ListAreasApiResponse {
-    /// The bid year.
-    bid_year: u16,
-    /// The list of areas with metadata.
-    areas: Vec<AreaInfoResponse>,
-}
-
-/// Area information response for API.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct AreaInfoResponse {
-    /// The area identifier.
-    area_id: String,
-    /// The number of users in this area.
-    user_count: usize,
-}
-
-/// API response for listing users.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ListUsersApiResponse {
-    /// The bid year.
-    bid_year: u16,
-    /// The area.
-    area: String,
-    /// The list of users.
-    users: Vec<UserInfoResponse>,
-}
-
-/// User information for listing.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct UserInfoResponse {
-    /// Canonical internal identifier.
-    user_id: i64,
-    /// The user's initials.
-    initials: String,
-    /// The user's name.
-    name: String,
-    /// The user's crew (optional).
-    crew: Option<u8>,
-    /// The user's type classification (CPC, CPC-IT, Dev-R, Dev-D).
-    user_type: String,
-    /// Total hours earned (from Phase 9, post-rounding).
-    earned_hours: u16,
-    /// Total days earned.
-    earned_days: u16,
-    /// Remaining hours available (may be negative if overdrawn).
-    remaining_hours: i32,
-    /// Remaining days available (may be negative if overdrawn).
-    remaining_days: i32,
-    /// Whether all leave has been exhausted.
-    is_exhausted: bool,
-    /// Whether leave balance is overdrawn.
-    is_overdrawn: bool,
-    /// Target-specific capabilities for this user instance.
-    capabilities: zab_bid_api::UserCapabilities,
+    /// The canonical area identifier.
+    area_id: i64,
 }
 
 /// Query parameters for leave availability.
 #[derive(Debug, Clone, Deserialize)]
 struct LeaveAvailabilityQuery {
-    /// The bid year.
-    bid_year: u16,
-    /// The area.
-    area: String,
-    /// The user's initials.
-    initials: String,
-}
-
-/// API response for leave availability.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct LeaveAvailabilityApiResponse {
-    /// The bid year.
-    bid_year: u16,
-    /// The user's initials.
-    initials: String,
-    /// Total hours earned.
-    earned_hours: u16,
-    /// Total days earned.
-    earned_days: u16,
-    /// Total hours used.
-    used_hours: u16,
-    /// Remaining hours available.
-    remaining_hours: i32,
-    /// Remaining days available.
-    remaining_days: i32,
-    /// Whether all leave has been exhausted.
-    is_exhausted: bool,
-    /// Whether leave balance is overdrawn.
-    is_overdrawn: bool,
-    /// Human-readable explanation.
-    explanation: String,
+    /// The canonical user identifier.
+    user_id: i64,
 }
 
 /// API response for write operations.
@@ -293,39 +227,18 @@ struct WriteResponse {
     event_id: Option<i64>,
 }
 
-/// API response for register user operations.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RegisterUserApiResponse {
-    /// Success indicator.
-    success: bool,
-    /// The bid year the user was registered for.
-    bid_year: u16,
-    /// The user's initials.
-    initials: String,
-    /// The user's name.
-    name: String,
-    /// A success message.
-    message: String,
-    /// The event ID of the persisted audit event.
-    event_id: i64,
-}
-
 /// Query parameters for current state endpoint.
 #[derive(Debug, Deserialize)]
 struct CurrentStateQuery {
-    /// The bid year.
-    bid_year: u16,
-    /// The area.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
 }
 
 /// Query parameters for historical state endpoint.
 #[derive(Debug, Deserialize)]
 struct HistoricalStateQuery {
-    /// The bid year.
-    bid_year: u16,
-    /// The area.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
     /// The timestamp (ISO 8601 format).
     timestamp: String,
 }
@@ -333,19 +246,21 @@ struct HistoricalStateQuery {
 /// Query parameters for audit timeline endpoint.
 #[derive(Debug, Deserialize)]
 struct AuditTimelineQuery {
-    /// The bid year.
-    bid_year: u16,
-    /// The area.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
 }
 
 /// Serializable representation of State for JSON responses.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct StateResponse {
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
     /// The bid year.
     bid_year: u16,
-    /// The area.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
+    /// The area code.
+    area_code: String,
     /// The users in this state.
     users: Vec<UserResponse>,
 }
@@ -396,10 +311,10 @@ struct AuditEventResponse {
     before_snapshot: String,
     /// State after the transition.
     after_snapshot: String,
-    /// The bid year.
-    bid_year: u16,
-    /// The area.
-    area: String,
+    /// The bid year (optional for global events).
+    bid_year: Option<u16>,
+    /// The area (optional for global events).
+    area: Option<String>,
 }
 
 /// Error response type.
@@ -473,10 +388,45 @@ impl From<PersistenceError> for HttpError {
 }
 
 /// Converts a `State` to a `StateResponse`.
-fn state_to_response(state: &State) -> StateResponse {
-    StateResponse {
+fn state_to_response(
+    state: &State,
+    metadata: &BootstrapMetadata,
+) -> Result<StateResponse, HttpError> {
+    // Extract bid_year_id from metadata
+    let bid_year_id: i64 = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == state.bid_year.year())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!(
+                "Bid year {} exists but has no ID in metadata",
+                state.bid_year.year()
+            ),
+        })?;
+
+    // Extract area_id from metadata
+    let area_id: i64 = metadata
+        .areas
+        .iter()
+        .filter(|(by, _)| by.year() == state.bid_year.year())
+        .find(|(_, a)| a.area_code() == state.area.id())
+        .and_then(|(_, a)| a.area_id())
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!(
+                "Area '{}' in bid year {} exists but has no ID in metadata",
+                state.area.id(),
+                state.bid_year.year()
+            ),
+        })?;
+
+    Ok(StateResponse {
+        bid_year_id,
         bid_year: state.bid_year.year(),
-        area: state.area.id().to_string(),
+        area_id,
+        area_code: state.area.id().to_string(),
         users: state
             .users
             .iter()
@@ -495,7 +445,7 @@ fn state_to_response(state: &State) -> StateResponse {
                 lottery_value: user.seniority_data.lottery_value,
             })
             .collect(),
-    }
+    })
 }
 
 /// Converts an `AuditEvent` to an `AuditEventResponse`.
@@ -510,8 +460,8 @@ fn audit_event_to_response(event: &AuditEvent) -> AuditEventResponse {
         action_details: event.action.details.clone(),
         before_snapshot: event.before.data.clone(),
         after_snapshot: event.after.data.clone(),
-        bid_year: event.bid_year.year(),
-        area: event.area.id().to_string(),
+        bid_year: event.bid_year.as_ref().map(BidYear::year),
+        area: event.area.as_ref().map(|a| a.id().to_string()),
     }
 }
 
@@ -522,7 +472,7 @@ async fn handle_create_bid_year(
     AxumState(app_state): AxumState<AppState>,
     session::SessionOperator(actor, operator): session::SessionOperator,
     Json(req): Json<CreateBidYearApiRequest>,
-) -> Result<Json<WriteResponse>, HttpError> {
+) -> Result<Json<CreateBidYearResponse>, HttpError> {
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
@@ -533,7 +483,7 @@ async fn handle_create_bid_year(
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
     // Get current bootstrap metadata
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     drop(persistence);
 
@@ -561,10 +511,25 @@ async fn handle_create_bid_year(
     // Persist the bootstrap result
     let mut persistence = app_state.persistence.lock().await;
     let event_id: i64 = persistence.persist_bootstrap(&bootstrap_result)?;
+
+    // Get updated metadata to retrieve the canonical bid_year_id
+    let updated_metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    #[allow(clippy::redundant_closure_for_method_calls)]
+    let bid_year_id: i64 = updated_metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == req.year)
+        .and_then(|by| by.bid_year_id())
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("Failed to retrieve bid_year_id for year {}", req.year),
+        })?;
+
     drop(persistence);
 
     info!(
         event_id = event_id,
+        bid_year_id = bid_year_id,
         year = req.year,
         "Successfully created bid year"
     );
@@ -574,10 +539,23 @@ async fn handle_create_bid_year(
         .live_events
         .broadcast(&LiveEvent::BidYearCreated { year: req.year });
 
-    Ok(Json(WriteResponse {
-        success: true,
-        message: Some(format!("Created bid year {}", req.year)),
-        event_id: Some(event_id),
+    // Return detailed response
+    let end_date: time::Date = bootstrap_result
+        .canonical_bid_year
+        .as_ref()
+        .and_then(|by| by.end_date().ok())
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Failed to calculate end_date".to_string(),
+        })?;
+
+    Ok(Json(CreateBidYearResponse {
+        bid_year_id,
+        year: req.year,
+        start_date,
+        num_pay_periods: req.num_pay_periods,
+        end_date,
+        message: format!("Created bid year {}", req.year),
     }))
 }
 
@@ -588,7 +566,7 @@ async fn handle_create_area(
     AxumState(app_state): AxumState<AppState>,
     session::SessionOperator(actor, operator): session::SessionOperator,
     Json(req): Json<CreateAreaApiRequest>,
-) -> Result<Json<WriteResponse>, HttpError> {
+) -> Result<Json<CreateAreaResponse>, HttpError> {
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
@@ -609,7 +587,7 @@ async fn handle_create_area(
 
     // Execute command via API
     let bootstrap_result: BootstrapResult = create_area(
-        &persistence,
+        &mut persistence,
         &metadata,
         &create_request,
         &actor,
@@ -619,28 +597,59 @@ async fn handle_create_area(
 
     // Persist the bootstrap result
     let event_id: i64 = persistence.persist_bootstrap(&bootstrap_result)?;
+
+    // Get updated metadata to retrieve the canonical area_id
+    let updated_metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    let bid_year_ref = bootstrap_result
+        .audit_event
+        .bid_year
+        .as_ref()
+        .expect("CreateArea event must have bid year");
+
+    let area_id: i64 = updated_metadata
+        .areas
+        .iter()
+        .filter(|(by, _)| by.year() == bid_year_ref.year())
+        .find(|(_, a)| a.area_code() == req.area_id.to_uppercase())
+        .and_then(|(_, a)| a.area_id())
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("Failed to retrieve area_id for area {}", req.area_id),
+        })?;
+
     drop(persistence);
 
     info!(
         event_id = event_id,
-        area_id = %req.area_id,
+        area_id = area_id,
+        area_code = %req.area_id,
         "Successfully created area"
     );
 
     // Broadcast live event
     app_state.live_events.broadcast(&LiveEvent::AreaCreated {
-        bid_year: bootstrap_result.audit_event.bid_year.year(),
+        bid_year: bid_year_ref.year(),
         area: req.area_id.clone(),
     });
 
-    Ok(Json(WriteResponse {
-        success: true,
-        message: Some(format!(
+    #[allow(clippy::redundant_closure_for_method_calls)]
+    let bid_year_id: i64 = updated_metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == bid_year_ref.year())
+        .and_then(|by| by.bid_year_id())
+        .expect("Active bid year must have ID");
+
+    Ok(Json(CreateAreaResponse {
+        bid_year_id,
+        bid_year: bid_year_ref.year(),
+        area_id,
+        area_code: req.area_id.clone(),
+        message: format!(
             "Created area '{}' in bid year {}",
             req.area_id,
-            bootstrap_result.audit_event.bid_year.year()
-        )),
-        event_id: Some(event_id),
+            bid_year_ref.year()
+        ),
     }))
 }
 
@@ -649,10 +658,11 @@ async fn handle_create_area(
 /// Lists all bid years.
 async fn handle_list_bid_years(
     AxumState(app_state): AxumState<AppState>,
-) -> Result<Json<ListBidYearsApiResponse>, HttpError> {
+) -> Result<Json<ListBidYearsResponse>, HttpError> {
     info!("Handling list_bid_years request");
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
         persistence.list_bid_years()?;
 
@@ -661,35 +671,21 @@ async fn handle_list_bid_years(
     let user_counts: Vec<(u16, usize)> = persistence.count_users_by_bid_year()?;
     drop(persistence);
 
-    let response: ListBidYearsResponse = list_bid_years(&canonical_bid_years)?;
+    let mut response: ListBidYearsResponse = list_bid_years(&metadata, &canonical_bid_years)?;
 
-    // Convert to API response format with ISO 8601 date strings and counts
-    let api_bid_years: Vec<BidYearInfoApiResponse> = response
-        .bid_years
-        .iter()
-        .map(|info| {
-            let area_count: usize = area_counts
-                .iter()
-                .find(|(year, _)| *year == info.year)
-                .map_or(0, |(_, count)| *count);
-            let total_user_count: usize = user_counts
-                .iter()
-                .find(|(year, _)| *year == info.year)
-                .map_or(0, |(_, count)| *count);
-            BidYearInfoApiResponse {
-                year: info.year,
-                start_date: info.start_date.to_string(),
-                num_pay_periods: info.num_pay_periods,
-                end_date: info.end_date.to_string(),
-                area_count,
-                total_user_count,
-            }
-        })
-        .collect();
+    // Enrich with counts
+    for info in &mut response.bid_years {
+        info.area_count = area_counts
+            .iter()
+            .find(|(year, _)| *year == info.year)
+            .map_or(0, |(_, count)| *count);
+        info.total_user_count = user_counts
+            .iter()
+            .find(|(year, _)| *year == info.year)
+            .map_or(0, |(_, count)| *count);
+    }
 
-    Ok(Json(ListBidYearsApiResponse {
-        bid_years: api_bid_years,
-    }))
+    Ok(Json(response))
 }
 
 /// Handler for GET `/areas` endpoint.
@@ -698,42 +694,43 @@ async fn handle_list_bid_years(
 async fn handle_list_areas(
     AxumState(app_state): AxumState<AppState>,
     Query(query): Query<ListAreasQuery>,
-) -> Result<Json<ListAreasApiResponse>, HttpError> {
-    info!(bid_year = query.bid_year, "Handling list_areas request");
+) -> Result<Json<ListAreasResponse>, HttpError> {
+    info!(
+        bid_year_id = query.bid_year_id,
+        "Handling list_areas request"
+    );
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    let bid_year: BidYear = BidYear::new(query.bid_year);
+
+    // Resolve bid_year_id to BidYear from metadata
+    let bid_year: &zab_bid_domain::BidYear = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.bid_year_id() == Some(query.bid_year_id))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Bid year with ID {} not found", query.bid_year_id),
+        })?;
 
     // Get user counts per area
-    let user_counts: Vec<(String, usize)> = persistence.count_users_by_area(&bid_year)?;
+    let user_counts: Vec<(String, usize)> = persistence.count_users_by_area(bid_year)?;
     drop(persistence);
 
     let request: ListAreasRequest = ListAreasRequest {
-        bid_year: query.bid_year,
+        bid_year_id: query.bid_year_id,
     };
-    let response: ListAreasResponse = list_areas(&metadata, &request)?;
+    let mut response: ListAreasResponse = list_areas(&metadata, &request)?;
 
-    // Build area info with user counts
-    let areas_with_counts: Vec<AreaInfoResponse> = response
-        .areas
-        .into_iter()
-        .map(|area_info| {
-            let user_count: usize = user_counts
-                .iter()
-                .find(|(area_id, _)| area_id == &area_info.area_id)
-                .map_or(0, |(_, count)| *count);
-            AreaInfoResponse {
-                area_id: area_info.area_id,
-                user_count,
-            }
-        })
-        .collect();
+    // Enrich with user counts
+    for area_info in &mut response.areas {
+        area_info.user_count = user_counts
+            .iter()
+            .find(|(area_code, _)| area_code == &area_info.area_code)
+            .map_or(0, |(_, count)| *count);
+    }
 
-    Ok(Json(ListAreasApiResponse {
-        bid_year: response.bid_year,
-        areas: areas_with_counts,
-    }))
+    Ok(Json(response))
 }
 
 /// Handler for GET `/users` endpoint.
@@ -743,18 +740,23 @@ async fn handle_list_users(
     AxumState(app_state): AxumState<AppState>,
     session::SessionOperator(actor, operator): session::SessionOperator,
     Query(query): Query<ListUsersQuery>,
-) -> Result<Json<ListUsersApiResponse>, HttpError> {
-    info!(
-        bid_year = query.bid_year,
-        area = %query.area,
-        "Handling list_users request"
-    );
+) -> Result<Json<ListUsersResponse>, HttpError> {
+    info!(area_id = query.area_id, "Handling list_users request");
 
-    let persistence = app_state.persistence.lock().await;
-    let bid_year: BidYear = BidYear::new(query.bid_year);
-    let area: Area = Area::new(&query.area);
-
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(query.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", query.area_id),
+        })?;
+
     let canonical_bid_years: Vec<CanonicalBidYear> = persistence.list_bid_years()?;
     let state: State = persistence
         .get_current_state(&bid_year, &area)
@@ -771,30 +773,7 @@ async fn handle_list_users(
         &operator,
     )?;
 
-    let users: Vec<UserInfoResponse> = response
-        .users
-        .into_iter()
-        .map(|u| UserInfoResponse {
-            user_id: u.user_id,
-            initials: u.initials,
-            name: u.name,
-            crew: u.crew,
-            user_type: u.user_type,
-            earned_hours: u.earned_hours,
-            earned_days: u.earned_days,
-            remaining_hours: u.remaining_hours,
-            remaining_days: u.remaining_days,
-            is_exhausted: u.is_exhausted,
-            is_overdrawn: u.is_overdrawn,
-            capabilities: u.capabilities,
-        })
-        .collect();
-
-    Ok(Json(ListUsersApiResponse {
-        bid_year: response.bid_year,
-        area: response.area,
-        users,
-    }))
+    Ok(Json(response))
 }
 
 /// Handler for GET `/leave/availability` endpoint.
@@ -803,50 +782,75 @@ async fn handle_list_users(
 async fn handle_get_leave_availability(
     AxumState(app_state): AxumState<AppState>,
     Query(query): Query<LeaveAvailabilityQuery>,
-) -> Result<Json<LeaveAvailabilityApiResponse>, HttpError> {
+) -> Result<Json<GetLeaveAvailabilityResponse>, HttpError> {
     info!(
-        bid_year = query.bid_year,
-        area = %query.area,
-        initials = %query.initials,
+        user_id = query.user_id,
         "Handling get_leave_availability request"
     );
 
-    let persistence = app_state.persistence.lock().await;
-    let bid_year: BidYear = BidYear::new(query.bid_year);
-    let area: Area = Area::new(&query.area);
-    let initials: Initials = Initials::new(&query.initials);
-
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
-    // Get canonical bid year for accrual calculation
+    // Find the user by user_id across all areas
     let canonical_bid_years: Vec<CanonicalBidYear> = persistence.list_bid_years()?;
-    let canonical_bid_year: &CanonicalBidYear = canonical_bid_years
-        .iter()
-        .find(|by| by.year() == query.bid_year)
-        .ok_or_else(|| {
-            PersistenceError::DatabaseError(format!("Bid year {} not found", query.bid_year))
-        })?;
 
-    let state: State = persistence
-        .get_current_state(&bid_year, &area)
-        .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
+    // Search all states to find the user
+    let mut found_user: Option<(BidYear, Area, Initials, &CanonicalBidYear, State)> = None;
+
+    for (bid_year_domain, area_domain) in &metadata.areas {
+        if let Ok(state) = persistence.get_current_state(bid_year_domain, area_domain)
+            && let Some(user) = state
+                .users
+                .iter()
+                .find(|u| u.user_id == Some(query.user_id))
+            && let Some(canonical_by) = canonical_bid_years
+                .iter()
+                .find(|cby| cby.year() == bid_year_domain.year())
+        {
+            found_user = Some((
+                bid_year_domain.clone(),
+                area_domain.clone(),
+                user.initials.clone(),
+                canonical_by,
+                state,
+            ));
+            break;
+        }
+    }
     drop(persistence);
+
+    let (_bid_year, area, initials, canonical_bid_year, state) =
+        found_user.ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("User with ID {} not found", query.user_id),
+        })?;
 
     let response: GetLeaveAvailabilityResponse =
         get_leave_availability(&metadata, canonical_bid_year, &area, &initials, &state)?;
 
-    Ok(Json(LeaveAvailabilityApiResponse {
-        bid_year: response.bid_year,
-        initials: response.initials,
-        earned_hours: response.earned_hours,
-        earned_days: response.earned_days,
-        used_hours: response.used_hours,
-        remaining_hours: response.remaining_hours,
-        remaining_days: response.remaining_days,
-        is_exhausted: response.is_exhausted,
-        is_overdrawn: response.is_overdrawn,
-        explanation: response.explanation,
-    }))
+    Ok(Json(response))
+}
+
+/// Extract `user_id` from reloaded state after user registration.
+///
+/// # Errors
+///
+/// Returns an error if the user is not found or has no `user_id`.
+fn extract_user_id_from_state(state: &State, initials: &str) -> Result<i64, HttpError> {
+    let initials_search = Initials::new(initials);
+    let persisted_user = state
+        .users
+        .iter()
+        .find(|u| u.initials == initials_search)
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("User '{initials}' was registered but not found in reloaded state",),
+        })?;
+
+    persisted_user.user_id.ok_or_else(|| HttpError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: format!("User '{initials}' was persisted but has no user_id",),
+    })
 }
 
 /// Handler for POST `/register_user` endpoint.
@@ -856,10 +860,11 @@ async fn handle_register_user(
     AxumState(app_state): AxumState<AppState>,
     session::SessionOperator(actor, operator): session::SessionOperator,
     Json(req): Json<RegisterUserApiRequest>,
-) -> Result<Json<RegisterUserApiResponse>, HttpError> {
+) -> Result<Json<RegisterUserResponse>, HttpError> {
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
+        area_id = req.area_id,
         initials = %req.initials,
         "Handling register_user request"
     );
@@ -870,23 +875,26 @@ async fn handle_register_user(
     let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
-    // Resolve active bid year from persistence
-    let active_year_opt: Option<u16> = persistence.get_active_bid_year()?;
-    let active_year: u16 = active_year_opt.ok_or_else(|| HttpError {
-        status: StatusCode::BAD_REQUEST,
-        message: String::from("No active bid year is set"),
-    })?;
-    let bid_year: BidYear = BidYear::new(active_year);
-    let area: Area = Area::new(&req.area);
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(req.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", req.area_id),
+        })?;
+
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
 
-    // Build API request (bid_year no longer needed in request)
+    // Build API request
     let register_request: RegisterUserRequest = RegisterUserRequest {
         initials: req.initials,
         name: req.name,
-        area: req.area.clone(),
+        area: area.area_code().to_string(),
         user_type: req.user_type,
         crew: req.crew,
         cumulative_natca_bu_date: req.cumulative_natca_bu_date,
@@ -897,8 +905,8 @@ async fn handle_register_user(
     };
 
     // Execute command via API
-    let result: ApiResult<RegisterUserResponse> = register_user(
-        &persistence,
+    let result: ApiResult<RegisterUserResult> = register_user(
+        &mut persistence,
         &metadata,
         &state,
         register_request,
@@ -912,11 +920,39 @@ async fn handle_register_user(
         audit_event: result.audit_event.clone(),
         new_state: result.new_state.clone(),
     };
-    let event_id: i64 = persistence.persist_transition(&transition_result, false)?;
+    let event_id: i64 = persistence.persist_transition(&transition_result)?;
+
+    // Extract bid_year_id from metadata
+    let bid_year_id: i64 = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == bid_year.year())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!(
+                "Bid year {} exists but has no ID in metadata",
+                bid_year.year()
+            ),
+        })?;
+
+    // Reload the state to get the persisted user_id
+    let reloaded_state: State = persistence
+        .get_current_state(&bid_year, &area)
+        .map_err(|e| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("Failed to reload state after persistence: {e}"),
+        })?;
+
+    // Extract user_id from reloaded state
+    let user_id: i64 = extract_user_id_from_state(&reloaded_state, &result.response.initials)?;
+
     drop(persistence);
 
     info!(
         event_id = event_id,
+        user_id = user_id,
+        bid_year_id = bid_year_id,
         initials = %result.response.initials,
         "Successfully registered user"
     );
@@ -924,13 +960,15 @@ async fn handle_register_user(
     // Broadcast live event
     app_state.live_events.broadcast(&LiveEvent::UserRegistered {
         bid_year: result.response.bid_year,
-        area: req.area.clone(),
+        area: area.area_code().to_string(),
         initials: result.response.initials.clone(),
     });
 
-    Ok(Json(RegisterUserApiResponse {
-        success: true,
+    // Construct final API response with all IDs populated
+    Ok(Json(RegisterUserResponse {
+        bid_year_id,
         bid_year: result.response.bid_year,
+        user_id,
         initials: result.response.initials,
         name: result.response.name,
         message: result.response.message,
@@ -949,8 +987,7 @@ async fn handle_checkpoint(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        bid_year = req.bid_year,
-        area = %req.area,
+        area_id = req.area_id,
         "Handling checkpoint request"
     );
 
@@ -959,21 +996,34 @@ async fn handle_checkpoint(
     // Get bootstrap metadata and current state
     let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    let bid_year: BidYear = BidYear::new(req.bid_year);
-    let area: Area = Area::new(&req.area);
+
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(req.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", req.area_id),
+        })?;
+
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
 
     // Execute command via API (persistence passed for active bid year resolution)
-    let result: TransitionResult =
-        checkpoint(&persistence, &metadata, &state, &actor, &operator, cause)?;
+    let result: TransitionResult = checkpoint(
+        &mut persistence,
+        &metadata,
+        &state,
+        &actor,
+        &operator,
+        cause,
+    )?;
 
     // Persist the transition
-    let event_id: i64 = persistence.persist_transition(
-        &result,
-        SqlitePersistence::should_snapshot(&result.audit_event.action.name),
-    )?;
+    let event_id: i64 = persistence.persist_transition(&result)?;
     drop(persistence);
 
     info!(event_id = event_id, "Successfully created checkpoint");
@@ -982,8 +1032,8 @@ async fn handle_checkpoint(
     app_state
         .live_events
         .broadcast(&LiveEvent::CheckpointCreated {
-            bid_year: req.bid_year,
-            area: req.area.clone(),
+            bid_year: bid_year.year(),
+            area: area.area_code().to_string(),
         });
 
     Ok(Json(WriteResponse {
@@ -1004,8 +1054,7 @@ async fn handle_finalize(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        bid_year = req.bid_year,
-        area = %req.area,
+        area_id = req.area_id,
         "Handling finalize request"
     );
 
@@ -1014,29 +1063,42 @@ async fn handle_finalize(
     // Get bootstrap metadata and current state
     let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    let bid_year: BidYear = BidYear::new(req.bid_year);
-    let area: Area = Area::new(&req.area);
+
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(req.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", req.area_id),
+        })?;
+
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
 
     // Execute command via API (persistence passed for active bid year resolution)
-    let result: TransitionResult =
-        finalize(&persistence, &metadata, &state, &actor, &operator, cause)?;
+    let result: TransitionResult = finalize(
+        &mut persistence,
+        &metadata,
+        &state,
+        &actor,
+        &operator,
+        cause,
+    )?;
 
     // Persist the transition
-    let event_id: i64 = persistence.persist_transition(
-        &result,
-        SqlitePersistence::should_snapshot(&result.audit_event.action.name),
-    )?;
+    let event_id: i64 = persistence.persist_transition(&result)?;
     drop(persistence);
 
     info!(event_id = event_id, "Successfully finalized round");
 
     // Broadcast live event
     app_state.live_events.broadcast(&LiveEvent::RoundFinalized {
-        bid_year: req.bid_year,
-        area: req.area.clone(),
+        bid_year: bid_year.year(),
+        area: area.area_code().to_string(),
     });
 
     Ok(Json(WriteResponse {
@@ -1057,8 +1119,7 @@ async fn handle_rollback(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        bid_year = req.bid_year,
-        area = %req.area,
+        area_id = req.area_id,
         target_event_id = ?req.target_event_id,
         "Handling rollback request"
     );
@@ -1073,15 +1134,25 @@ async fn handle_rollback(
     // Get bootstrap metadata and current state
     let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    let bid_year: BidYear = BidYear::new(req.bid_year);
-    let area: Area = Area::new(&req.area);
+
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(req.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", req.area_id),
+        })?;
+
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
 
     // Execute command via API (persistence passed for active bid year resolution)
     let result: TransitionResult = rollback(
-        &persistence,
+        &mut persistence,
         &metadata,
         &state,
         target_event_id,
@@ -1091,10 +1162,7 @@ async fn handle_rollback(
     )?;
 
     // Persist the transition
-    let event_id: i64 = persistence.persist_transition(
-        &result,
-        SqlitePersistence::should_snapshot(&result.audit_event.action.name),
-    )?;
+    let event_id: i64 = persistence.persist_transition(&result)?;
     drop(persistence);
 
     info!(
@@ -1105,8 +1173,8 @@ async fn handle_rollback(
 
     // Broadcast live event
     app_state.live_events.broadcast(&LiveEvent::RolledBack {
-        bid_year: req.bid_year,
-        area: req.area.clone(),
+        bid_year: bid_year.year(),
+        area: area.area_code().to_string(),
     });
 
     Ok(Json(WriteResponse {
@@ -1126,23 +1194,31 @@ async fn handle_get_current_state(
     Query(params): Query<CurrentStateQuery>,
 ) -> Result<Json<StateResponse>, HttpError> {
     info!(
-        bid_year = params.bid_year,
-        area = %params.area,
+        area_id = params.area_id,
         "Handling get_current_state request"
     );
 
-    let bid_year: BidYear = BidYear::new(params.bid_year);
-    let area: Area = Area::new(&params.area);
-
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(params.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", params.area_id),
+        })?;
+
     let state: State = persistence
         .get_current_state(&bid_year, &area)
         .unwrap_or_else(|_| State::new(bid_year.clone(), area.clone()));
     drop(persistence);
 
     let validated_state: State = get_current_state(&metadata, &bid_year, &area, state)?;
-    let response: StateResponse = state_to_response(&validated_state);
+    let response: StateResponse = state_to_response(&validated_state, &metadata)?;
 
     Ok(Json(response))
 }
@@ -1155,22 +1231,30 @@ async fn handle_get_historical_state(
     Query(params): Query<HistoricalStateQuery>,
 ) -> Result<Json<StateResponse>, HttpError> {
     info!(
-        bid_year = params.bid_year,
-        area = %params.area,
+        area_id = params.area_id,
         timestamp = %params.timestamp,
         "Handling get_historical_state request"
     );
 
-    let bid_year: BidYear = BidYear::new(params.bid_year);
-    let area: Area = Area::new(&params.area);
-
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(params.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", params.area_id),
+        })?;
+
     let state: State = persistence.get_historical_state(&bid_year, &area, &params.timestamp)?;
     drop(persistence);
 
     let validated_state: State = get_historical_state(&metadata, &bid_year, &area, state)?;
-    let response: StateResponse = state_to_response(&validated_state);
+    let response: StateResponse = state_to_response(&validated_state, &metadata)?;
 
     Ok(Json(response))
 }
@@ -1183,15 +1267,24 @@ async fn handle_get_audit_timeline(
     Query(params): Query<AuditTimelineQuery>,
 ) -> Result<Json<Vec<AuditEventResponse>>, HttpError> {
     info!(
-        bid_year = params.bid_year,
-        area = %params.area,
+        area_id = params.area_id,
         "Handling get_audit_timeline request"
     );
 
-    let bid_year: BidYear = BidYear::new(params.bid_year);
-    let area: Area = Area::new(&params.area);
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
-    let persistence = app_state.persistence.lock().await;
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year, area) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(params.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", params.area_id),
+        })?;
+
     let events: Vec<AuditEvent> = persistence.get_audit_timeline(&bid_year, &area)?;
     drop(persistence);
 
@@ -1209,7 +1302,7 @@ async fn handle_get_audit_event(
 ) -> Result<Json<AuditEventResponse>, HttpError> {
     info!(event_id = event_id, "Handling get_audit_event request");
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let event: AuditEvent = persistence.get_audit_event(event_id)?;
     drop(persistence);
 
@@ -1226,7 +1319,7 @@ async fn handle_get_bootstrap_status(
 ) -> Result<Json<BootstrapStatusResponse>, HttpError> {
     info!("Handling get_bootstrap_status request");
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let area_counts: Vec<(u16, usize)> = persistence.count_areas_by_bid_year()?;
     let user_counts_by_year: Vec<(u16, usize)> = persistence.count_users_by_bid_year()?;
@@ -1533,8 +1626,8 @@ struct SetActiveBidYearApiRequest {
     cause_id: String,
     /// The cause description.
     cause_description: String,
-    /// The bid year to set as active.
-    year: u16,
+    /// The canonical bid year identifier to set as active.
+    bid_year_id: i64,
 }
 
 /// Request body for set expected area count endpoint.
@@ -1555,8 +1648,8 @@ struct SetExpectedUserCountApiRequest {
     cause_id: String,
     /// The cause description.
     cause_description: String,
-    /// The area identifier.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
     /// The expected number of users.
     expected_count: u32,
 }
@@ -1574,8 +1667,8 @@ struct UpdateUserApiRequest {
     initials: String,
     /// The user's name.
     name: String,
-    /// The user's area.
-    area: String,
+    /// The canonical area identifier.
+    area_id: i64,
     /// The user's type classification (CPC, CPC-IT, Dev-R, Dev-D).
     user_type: String,
     /// The user's crew number (1-7, optional).
@@ -1623,8 +1716,8 @@ async fn handle_bootstrap_status(
 ) -> Result<Json<zab_bid_api::BootstrapAuthStatusResponse>, HttpError> {
     info!("Handling bootstrap status check");
 
-    let persistence = app_state.persistence.lock().await;
-    let response = zab_bid_api::check_bootstrap_status(&persistence)?;
+    let mut persistence = app_state.persistence.lock().await;
+    let response = zab_bid_api::check_bootstrap_status(&mut persistence)?;
     drop(persistence);
 
     Ok(Json(response))
@@ -1639,8 +1732,8 @@ async fn handle_bootstrap_login(
 ) -> Result<Json<zab_bid_api::BootstrapLoginResponse>, HttpError> {
     info!("Handling bootstrap login request");
 
-    let persistence = app_state.persistence.lock().await;
-    let response = zab_bid_api::bootstrap_login(&persistence, &req)?;
+    let mut persistence = app_state.persistence.lock().await;
+    let response = zab_bid_api::bootstrap_login(&mut persistence, &req)?;
     drop(persistence);
 
     info!("Bootstrap login successful");
@@ -1675,19 +1768,21 @@ async fn handle_set_active_bid_year(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        year = req.year,
+        bid_year_id = req.bid_year_id,
         "Handling set_active_bid_year request"
     );
 
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
     // Get current bootstrap metadata
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     drop(persistence);
 
     // Build API request
-    let set_request: SetActiveBidYearRequest = SetActiveBidYearRequest { year: req.year };
+    let set_request: SetActiveBidYearRequest = SetActiveBidYearRequest {
+        bid_year_id: req.bid_year_id,
+    };
 
     // Execute command via API
     let mut persistence = app_state.persistence.lock().await;
@@ -1701,12 +1796,18 @@ async fn handle_set_active_bid_year(
     )?;
     drop(persistence);
 
-    info!(year = req.year, "Successfully set active bid year");
+    info!(
+        year = response.year,
+        bid_year_id = response.bid_year_id,
+        "Successfully set active bid year"
+    );
 
     // Broadcast live event
     app_state
         .live_events
-        .broadcast(&LiveEvent::BidYearActivated { year: req.year });
+        .broadcast(&LiveEvent::BidYearActivated {
+            year: response.year,
+        });
 
     Ok(Json(response))
 }
@@ -1719,8 +1820,9 @@ async fn handle_get_active_bid_year(
 ) -> Result<Json<GetActiveBidYearResponse>, HttpError> {
     info!("Handling get_active_bid_year request");
 
-    let persistence = app_state.persistence.lock().await;
-    let response: GetActiveBidYearResponse = get_active_bid_year(&persistence)?;
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+    let response: GetActiveBidYearResponse = get_active_bid_year(&mut persistence, &metadata)?;
     drop(persistence);
 
     Ok(Json(response))
@@ -1744,7 +1846,7 @@ async fn handle_set_expected_area_count(
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
     // Get current bootstrap metadata
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     drop(persistence);
 
@@ -1784,7 +1886,7 @@ async fn handle_set_expected_user_count(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
-        area = %req.area,
+        area_id = req.area_id,
         expected_count = req.expected_count,
         "Handling set_expected_user_count request"
     );
@@ -1792,13 +1894,13 @@ async fn handle_set_expected_user_count(
     let cause: Cause = Cause::new(req.cause_id, req.cause_description);
 
     // Get current bootstrap metadata
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     drop(persistence);
 
     // Build API request
     let set_request: SetExpectedUserCountRequest = SetExpectedUserCountRequest {
-        area: req.area.clone(),
+        area_id: req.area_id,
         expected_count: req.expected_count,
     };
 
@@ -1815,7 +1917,8 @@ async fn handle_set_expected_user_count(
     drop(persistence);
 
     info!(
-        area = %req.area,
+        area_id = response.area_id,
+        area = %response.area_code,
         expected_count = req.expected_count,
         "Successfully set expected user count"
     );
@@ -1834,6 +1937,7 @@ async fn handle_update_user(
     info!(
         actor_login = %operator.login_name,
         role = ?actor.role,
+        area_id = req.area_id,
         initials = %req.initials,
         "Handling update_user request"
     );
@@ -1844,14 +1948,17 @@ async fn handle_update_user(
     let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
-    // Resolve active bid year from persistence
-    let active_year_opt: Option<u16> = persistence.get_active_bid_year()?;
-    let active_year: u16 = active_year_opt.ok_or_else(|| HttpError {
-        status: StatusCode::BAD_REQUEST,
-        message: String::from("No active bid year is set"),
-    })?;
-    let bid_year_ref = BidYear::new(active_year);
-    let area_ref = Area::new(&req.area);
+    // Resolve area_id to Area and BidYear from metadata
+    let (bid_year_ref, area_ref) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(req.area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: format!("Area with ID {} not found", req.area_id),
+        })?;
+
     let state: State = persistence.get_current_state(&bid_year_ref, &area_ref)?;
 
     // Build API request (bid_year no longer needed in request)
@@ -1859,7 +1966,7 @@ async fn handle_update_user(
         user_id: req.user_id,
         initials: req.initials.clone(),
         name: req.name.clone(),
-        area: req.area.clone(),
+        area_id: req.area_id,
         user_type: req.user_type.clone(),
         crew: req.crew,
         cumulative_natca_bu_date: req.cumulative_natca_bu_date.clone(),
@@ -1889,8 +1996,13 @@ async fn handle_update_user(
 
     // Broadcast live event
     app_state.live_events.broadcast(&LiveEvent::UserUpdated {
-        bid_year: result.audit_event.bid_year.year(),
-        area: req.area.clone(),
+        bid_year: result
+            .audit_event
+            .bid_year
+            .as_ref()
+            .expect("UpdateUser event must have bid year")
+            .year(),
+        area: area_ref.area_code().to_string(),
         initials: req.initials.clone(),
     });
 
@@ -1905,10 +2017,10 @@ async fn handle_get_bootstrap_completeness(
 ) -> Result<Json<GetBootstrapCompletenessResponse>, HttpError> {
     info!("Handling get_bootstrap_completeness request");
 
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
     let response: GetBootstrapCompletenessResponse =
-        get_bootstrap_completeness(&persistence, &metadata)?;
+        get_bootstrap_completeness(&mut persistence, &metadata)?;
     drop(persistence);
 
     Ok(Json(response))
@@ -1929,7 +2041,7 @@ async fn handle_preview_csv_users(
     );
 
     // Get bootstrap metadata
-    let persistence = app_state.persistence.lock().await;
+    let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
     // Build API request
@@ -1939,7 +2051,7 @@ async fn handle_preview_csv_users(
 
     // Execute preview via API (no persistence mutations)
     let response: PreviewCsvUsersResponse =
-        preview_csv_users(&metadata, &persistence, &preview_request, &actor)?;
+        preview_csv_users(&metadata, &mut persistence, &preview_request, &actor)?;
 
     drop(persistence);
 
@@ -1979,21 +2091,30 @@ async fn handle_import_csv_users(
     let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
-    // Resolve active bid year from persistence
-    let active_year_opt: Option<u16> = persistence.get_active_bid_year()?;
-    let active_year: u16 = active_year_opt.ok_or_else(|| HttpError {
+    // Resolve active bid year from metadata
+    let active_year: u16 = persistence.get_active_bid_year().map_err(|e| HttpError {
         status: StatusCode::BAD_REQUEST,
-        message: String::from("No active bid year is set"),
+        message: format!("Failed to get active bid year: {e}"),
     })?;
-    let bid_year: BidYear = BidYear::new(active_year);
+
+    let bid_year: BidYear = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == active_year)
+        .cloned()
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("Active year {active_year} not found in metadata"),
+        })?;
 
     // We need a state instance for the import handler signature
     // Use the first area if available, or create a dummy one
-    let state: State = if let Some((_, first_area)) = metadata.areas.first() {
+    let state: State = if let Some((by, first_area)) = metadata.areas.first() {
         persistence
-            .get_current_state(&bid_year, first_area)
-            .unwrap_or_else(|_| State::new(bid_year.clone(), first_area.clone()))
+            .get_current_state(by, first_area)
+            .unwrap_or_else(|_| State::new(by.clone(), first_area.clone()))
     } else {
+        // Fallback: create dummy area (should not happen in practice)
         State::new(bid_year, Area::new("DUMMY"))
     };
 
@@ -2121,6 +2242,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command-line arguments
     let args: Args = Args::parse();
 
+    // Validate argument combinations
+    args.validate()
+        .map_err(|e| format!("Invalid arguments: {e}"))?;
+
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -2130,14 +2255,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     info!("Initializing ZAB Bid Server");
+    info!("Selected database backend: {}", args.db_backend);
 
-    // Initialize persistence (in-memory or file-based based on CLI argument)
-    let persistence: SqlitePersistence = if let Some(db_path) = &args.database {
-        info!("Using file-based database at: {}", db_path);
-        SqlitePersistence::new_with_file(db_path)?
-    } else {
-        info!("Using in-memory database");
-        SqlitePersistence::new_in_memory()?
+    // Initialize persistence based on selected backend
+    let persistence: Persistence = match args.db_backend.as_str() {
+        "sqlite" => {
+            if let Some(db_path) = &args.database {
+                info!("Using SQLite file-based database at: {}", db_path);
+                Persistence::new_with_file(db_path)?
+            } else {
+                info!("Using SQLite in-memory database");
+                Persistence::new_in_memory()?
+            }
+        }
+        "mysql" => {
+            let database_url = args
+                .database_url
+                .as_ref()
+                .ok_or("MySQL backend requires --database-url")?;
+            info!("Using MySQL database at: {}", database_url);
+            Persistence::new_with_mysql(database_url)?
+        }
+        _ => {
+            // This should never be reached due to validation, but handle defensively
+            return Err(format!("Unsupported backend: {}", args.db_backend).into());
+        }
     };
 
     let app_state: AppState = AppState {
@@ -2170,12 +2312,133 @@ mod tests {
 
     /// Helper to create test app state with in-memory persistence.
     fn create_test_app_state() -> AppState {
-        let persistence: SqlitePersistence =
-            SqlitePersistence::new_in_memory().expect("Failed to create in-memory persistence");
+        let persistence: Persistence =
+            Persistence::new_in_memory().expect("Failed to create in-memory persistence");
         AppState {
             persistence: Arc::new(Mutex::new(persistence)),
             live_events: Arc::new(LiveEventBroadcaster::new()),
         }
+    }
+
+    // ========================================================================
+    // Phase 24G Argument Validation Tests
+    // ========================================================================
+
+    #[test]
+    fn test_args_default_sqlite_backend() {
+        let args = Args {
+            db_backend: String::from("sqlite"),
+            database: None,
+            database_url: None,
+            port: 3000,
+        };
+        assert!(args.validate().is_ok());
+    }
+
+    #[test]
+    fn test_args_sqlite_with_file() {
+        let args = Args {
+            db_backend: String::from("sqlite"),
+            database: Some(String::from("./test.db")),
+            database_url: None,
+            port: 3000,
+        };
+        assert!(args.validate().is_ok());
+    }
+
+    #[test]
+    fn test_args_sqlite_rejects_database_url() {
+        let args = Args {
+            db_backend: String::from("sqlite"),
+            database: None,
+            database_url: Some(String::from("mysql://localhost/test")),
+            port: 3000,
+        };
+        let result = args.validate();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("SQLite backend does not support --database-url")
+        );
+    }
+
+    #[test]
+    fn test_args_mysql_requires_database_url() {
+        let args = Args {
+            db_backend: String::from("mysql"),
+            database: None,
+            database_url: None,
+            port: 3000,
+        };
+        let result = args.validate();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("MySQL backend requires --database-url")
+        );
+    }
+
+    #[test]
+    fn test_args_mysql_with_database_url() {
+        let args = Args {
+            db_backend: String::from("mysql"),
+            database: None,
+            database_url: Some(String::from("mysql://user:pass@localhost/zabbid")),
+            port: 3000,
+        };
+        assert!(args.validate().is_ok());
+    }
+
+    #[test]
+    fn test_args_mysql_rejects_database_flag() {
+        let args = Args {
+            db_backend: String::from("mysql"),
+            database: Some(String::from("./test.db")),
+            database_url: Some(String::from("mysql://localhost/test")),
+            port: 3000,
+        };
+        let result = args.validate();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("MySQL backend does not support --database")
+        );
+    }
+
+    #[test]
+    fn test_args_unknown_backend_rejected() {
+        let args = Args {
+            db_backend: String::from("postgres"),
+            database: None,
+            database_url: None,
+            port: 3000,
+        };
+        let result = args.validate();
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Unknown database backend"));
+        assert!(error_msg.contains("postgres"));
+    }
+
+    #[test]
+    fn test_args_sqlite_with_both_flags_rejected() {
+        // SQLite with database_url should fail
+        let args = Args {
+            db_backend: String::from("sqlite"),
+            database: Some(String::from("./test.db")),
+            database_url: Some(String::from("mysql://localhost/test")),
+            port: 3000,
+        };
+        let result = args.validate();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("SQLite backend does not support --database-url")
+        );
     }
 
     // ========================================================================
