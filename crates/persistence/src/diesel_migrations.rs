@@ -10,6 +10,25 @@
 //! to bootstrap databases.
 //!
 //! Runtime queries continue to use the existing persistence layer.
+//!
+//! ## Backend-Specific Migrations
+//!
+//! `SQLite` and MySQL/MariaDB have different SQL syntax requirements:
+//! - `SQLite`: `INTEGER PRIMARY KEY AUTOINCREMENT`
+//! - `MySQL`: `BIGINT PRIMARY KEY AUTO_INCREMENT`
+//! - `SQLite`: `TEXT` for string types
+//! - `MySQL`: `VARCHAR(n)` or `TEXT` with explicit sizes
+//!
+//! To handle this, we maintain separate migration directories:
+//! - `migrations/` — SQLite-specific migrations (used by default)
+//! - `migrations_mysql/` — MySQL/MariaDB-specific migrations
+//!
+//! Both sets of migrations are functionally equivalent and produce
+//! identical schema semantics. The `mysql` module uses `MYSQL_MIGRATIONS`
+//! while `SQLite` code uses the `MIGRATIONS` constant defined here.
+//!
+//! This approach avoids conditional compilation while ensuring both
+//! backends are fully supported at compile time.
 
 use diesel::{Connection, RunQueryDsl, SqliteConnection};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
@@ -17,6 +36,10 @@ use tracing::info;
 
 use crate::error::PersistenceError;
 
+/// SQLite-specific migrations.
+///
+/// These migrations use `SQLite` syntax and are the default for development
+/// and standard testing.
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
 /// Run pending migrations on the provided connection.

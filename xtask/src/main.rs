@@ -3,6 +3,35 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+//! # xtask - Project Automation and Infrastructure Orchestration
+//!
+//! ## Phase 24D: Multi-Backend Validation Infrastructure
+//!
+//! As of Phase 24D, this xtask provides explicit, opt-in backend validation
+//! for MySQL/MariaDB in addition to the default `SQLite` backend.
+//!
+//! ### Backend Testing Commands
+//!
+//! - `cargo test` — Runs all standard tests against `SQLite` (fast, no infrastructure)
+//! - `cargo xtask test-mariadb` — Runs backend validation tests against `MariaDB`
+//!
+//! ### Implementation Details
+//!
+//! The `test-mariadb` command:
+//! - Orchestrates Docker container lifecycle (start, wait, stop, cleanup)
+//! - Provisions a `MariaDB` 11 container with test database
+//! - Sets required environment variables for tests
+//! - Executes explicitly ignored tests via `--ignored` flag
+//! - Guarantees cleanup even on test failure
+//!
+//! ### Design Principles
+//!
+//! - No test infrastructure is embedded in test code
+//! - No tests silently skip due to missing services
+//! - External databases are opt-in only, never automatic
+//! - Standard `cargo test` remains fast and infrastructure-free
+//! - All backend-specific orchestration lives in xtask
+
 #![deny(
     clippy::pedantic,
     //clippy::cargo,
@@ -136,6 +165,10 @@ enum Command {
     /// Run lib tests
     #[command(visible_alias = "tl")]
     TestLibs,
+
+    /// Run `MariaDB` backend validation tests
+    #[command(visible_alias = "tm")]
+    TestMariadb,
 }
 
 // #[derive(Clone, Debug, ValueEnum, PartialEq, Eq)]
@@ -167,6 +200,7 @@ impl Command {
             Self::Test => test(),
             Self::TestDocs => test_docs(),
             Self::TestLibs => test_libs(),
+            Self::TestMariadb => test_mariadb(),
         }
     }
 }
@@ -178,6 +212,7 @@ fn ci() -> Result<()> {
     machete()?;
     build()?;
     test()?;
+    test_mariadb()?;
     Ok(())
 }
 
@@ -340,6 +375,169 @@ fn run_cargo_nightly(args: Vec<&str>) -> Result<()> {
         .env_remove("CARGO")
         .env("RUSTUP_TOOLCHAIN", "nightly")
         .run_with_trace()?;
+    Ok(())
+}
+
+/// Run `MariaDB` backend validation tests
+///
+/// This command provides explicit, opt-in backend validation for MySQL/MariaDB.
+/// It orchestrates all required infrastructure and runs ignored tests that
+/// validate schema compatibility, constraint enforcement, and transaction behavior.
+///
+/// ## What This Command Does
+///
+/// 1. Validates Docker is available
+/// 2. Starts a `MariaDB` 11 container with test database
+/// 3. Waits for `MariaDB` to be ready (up to 30 seconds)
+/// 4. Sets required environment variables:
+///    - `DATABASE_URL`: `MySQL` connection string
+///    - `ZABBID_TEST_BACKEND`: Set to "mariadb"
+/// 5. Runs ignored backend validation tests from `zab-bid-persistence`
+/// 6. Stops and removes the container (always, even on failure)
+///
+/// ## Requirements
+///
+/// - Docker must be installed and running
+/// - Port 3307 must be available (used for `MariaDB`)
+/// - `MySQL` client libraries must be available for compilation
+///   (provided by Nix environment)
+///
+/// ## Usage
+///
+/// ```bash
+/// cargo xtask test-mariadb
+/// ```
+///
+/// ## What Gets Tested
+///
+/// - Migration application on MySQL/MariaDB
+/// - Foreign key constraint enforcement
+/// - Unique constraint behavior
+/// - Transaction and rollback semantics
+/// - Backend-specific SQL compatibility
+///
+/// ## Failures
+///
+/// The command fails if:
+/// - Docker is not available
+/// - `MariaDB` container fails to start
+/// - `MariaDB` doesn't become ready within timeout
+/// - Any backend validation test fails
+///
+/// Container cleanup happens regardless of test outcome.
+fn test_mariadb() -> Result<()> {
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    tracing::info!("Starting MariaDB backend validation");
+
+    // Validate Docker is available
+    tracing::info!("Checking Docker availability");
+    cmd!("docker", "--version")
+        .run_with_trace()
+        .wrap_err("Docker is not available. Please install Docker.")?;
+
+    // Container configuration
+    let container_name = "zabbid-test-mariadb";
+    let db_name = "zabbid_test";
+    let db_user = "zabbid";
+    let db_password = "test_password";
+    let db_port = "3307"; // Use non-standard port to avoid conflicts
+
+    // Stop and remove any existing container
+    tracing::info!("Cleaning up any existing test container");
+    let _ = cmd!("docker", "stop", container_name).run();
+    let _ = cmd!("docker", "rm", container_name).run();
+
+    // Start MariaDB container
+    tracing::info!("Starting MariaDB container: {}", container_name);
+    cmd!(
+        "docker",
+        "run",
+        "--name",
+        container_name,
+        "-e",
+        format!("MARIADB_DATABASE={db_name}"),
+        "-e",
+        format!("MARIADB_USER={db_user}"),
+        "-e",
+        format!("MARIADB_PASSWORD={db_password}"),
+        "-e",
+        "MARIADB_ROOT_PASSWORD=root_password",
+        "-p",
+        format!("{db_port}:3306"),
+        "-d",
+        "mariadb:11"
+    )
+    .run_with_trace()
+    .wrap_err("Failed to start MariaDB container")?;
+
+    // Wait for MariaDB to be ready
+    tracing::info!("Waiting for MariaDB to be ready...");
+    let max_attempts = 30;
+    let mut ready = false;
+
+    for attempt in 1..=max_attempts {
+        sleep(Duration::from_secs(1));
+        tracing::debug!("Connection attempt {}/{}", attempt, max_attempts);
+
+        let result = cmd!(
+            "docker",
+            "exec",
+            container_name,
+            "mariadb",
+            "-u",
+            db_user,
+            format!("-p{db_password}"),
+            "-e",
+            "SELECT 1"
+        )
+        .run();
+
+        if result.is_ok() {
+            ready = true;
+            tracing::info!("MariaDB is ready");
+            break;
+        }
+    }
+
+    if !ready {
+        let _ = cmd!("docker", "stop", container_name).run();
+        let _ = cmd!("docker", "rm", container_name).run();
+        return Err(color_eyre::eyre::eyre!(
+            "MariaDB did not become ready within timeout"
+        ));
+    }
+
+    // Set environment variables for tests
+    let database_url = format!("mysql://{db_user}:{db_password}@127.0.0.1:{db_port}/{db_name}");
+
+    // Run ignored tests with explicit opt-in
+    // Filter to only backend_validation_tests module to avoid running non-ignored tests
+    tracing::info!("Running MariaDB backend validation tests");
+    let test_result = cmd!(
+        "cargo",
+        "test",
+        "--package",
+        "zab-bid-persistence",
+        "backend_validation_tests",
+        "--",
+        "--ignored",
+        "--test-threads=1"
+    )
+    .env("DATABASE_URL", &database_url)
+    .env("ZABBID_TEST_BACKEND", "mariadb")
+    .run_with_trace();
+
+    // Always cleanup container
+    tracing::info!("Stopping MariaDB container");
+    let _ = cmd!("docker", "stop", container_name).run();
+    let _ = cmd!("docker", "rm", container_name).run();
+
+    // Propagate test result
+    test_result.wrap_err("MariaDB backend validation tests failed")?;
+
+    tracing::info!("MariaDB backend validation completed successfully");
     Ok(())
 }
 

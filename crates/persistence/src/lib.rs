@@ -3,6 +3,73 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+//! Persistence layer for the ZAB Bidding System.
+//!
+//! This crate provides database persistence for audit events, state snapshots,
+//! and canonical domain entities. It is built on Diesel and supports multiple
+//! database backends.
+//!
+//! ## Database Backend Support
+//!
+//! ### Supported Backends
+//!
+//! - **`SQLite`** (default) — Used for development, unit tests, and integration tests
+//! - **`MariaDB`/`MySQL`** — Validated via explicit opt-in tests
+//!
+//! ### Default Backend: `SQLite`
+//!
+//! `SQLite` is the primary backend for:
+//! - All standard development workflows
+//! - Unit and integration tests
+//! - Fast, deterministic, in-memory testing
+//!
+//! `SQLite` support is always available and requires no external infrastructure.
+//!
+//! ### Additional Backend: `MariaDB`/`MySQL`
+//!
+//! `MySQL`/`MariaDB` support is compiled by default (no feature flags) but validated
+//! only via explicit opt-in tests. See the `mysql` module for details.
+//!
+//! To run `MySQL` validation tests:
+//! ```bash
+//! cargo xtask test-mariadb
+//! ```
+//!
+//! This command:
+//! 1. Starts a `MariaDB` container via `Docker`
+//! 2. Runs migrations
+//! 3. Executes backend validation tests marked with `#[ignore]`
+//! 4. Cleans up the container
+//!
+//! ### Compilation Requirements
+//!
+//! `MySQL` support requires `MySQL` client development libraries at compile time.
+//! These are provided by the `Nix` development environment (`flake.nix`).
+//!
+//! After updating the `Nix` environment:
+//! ```bash
+//! direnv allow
+//! ```
+//!
+//! ### Migration Strategy
+//!
+//! Due to `SQL` syntax differences between backends, we maintain separate
+//! migration directories:
+//!
+//! - `migrations/` — `SQLite`-specific (default)
+//! - `migrations_mysql/` — `MySQL`/`MariaDB`-specific
+//!
+//! Both produce identical schema semantics but use backend-appropriate syntax.
+//! See `diesel_migrations` and `mysql` modules for details.
+//!
+//! ## Testing Philosophy
+//!
+//! - Standard tests (`cargo test`) run against `SQLite` only
+//! - Backend validation tests are explicitly marked `#[ignore]`
+//! - External database tests never run automatically
+//! - All infrastructure is orchestrated by `xtask`, not embedded in tests
+//! - Tests fail fast if required infrastructure is missing
+
 #![deny(
     clippy::pedantic,
     clippy::cargo,
@@ -17,6 +84,7 @@ mod data_models;
 mod diesel_migrations;
 mod diesel_schema;
 mod error;
+mod mysql;
 mod sqlite;
 
 #[cfg(test)]

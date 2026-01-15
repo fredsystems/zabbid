@@ -22,8 +22,10 @@ pub enum PersistenceError {
     ReconstructionError(String),
     /// Serialization/deserialization error.
     SerializationError(String),
-    /// Initialization error (e.g., foreign key enforcement not enabled).
+    /// Initialization error.
     InitializationError(String),
+    /// Foreign key enforcement is not enabled.
+    ForeignKeyEnforcementNotEnabled,
     /// The requested operator was not found.
     OperatorNotFound(String),
     /// The requested session was not found.
@@ -54,6 +56,9 @@ impl std::fmt::Display for PersistenceError {
             Self::ReconstructionError(msg) => write!(f, "State reconstruction error: {msg}"),
             Self::SerializationError(msg) => write!(f, "Serialization error: {msg}"),
             Self::InitializationError(msg) => write!(f, "Initialization error: {msg}"),
+            Self::ForeignKeyEnforcementNotEnabled => {
+                write!(f, "Foreign key enforcement is not enabled")
+            }
             Self::OperatorNotFound(msg) => write!(f, "Operator not found: {msg}"),
             Self::SessionNotFound(msg) => write!(f, "Session not found: {msg}"),
             Self::SessionExpired(msg) => write!(f, "Session expired: {msg}"),

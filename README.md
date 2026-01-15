@@ -130,3 +130,39 @@ Tests in this project encode domain intent and system contracts.
 
 If a test requires additional infrastructure (such as a database or external service),
 that requirement must be made explicit and provisioned intentionally.
+
+### Database Backend Support
+
+The persistence layer is built on Diesel and supports multiple database backends:
+
+- **SQLite** (default) — Used for development, unit tests, and integration tests
+- **MariaDB/MySQL** — Validated via explicit opt-in tests
+
+#### Running Tests
+
+```bash
+# Standard tests (SQLite only, no external infrastructure)
+cargo test
+
+# MariaDB backend validation (requires Docker)
+cargo xtask test-mariadb
+```
+
+#### Backend Testing Philosophy
+
+- SQLite remains the default backend for all standard development and testing
+- SQLite must support full in-memory operation for fast, deterministic tests
+- Additional backends are validated explicitly via `xtask` commands
+- Backend-specific tests are marked `#[ignore]` and never run during `cargo test`
+- All external infrastructure is orchestrated by `xtask`, not embedded in tests
+- Tests fail fast if required infrastructure is missing
+
+#### Environment Setup
+
+The Nix development environment provides all required tooling:
+
+- Docker (for MariaDB container orchestration)
+- MariaDB client tools (for diagnostics)
+- MySQL development libraries (for compilation)
+
+After updating `flake.nix`, reload your environment with `direnv allow`.
