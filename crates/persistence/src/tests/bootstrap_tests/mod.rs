@@ -331,7 +331,7 @@ fn test_get_bootstrap_metadata_ignores_non_bootstrap_events() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&user_result, false).unwrap();
+    persistence.persist_transition(&user_result).unwrap();
 
     // Bootstrap metadata should only include bid year and area, not user
     let retrieved_metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
@@ -709,7 +709,7 @@ fn test_list_users() {
         create_test_cause(),
     )
     .unwrap();
-    persistence.persist_transition(&result, false).unwrap();
+    persistence.persist_transition(&result).unwrap();
 
     // List users
     let users: Vec<User> = persistence

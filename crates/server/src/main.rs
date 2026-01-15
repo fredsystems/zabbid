@@ -871,7 +871,7 @@ async fn handle_register_user(
         audit_event: result.audit_event.clone(),
         new_state: result.new_state.clone(),
     };
-    let event_id: i64 = persistence.persist_transition(&transition_result, false)?;
+    let event_id: i64 = persistence.persist_transition(&transition_result)?;
 
     // Extract bid_year_id from metadata
     let bid_year_id: i64 = metadata
@@ -974,10 +974,7 @@ async fn handle_checkpoint(
     )?;
 
     // Persist the transition
-    let event_id: i64 = persistence.persist_transition(
-        &result,
-        SqlitePersistence::should_snapshot(&result.audit_event.action.name),
-    )?;
+    let event_id: i64 = persistence.persist_transition(&result)?;
     drop(persistence);
 
     info!(event_id = event_id, "Successfully created checkpoint");
@@ -1044,10 +1041,7 @@ async fn handle_finalize(
     )?;
 
     // Persist the transition
-    let event_id: i64 = persistence.persist_transition(
-        &result,
-        SqlitePersistence::should_snapshot(&result.audit_event.action.name),
-    )?;
+    let event_id: i64 = persistence.persist_transition(&result)?;
     drop(persistence);
 
     info!(event_id = event_id, "Successfully finalized round");
@@ -1119,10 +1113,7 @@ async fn handle_rollback(
     )?;
 
     // Persist the transition
-    let event_id: i64 = persistence.persist_transition(
-        &result,
-        SqlitePersistence::should_snapshot(&result.audit_event.action.name),
-    )?;
+    let event_id: i64 = persistence.persist_transition(&result)?;
     drop(persistence);
 
     info!(
@@ -2052,10 +2043,9 @@ async fn handle_import_csv_users(
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
     // Resolve active bid year from metadata
-    let active_year_opt: Option<u16> = persistence.get_active_bid_year()?;
-    let active_year: u16 = active_year_opt.ok_or_else(|| HttpError {
+    let active_year: u16 = persistence.get_active_bid_year().map_err(|e| HttpError {
         status: StatusCode::BAD_REQUEST,
-        message: String::from("No active bid year is set"),
+        message: format!("Failed to get active bid year: {e}"),
     })?;
 
     let bid_year: BidYear = metadata

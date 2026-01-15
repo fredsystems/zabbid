@@ -1572,7 +1572,7 @@ fn test_list_users_with_users() {
         new_state: api_result1.new_state,
     };
     persistence
-        .persist_transition(&transition1, false)
+        .persist_transition(&transition1)
         .expect("Failed to persist transition");
     // Reload state from persistence to get assigned user_ids
     let state_with_user1: State = persistence
@@ -1609,7 +1609,7 @@ fn test_list_users_with_users() {
         new_state: api_result2.new_state,
     };
     persistence
-        .persist_transition(&transition2, false)
+        .persist_transition(&transition2)
         .expect("Failed to persist transition");
     // Reload state from persistence to get assigned user_ids
     let final_state: State = persistence
@@ -1701,7 +1701,7 @@ fn test_list_users_with_no_crew() {
         new_state: api_result.new_state,
     };
     persistence
-        .persist_transition(&transition, false)
+        .persist_transition(&transition)
         .expect("Failed to persist transition");
     // Reload state from persistence to get assigned user_ids
     let final_state: State = persistence
@@ -1969,7 +1969,7 @@ fn test_get_leave_availability_zero_usage() {
         new_state: api_result.new_state,
     };
     persistence
-        .persist_transition(&transition, false)
+        .persist_transition(&transition)
         .expect("Failed to persist transition");
     // Reload state from persistence to get assigned user_ids
     let new_state: State = persistence
@@ -2088,7 +2088,7 @@ fn test_get_leave_availability_explanation_text() {
         new_state: api_result.new_state,
     };
     persistence
-        .persist_transition(&transition, false)
+        .persist_transition(&transition)
         .expect("Failed to persist transition");
     let new_state: State = persistence
         .get_current_state(&bid_year, &area)
@@ -2151,7 +2151,7 @@ fn test_get_leave_availability_different_service_tiers() {
         new_state: api_result1.new_state,
     };
     persistence
-        .persist_transition(&transition1, false)
+        .persist_transition(&transition1)
         .expect("Failed to persist transition");
     // Reload state from persistence to get assigned user_ids
     let state1: State = persistence
@@ -2192,7 +2192,7 @@ fn test_get_leave_availability_different_service_tiers() {
         new_state: api_result2.new_state,
     };
     persistence
-        .persist_transition(&transition2, false)
+        .persist_transition(&transition2)
         .expect("Failed to persist transition");
     // Reload state from persistence to get assigned user_ids
     let state2: State = persistence

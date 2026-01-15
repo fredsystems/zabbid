@@ -292,7 +292,7 @@ impl AuthenticationService {
 
         // Verify password
         let password_valid: bool =
-            SqlitePersistence::verify_password(password, &operator.password_hash).map_err(|e| {
+            persistence.verify_password(password, &operator.password_hash).map_err(|e| {
                 tracing::warn!(login_name = %operator.login_name, error = %e, "Password verification error");
                 AuthError::AuthenticationFailed {
                     reason: String::from("invalid_credentials"),

@@ -58,7 +58,7 @@ use diesel::prelude::*;
 use diesel::sql_types::BigInt;
 use std::env;
 
-use crate::mysql;
+use crate::backend::mysql;
 
 /// Result type for COUNT queries.
 #[derive(QueryableByName)]

@@ -74,15 +74,14 @@ pub struct RegisterUserResult {
 /// - No active bid year is set
 /// - Database query fails
 fn resolve_active_bid_year(persistence: &mut SqlitePersistence) -> Result<BidYear, ApiError> {
-    let active_year: Option<u16> =
-        persistence
-            .get_active_bid_year()
-            .map_err(|e| ApiError::Internal {
-                message: format!("Failed to query active bid year: {e}"),
-            })?;
-
-    let year: u16 = active_year
-        .ok_or_else(|| translate_domain_error(zab_bid_domain::DomainError::NoActiveBidYear))?;
+    let year: u16 = persistence.get_active_bid_year().map_err(|e| match e {
+        zab_bid_persistence::PersistenceError::NotFound(_) => {
+            translate_domain_error(zab_bid_domain::DomainError::NoActiveBidYear)
+        }
+        _ => ApiError::Internal {
+            message: format!("Failed to query active bid year: {e}"),
+        },
+    })?;
 
     Ok(BidYear::new(year))
 }
@@ -1706,11 +1705,11 @@ pub fn change_password(
     cause: Cause,
 ) -> Result<ChangePasswordResponse, ApiError> {
     // Verify current password
-    let password_valid: bool =
-        SqlitePersistence::verify_password(&request.current_password, &operator.password_hash)
-            .map_err(|e| ApiError::Internal {
-                message: format!("Password verification failed: {e}"),
-            })?;
+    let password_valid: bool = persistence
+        .verify_password(&request.current_password, &operator.password_hash)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Password verification failed: {e}"),
+        })?;
 
     if !password_valid {
         return Err(ApiError::AuthenticationFailed {
@@ -2170,22 +2169,23 @@ pub fn get_active_bid_year(
     persistence: &mut SqlitePersistence,
     metadata: &BootstrapMetadata,
 ) -> Result<GetActiveBidYearResponse, ApiError> {
-    let year: Option<u16> = persistence
+    let year: u16 = persistence
         .get_active_bid_year()
         .map_err(|e| ApiError::Internal {
             message: format!("Failed to get active bid year: {e}"),
         })?;
 
     // Extract bid_year_id if there is an active year
-    let bid_year_id: Option<i64> = year.and_then(|y| {
-        metadata
-            .bid_years
-            .iter()
-            .find(|by| by.year() == y)
-            .and_then(zab_bid_domain::BidYear::bid_year_id)
-    });
+    let bid_year_id: Option<i64> = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == year)
+        .and_then(zab_bid_domain::BidYear::bid_year_id);
 
-    Ok(GetActiveBidYearResponse { bid_year_id, year })
+    Ok(GetActiveBidYearResponse {
+        bid_year_id,
+        year: Some(year),
+    })
 }
 
 /// Sets the expected area count for a bid year.
@@ -2239,7 +2239,7 @@ pub fn set_expected_area_count(
 
     // Persist the expected area count
     persistence
-        .set_expected_area_count(active_bid_year.year(), request.expected_count)
+        .set_expected_area_count(&active_bid_year, request.expected_count as usize)
         .map_err(|e| ApiError::Internal {
             message: format!("Failed to set expected area count: {e}"),
         })?;
@@ -2343,7 +2343,7 @@ pub fn set_expected_user_count(
 
     // Persist the expected user count
     persistence
-        .set_expected_user_count(&active_bid_year, area, request.expected_count)
+        .set_expected_user_count(&active_bid_year, area, request.expected_count as usize)
         .map_err(|e| ApiError::Internal {
             message: format!("Failed to set expected user count: {e}"),
         })?;
@@ -2543,12 +2543,7 @@ pub fn get_bootstrap_completeness(
     persistence: &mut SqlitePersistence,
     metadata: &BootstrapMetadata,
 ) -> Result<GetBootstrapCompletenessResponse, ApiError> {
-    let active_bid_year: Option<u16> =
-        persistence
-            .get_active_bid_year()
-            .map_err(|e| ApiError::Internal {
-                message: format!("Failed to get active bid year: {e}"),
-            })?;
+    let active_bid_year: Option<u16> = persistence.get_active_bid_year().ok();
 
     // Extract active_bid_year_id if there is an active year
     let active_bid_year_id: Option<i64> = active_bid_year.and_then(|y| {
@@ -2576,19 +2571,23 @@ pub fn get_bootstrap_completeness(
         })?;
         let is_active: bool = active_bid_year == Some(year);
 
-        let expected_area_count: Option<u32> =
-            persistence
-                .get_expected_area_count(year)
-                .map_err(|e| ApiError::Internal {
-                    message: format!("Failed to get expected area count: {e}"),
-                })?;
+        let expected_area_count: Option<u32> = persistence
+            .get_expected_area_count(&BidYear::new(year))
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get expected area count: {e}"),
+            })?
+            .map(|v| {
+                u32::try_from(v).unwrap_or_else(|_| {
+                    tracing::warn!("Expected area count out of range: {}", v);
+                    u32::MAX
+                })
+            });
 
-        let actual_area_count: usize =
-            persistence
-                .get_actual_area_count(year)
-                .map_err(|e| ApiError::Internal {
-                    message: format!("Failed to get actual area count: {e}"),
-                })?;
+        let actual_area_count: usize = persistence
+            .get_actual_area_count(&BidYear::new(year))
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get actual area count: {e}"),
+            })?;
 
         let mut blocking_reasons: Vec<BlockingReason> = Vec::new();
 
@@ -2644,7 +2643,13 @@ pub fn get_bootstrap_completeness(
             .get_expected_user_count(bid_year, area)
             .map_err(|e| ApiError::Internal {
                 message: format!("Failed to get expected user count: {e}"),
-            })?;
+            })?
+            .map(|v| {
+                u32::try_from(v).unwrap_or_else(|_| {
+                    tracing::warn!("Expected user count out of range: {}", v);
+                    u32::MAX
+                })
+            });
 
         let actual_user_count: usize =
             persistence
@@ -3083,8 +3088,7 @@ pub fn import_csv_users(
         {
             Ok(transition_result) => {
                 // Persist immediately to ensure subsequent rows see this user
-                if let Err(persist_err) = persistence.persist_transition(&transition_result, false)
-                {
+                if let Err(persist_err) = persistence.persist_transition(&transition_result) {
                     results.push(CsvImportRowResult {
                         row_index,
                         row_number,
