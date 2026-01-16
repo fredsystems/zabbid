@@ -1,9 +1,8 @@
-# PHASE_1.md
+# Phase 1
 
 ## Phase 1: Domain Rules & Enforcement
 
-### Goal
-
+**Goal:**
 Establish and prove the **pattern** for defining, enforcing, failing, and auditing real domain rules.
 
 Phase 1 validates _how_ rules are expressed and applied, not how many rules exist.
@@ -68,6 +67,8 @@ No additional rules may be added unless explicitly approved.
 - Every successful state transition emits exactly one audit event
 - Audit events must capture:
   - actor
+  - cause
+  - action performed
   - before and after state
 - Failed transitions must not emit audit events
 - Audit records are immutable once created

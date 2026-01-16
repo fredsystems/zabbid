@@ -81,11 +81,15 @@ Phase 0 must define, at minimum:
 
 - **Command**
   Represents user or system intent as data only
+
 - **State**
   Represents the full in-memory system state (minimal is acceptable)
+
 - **Transition Result**
   Successful transitions must produce:
+  - a new state
   - a corresponding audit event
+
 - **Errors**
   All failures must be explicit, structured, and testable
 
@@ -98,6 +102,9 @@ No implicit state changes are allowed.
 - Every successful state change must emit exactly one audit event
 - Audit events must include:
   - the actor
+  - the cause
+  - the action performed
+  - the previous state
   - the new state
 - Audit records are immutable once created
 

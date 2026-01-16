@@ -2,8 +2,7 @@
 
 ## Phase 5.5: Server Binary & Operator Interface
 
-### Goal
-
+**Goal:**
 Make the system runnable and observable by a human operator without introducing new domain logic, persistence semantics, or authorization rules.
 
 Phase 5.5 exists to validate correctness through interaction, not to finalize APIs or user experience.
@@ -59,9 +58,14 @@ Phase 5.5 explicitly excludes:
 
 - All write endpoints must:
   - authenticate an Actor (stub is acceptable)
+  - enforce authorization
+  - delegate to existing core commands
+  - persist changes atomically
   - emit audit events on success only
+
 - Failed requests must:
   - return structured errors
+  - not mutate state
   - not emit audit events
 
 ---
@@ -73,6 +77,7 @@ Phase 5.5 explicitly excludes:
 - Reads must reflect persisted audit and snapshot data
 - Reads must support:
   - current effective state
+  - historical state at a point in time
   - ordered audit event timelines
 
 ---

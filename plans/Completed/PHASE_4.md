@@ -2,8 +2,7 @@
 
 ## Phase 4: Read Models & Queries
 
-### Goal
-
+**Goal:**
 Expose system state and audit history in a safe, deterministic, read-only manner without weakening domain authority, audit guarantees, or rollback semantics.
 
 Phase 4 exists to make the system observable and inspectable while preserving all correctness invariants established in earlier phases.

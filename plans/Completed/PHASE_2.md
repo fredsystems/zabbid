@@ -2,8 +2,7 @@
 
 ## Phase 2: API Skeleton & Boundary Hardening
 
-### Goal
-
+**Goal:**
 Expose the Phase 1 domain and enforcement model through a minimal API boundary without leaking domain logic or freezing contracts.
 
 Phase 2 proves that the domain remains authoritative when driven externally.

@@ -2,7 +2,7 @@
 
 ## Phase 6.1: Bootstrap & Structural Domain Rules
 
-### Goal
+### Phase 6.1 Goal
 
 Establish a valid, enforceable system baseline by implementing required bootstrap commands and structural domain constraints.
 
@@ -83,24 +83,15 @@ Commands must fail explicitly if:
 
 - The referenced bid year does not exist
 - The referenced area does not exist
-- The user type is not one of the allowed values
-- The crew value is not one of 1–7 (if provided)
-- The area does not belong to the referenced bid year
-- The user initials are not unique within the bid year
+- User initials already exist within the bid year
+- A provided crew value is invalid
+- A provided user type is invalid
 
-All failures must return explicit, structured errors.
+Failure guarantees:
 
----
-
-### Phase 6.1 Testing Requirements
-
-Tests must demonstrate:
-
-- Successful creation of bid years, areas, and users with valid input
-- Explicit failure for all invalid bootstrap and user creation scenarios
-- Enforcement of uniqueness and structural rules
-- Crew assignment is optional and validated if present
-- All failures are explicit and structured
+- No state mutation
+- No audit event emission
+- Deterministic, structured errors
 
 ---
 
@@ -108,10 +99,14 @@ Tests must demonstrate:
 
 Phase 6.1 is complete when all of the following are true:
 
-- Bid year, area, and user creation are implemented and validated
-- All bootstrap and structural rules are enforced
-- All failures are explicit and structured
-- Crew semantics are enforced and auditable
-- No invalid or partially-initialized state is possible
+- Bid years can be created and listed deterministically
+- Areas can be created only within existing bid years
+- Users can be created only against existing bid years and areas
+- Invalid bootstrap order fails explicitly
+- Crew validation is enforced consistently
+- User type validation is enforced consistently
+- All successful actions emit audit events
+- All failed actions emit no audit events
+- Read models reflect the structural state correctly
 - `cargo xtask ci` passes consistently
 - `pre-commit run --all-files` passes consistently

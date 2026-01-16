@@ -2,8 +2,7 @@
 
 ## Phase 3: Persistence, Audit History, and Rollback
 
-### Goal
-
+**Goal:**
 Introduce durable persistence for audit history and derived state while preserving domain authority, audit guarantees, and rollback semantics.
 
 Phase 3 proves that system state can be safely reconstructed, corrected, and inspected at any point in time without rewriting history.

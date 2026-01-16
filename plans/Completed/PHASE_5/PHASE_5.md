@@ -2,8 +2,7 @@
 
 ## Phase 5: Write APIs & Authorization
 
-### Goal
-
+**Goal:**
 Expose controlled, authenticated, and authorized write access to the system while preserving all domain, audit, persistence, and rollback guarantees.
 
 Phase 5 introduces _who is allowed to mutate state_, not _how state behaves_.
@@ -80,9 +79,11 @@ They are not the same entities as the users whose bids are represented.
 - All state changes must occur via explicit domain commands
 - All successful write operations must:
   - execute domain validation
+  - persist changes atomically
   - emit audit events attributing the acting actor
 - Failed write operations must:
   - fail without mutating state
+  - fail without emitting audit events
   - return structured, testable errors
 
 ---
