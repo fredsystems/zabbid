@@ -54,7 +54,11 @@ pub use request_response::{
     RegisterUserRequest, RegisterUserResponse, ResetPasswordRequest, ResetPasswordResponse,
     SetActiveBidYearRequest, SetActiveBidYearResponse, SetExpectedAreaCountRequest,
     SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
-    UpdateUserRequest, UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
+    TransitionToBiddingActiveRequest, TransitionToBiddingActiveResponse,
+    TransitionToBiddingClosedRequest, TransitionToBiddingClosedResponse,
+    TransitionToBootstrapCompleteRequest, TransitionToBootstrapCompleteResponse,
+    TransitionToCanonicalizedRequest, TransitionToCanonicalizedResponse, UpdateUserRequest,
+    UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
 };
 
 // Re-export public functions from capabilities module
@@ -70,5 +74,7 @@ pub use handlers::{
     get_bootstrap_status, get_current_state, get_historical_state, get_leave_availability,
     import_csv_users, list_areas, list_bid_years, list_operators, list_users, login, logout,
     preview_csv_users, register_user, reset_password, rollback, set_active_bid_year,
-    set_expected_area_count, set_expected_user_count, update_user, whoami,
+    set_expected_area_count, set_expected_user_count, transition_to_bidding_active,
+    transition_to_bidding_closed, transition_to_bootstrap_complete, transition_to_canonicalized,
+    update_user, whoami,
 };

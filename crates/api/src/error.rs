@@ -287,6 +287,34 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
             rule: String::from("last_active_admin"),
             message: String::from("Operation would leave the system without an active admin"),
         },
+        DomainError::InvalidLifecycleState(state) => ApiError::InvalidInput {
+            field: String::from("lifecycle_state"),
+            message: format!("Invalid lifecycle state: '{state}'"),
+        },
+        DomainError::InvalidStateTransition { current, target } => ApiError::DomainRuleViolation {
+            rule: String::from("valid_lifecycle_transition"),
+            message: format!("Invalid state transition from '{current}' to '{target}'"),
+        },
+        DomainError::BootstrapIncomplete => ApiError::DomainRuleViolation {
+            rule: String::from("bootstrap_complete"),
+            message: String::from(
+                "Cannot transition to BootstrapComplete: bootstrap is not complete",
+            ),
+        },
+        DomainError::AnotherBidYearAlreadyActive { active_year } => ApiError::DomainRuleViolation {
+            rule: String::from("single_bidding_active_year"),
+            message: format!(
+                "Cannot activate bid year: year {active_year} is already in BiddingActive state"
+            ),
+        },
+        DomainError::OperationNotAllowedInState { operation, state } => {
+            ApiError::DomainRuleViolation {
+                rule: String::from("operation_allowed_in_state"),
+                message: format!(
+                    "Operation '{operation}' not allowed in lifecycle state '{state}'"
+                ),
+            }
+        }
     }
 }
 

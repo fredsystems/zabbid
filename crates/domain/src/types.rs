@@ -5,12 +5,12 @@
 
 use crate::error::DomainError;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 /// Represents the lifecycle state of a bid year.
 ///
 /// Phase 25A: Explicit lifecycle states govern what operations are permitted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum BidYearLifecycle {
     /// Initial state after creation. Full editing allowed.
     #[default]
@@ -25,14 +25,10 @@ pub enum BidYearLifecycle {
     BiddingClosed,
 }
 
-impl BidYearLifecycle {
-    /// Converts a string representation to a `BidYearLifecycle`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `DomainError::InvalidLifecycleState` if the string does not match
-    /// a valid lifecycle state.
-    pub fn from_str(s: &str) -> Result<Self, DomainError> {
+impl FromStr for BidYearLifecycle {
+    type Err = DomainError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Draft" => Ok(Self::Draft),
             "BootstrapComplete" => Ok(Self::BootstrapComplete),
@@ -42,7 +38,15 @@ impl BidYearLifecycle {
             _ => Err(DomainError::InvalidLifecycleState(s.to_string())),
         }
     }
+}
 
+impl std::fmt::Display for BidYearLifecycle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl BidYearLifecycle {
     /// Converts this lifecycle state to its string representation.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
@@ -91,7 +95,6 @@ impl BidYearLifecycle {
         matches!(self, Self::Draft | Self::BootstrapComplete)
     }
 }
-
 
 /// Represents a bid year identifier.
 ///

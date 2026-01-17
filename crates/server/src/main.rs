@@ -38,11 +38,17 @@ use zab_bid_api::{
     ListUsersResponse, PreviewCsvUsersRequest, PreviewCsvUsersResponse, RegisterUserRequest,
     RegisterUserResponse, RegisterUserResult, SetActiveBidYearRequest, SetActiveBidYearResponse,
     SetExpectedAreaCountRequest, SetExpectedAreaCountResponse, SetExpectedUserCountRequest,
-    SetExpectedUserCountResponse, UpdateUserRequest, UpdateUserResponse, checkpoint, create_area,
-    create_bid_year, finalize, get_active_bid_year, get_bootstrap_completeness,
+    SetExpectedUserCountResponse, TransitionToBiddingActiveRequest,
+    TransitionToBiddingActiveResponse, TransitionToBiddingClosedRequest,
+    TransitionToBiddingClosedResponse, TransitionToBootstrapCompleteRequest,
+    TransitionToBootstrapCompleteResponse, TransitionToCanonicalizedRequest,
+    TransitionToCanonicalizedResponse, UpdateUserRequest, UpdateUserResponse, checkpoint,
+    create_area, create_bid_year, finalize, get_active_bid_year, get_bootstrap_completeness,
     get_bootstrap_status, get_current_state, get_historical_state, get_leave_availability,
     import_csv_users, list_areas, list_bid_years, list_users, preview_csv_users, register_user,
-    rollback, set_active_bid_year, set_expected_area_count, set_expected_user_count, update_user,
+    rollback, set_active_bid_year, set_expected_area_count, set_expected_user_count,
+    transition_to_bidding_active, transition_to_bidding_closed, transition_to_bootstrap_complete,
+    transition_to_canonicalized, update_user,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials};
@@ -465,6 +471,50 @@ fn audit_event_to_response(event: &AuditEvent) -> AuditEventResponse {
     }
 }
 
+/// API request wrapper for lifecycle transition to `BootstrapComplete`.
+#[derive(Debug, serde::Deserialize)]
+struct TransitionToBootstrapCompleteApiRequest {
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
+}
+
+/// API request wrapper for lifecycle transition to `Canonicalized`.
+#[derive(Debug, serde::Deserialize)]
+struct TransitionToCanonicalizedApiRequest {
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
+}
+
+/// API request wrapper for lifecycle transition to `BiddingActive`.
+#[derive(Debug, serde::Deserialize)]
+struct TransitionToBiddingActiveApiRequest {
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
+}
+
+/// API request wrapper for lifecycle transition to `BiddingClosed`.
+#[derive(Debug, serde::Deserialize)]
+struct TransitionToBiddingClosedApiRequest {
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
+}
+
 /// Handler for POST `/bid_years` endpoint.
 ///
 /// Creates a new bid year.
@@ -669,9 +719,10 @@ async fn handle_list_bid_years(
     // Get aggregate counts
     let area_counts: Vec<(u16, usize)> = persistence.count_areas_by_bid_year()?;
     let user_counts: Vec<(u16, usize)> = persistence.count_users_by_bid_year()?;
-    drop(persistence);
+    let mut response: ListBidYearsResponse =
+        list_bid_years(&mut persistence, &metadata, &canonical_bid_years)?;
 
-    let mut response: ListBidYearsResponse = list_bid_years(&metadata, &canonical_bid_years)?;
+    drop(persistence);
 
     // Enrich with counts
     for info in &mut response.bid_years {
@@ -1812,6 +1863,182 @@ async fn handle_set_active_bid_year(
     Ok(Json(response))
 }
 
+/// Handler for POST `/lifecycle/bootstrap-complete` endpoint.
+///
+/// Transitions a bid year from `Draft` to `BootstrapComplete`.
+async fn handle_transition_to_bootstrap_complete(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<TransitionToBootstrapCompleteApiRequest>,
+) -> Result<Json<TransitionToBootstrapCompleteResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year_id = req.bid_year_id,
+        "Handling transition_to_bootstrap_complete request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    // Get current bootstrap metadata
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    let request: TransitionToBootstrapCompleteRequest = TransitionToBootstrapCompleteRequest {
+        bid_year_id: req.bid_year_id,
+    };
+
+    let response: TransitionToBootstrapCompleteResponse = transition_to_bootstrap_complete(
+        &mut persistence,
+        &metadata,
+        &request,
+        &actor,
+        &operator,
+        cause,
+    )?;
+    drop(persistence);
+
+    info!(
+        year = response.year,
+        lifecycle_state = %response.lifecycle_state,
+        "Successfully transitioned to BootstrapComplete"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/lifecycle/canonicalized` endpoint.
+///
+/// Transitions a bid year from `BootstrapComplete` to `Canonicalized`.
+async fn handle_transition_to_canonicalized(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<TransitionToCanonicalizedApiRequest>,
+) -> Result<Json<TransitionToCanonicalizedResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year_id = req.bid_year_id,
+        "Handling transition_to_canonicalized request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    // Get current bootstrap metadata
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    let request: TransitionToCanonicalizedRequest = TransitionToCanonicalizedRequest {
+        bid_year_id: req.bid_year_id,
+    };
+
+    let response: TransitionToCanonicalizedResponse = transition_to_canonicalized(
+        &mut persistence,
+        &metadata,
+        &request,
+        &actor,
+        &operator,
+        cause,
+    )?;
+    drop(persistence);
+
+    info!(
+        year = response.year,
+        lifecycle_state = %response.lifecycle_state,
+        "Successfully transitioned to Canonicalized"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/lifecycle/bidding-active` endpoint.
+///
+/// Transitions a bid year from `Canonicalized` to `BiddingActive`.
+async fn handle_transition_to_bidding_active(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<TransitionToBiddingActiveApiRequest>,
+) -> Result<Json<TransitionToBiddingActiveResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year_id = req.bid_year_id,
+        "Handling transition_to_bidding_active request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    // Get current bootstrap metadata
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    let request: TransitionToBiddingActiveRequest = TransitionToBiddingActiveRequest {
+        bid_year_id: req.bid_year_id,
+    };
+
+    let response: TransitionToBiddingActiveResponse = transition_to_bidding_active(
+        &mut persistence,
+        &metadata,
+        &request,
+        &actor,
+        &operator,
+        cause,
+    )?;
+    drop(persistence);
+
+    info!(
+        year = response.year,
+        lifecycle_state = %response.lifecycle_state,
+        "Successfully transitioned to BiddingActive"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/lifecycle/bidding-closed` endpoint.
+///
+/// Transitions a bid year from `BiddingActive` to `BiddingClosed`.
+async fn handle_transition_to_bidding_closed(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<TransitionToBiddingClosedApiRequest>,
+) -> Result<Json<TransitionToBiddingClosedResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year_id = req.bid_year_id,
+        "Handling transition_to_bidding_closed request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    // Get current bootstrap metadata
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    let request: TransitionToBiddingClosedRequest = TransitionToBiddingClosedRequest {
+        bid_year_id: req.bid_year_id,
+    };
+
+    let response: TransitionToBiddingClosedResponse = transition_to_bidding_closed(
+        &mut persistence,
+        &metadata,
+        &request,
+        &actor,
+        &operator,
+        cause,
+    )?;
+    drop(persistence);
+
+    info!(
+        year = response.year,
+        lifecycle_state = %response.lifecycle_state,
+        "Successfully transitioned to BiddingClosed"
+    );
+
+    Ok(Json(response))
+}
+
 /// Handler for GET `/bootstrap/bid-years/active` endpoint.
 ///
 /// Gets the currently active bid year.
@@ -2219,6 +2446,23 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/bootstrap/completeness",
             get(handle_get_bootstrap_completeness),
+        )
+        // Lifecycle transition endpoints (admin only)
+        .route(
+            "/lifecycle/bootstrap-complete",
+            post(handle_transition_to_bootstrap_complete),
+        )
+        .route(
+            "/lifecycle/canonicalized",
+            post(handle_transition_to_canonicalized),
+        )
+        .route(
+            "/lifecycle/bidding-active",
+            post(handle_transition_to_bidding_active),
+        )
+        .route(
+            "/lifecycle/bidding-closed",
+            post(handle_transition_to_bidding_closed),
         )
         .route("/users/update", post(handle_update_user))
         .route(

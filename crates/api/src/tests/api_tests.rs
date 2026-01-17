@@ -920,9 +920,11 @@ fn test_create_area_without_bid_year_fails() {
 
 #[test]
 fn test_list_bid_years_empty() {
+    let mut persistence = setup_test_persistence().expect("Failed to setup persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> = Vec::new();
-    let response: ListBidYearsResponse = list_bid_years(&metadata, &canonical_bid_years).unwrap();
+    let response: ListBidYearsResponse =
+        list_bid_years(&mut persistence, &metadata, &canonical_bid_years).unwrap();
 
     assert_eq!(response.bid_years.len(), 0);
 }
@@ -936,7 +938,8 @@ fn test_list_bid_years_with_single_year() {
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
         persistence.list_bid_years().unwrap();
 
-    let response: ListBidYearsResponse = list_bid_years(&metadata, &canonical_bid_years).unwrap();
+    let response: ListBidYearsResponse =
+        list_bid_years(&mut persistence, &metadata, &canonical_bid_years).unwrap();
 
     assert_eq!(response.bid_years.len(), 1);
     assert_eq!(response.bid_years[0].year, 2026);
@@ -1000,7 +1003,8 @@ fn test_list_bid_years_with_multiple_years() {
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
         persistence.list_bid_years().unwrap();
 
-    let response: ListBidYearsResponse = list_bid_years(&metadata, &canonical_bid_years).unwrap();
+    let response: ListBidYearsResponse =
+        list_bid_years(&mut persistence, &metadata, &canonical_bid_years).unwrap();
 
     assert_eq!(response.bid_years.len(), 3);
     assert!(response.bid_years.iter().any(|by| by.year == 2026));
@@ -1177,7 +1181,8 @@ fn test_list_bid_years_end_date_derivation() {
     let canonical_bid_years: Vec<zab_bid_domain::CanonicalBidYear> =
         persistence.list_bid_years().unwrap();
 
-    let response: ListBidYearsResponse = list_bid_years(&metadata, &canonical_bid_years).unwrap();
+    let response: ListBidYearsResponse =
+        list_bid_years(&mut persistence, &metadata, &canonical_bid_years).unwrap();
 
     assert_eq!(response.bid_years.len(), 2);
 
