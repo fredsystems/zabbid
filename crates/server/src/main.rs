@@ -564,16 +564,26 @@ async fn handle_create_bid_year(
 
     // Get updated metadata to retrieve the canonical bid_year_id
     let updated_metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
-    #[allow(clippy::redundant_closure_for_method_calls)]
+
+    // Phase 25B: Auto-create No Bid system area
     let bid_year_id: i64 = updated_metadata
         .bid_years
         .iter()
         .find(|by| by.year() == req.year)
-        .and_then(|by| by.bid_year_id())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
         .ok_or_else(|| HttpError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             message: format!("Failed to retrieve bid_year_id for year {}", req.year),
         })?;
+
+    let no_bid_area_id: i64 = persistence
+        .create_system_area(bid_year_id, Area::NO_BID_AREA_CODE)
+        .map_err(|e| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("Failed to create No Bid area: {e}"),
+        })?;
+
+    info!(no_bid_area_id, bid_year_id, "Created No Bid system area");
 
     drop(persistence);
 

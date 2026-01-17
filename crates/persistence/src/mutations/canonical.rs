@@ -429,3 +429,83 @@ pub fn update_user(
     Ok(())
 }
 }
+
+/// Creates a system area (e.g., "No Bid") for a bid year (`SQLite` version).
+///
+/// Phase 25B: System areas are auto-created and cannot be deleted or renamed.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `area_code` - The area code (e.g., "NO BID")
+///
+/// # Returns
+///
+/// The generated `area_id` for the new system area.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn create_system_area_sqlite(
+    conn: &mut SqliteConnection,
+    bid_year_id: i64,
+    area_code: &str,
+) -> Result<i64, PersistenceError> {
+    diesel::insert_into(diesel_schema::areas::table)
+        .values((
+            diesel_schema::areas::bid_year_id.eq(bid_year_id),
+            diesel_schema::areas::area_code.eq(area_code),
+            diesel_schema::areas::is_system_area.eq(1),
+        ))
+        .execute(conn)?;
+
+    let area_id: i64 = diesel::select(diesel::dsl::sql::<diesel::sql_types::BigInt>(
+        "last_insert_rowid()",
+    ))
+    .get_result(conn)?;
+
+    debug!(area_id, bid_year_id, area_code, "Created system area");
+
+    Ok(area_id)
+}
+
+/// Creates a system area (e.g., "No Bid") for a bid year (`MySQL` version).
+///
+/// Phase 25B: System areas are auto-created and cannot be deleted or renamed.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `area_code` - The area code (e.g., "NO BID")
+///
+/// # Returns
+///
+/// The generated `area_id` for the new system area.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn create_system_area_mysql(
+    conn: &mut MysqlConnection,
+    bid_year_id: i64,
+    area_code: &str,
+) -> Result<i64, PersistenceError> {
+    diesel::insert_into(diesel_schema::areas::table)
+        .values((
+            diesel_schema::areas::bid_year_id.eq(bid_year_id),
+            diesel_schema::areas::area_code.eq(area_code),
+            diesel_schema::areas::is_system_area.eq(1),
+        ))
+        .execute(conn)?;
+
+    let area_id: i64 = diesel::select(diesel::dsl::sql::<diesel::sql_types::BigInt>(
+        "LAST_INSERT_ID()",
+    ))
+    .get_result(conn)?;
+
+    debug!(area_id, bid_year_id, area_code, "Created system area");
+
+    Ok(area_id)
+}

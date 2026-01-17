@@ -315,6 +315,49 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
                 ),
             }
         }
+        DomainError::SystemAreaAlreadyExists { bid_year } => ApiError::DomainRuleViolation {
+            rule: String::from("system_area_uniqueness"),
+            message: format!("System area already exists for bid year {bid_year}"),
+        },
+        DomainError::UsersInNoBidArea {
+            bid_year,
+            user_count,
+            sample_initials,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("no_bid_area_empty"),
+            message: format!(
+                "Cannot complete bootstrap for bid year {}: {} user(s) remain in No Bid area ({})",
+                bid_year,
+                user_count,
+                sample_initials.join(", ")
+            ),
+        },
+        DomainError::CannotDeleteSystemArea { area_code } => ApiError::DomainRuleViolation {
+            rule: String::from("system_area_immutable"),
+            message: format!("Cannot delete system area '{area_code}'"),
+        },
+        DomainError::CannotRenameSystemArea { area_code } => ApiError::DomainRuleViolation {
+            rule: String::from("system_area_immutable"),
+            message: format!("Cannot rename system area '{area_code}'"),
+        },
+        DomainError::CannotDeleteUserAfterCanonicalization {
+            bid_year,
+            lifecycle_state,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("no_deletion_after_canonicalization"),
+            message: format!(
+                "Cannot delete user after canonicalization (bid year {bid_year}, state: {lifecycle_state})"
+            ),
+        },
+        DomainError::CannotAssignToNoBidAfterCanonicalization {
+            bid_year,
+            lifecycle_state,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("no_assignment_to_no_bid_after_canonicalization"),
+            message: format!(
+                "Cannot assign user to No Bid area after canonicalization (bid year {bid_year}, state: {lifecycle_state})"
+            ),
+        },
     }
 }
 

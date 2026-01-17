@@ -122,7 +122,7 @@ pub fn get_bootstrap_metadata(conn: &mut _) -> Result<BootstrapMetadata, Persist
     }
 
     // Query canonical areas table
-    let area_rows: Vec<(i64, i64, i32, String, Option<String>)> = areas::table
+    let area_rows: Vec<(i64, i64, i32, String, Option<String>, i32)> = areas::table
         .inner_join(bid_years::table)
         .select((
             areas::area_id,
@@ -130,14 +130,15 @@ pub fn get_bootstrap_metadata(conn: &mut _) -> Result<BootstrapMetadata, Persist
             bid_years::year,
             areas::area_code,
             areas::area_name,
+            areas::is_system_area,
         ))
         .order((bid_years::year.asc(), areas::area_code.asc()))
-        .load::<(i64, i64, i32, String, Option<String>)>(conn)?;
+        .load::<(i64, i64, i32, String, Option<String>, i32)>(conn)?;
 
-    for (area_id, bid_year_id_val, year_value, code, name) in area_rows {
+    for (area_id, bid_year_id_val, year_value, code, name, is_sys) in area_rows {
         let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
         let bid_year: BidYear = BidYear::with_id(bid_year_id_val, year);
-        let area: Area = Area::with_id(area_id, &code, name);
+        let area: Area = Area::with_id(area_id, &code, name, is_sys != 0);
         metadata.areas.push((bid_year, area));
     }
 
@@ -223,15 +224,15 @@ backend_fn! {
 ///
 /// Returns an error if the database cannot be queried.
 pub fn list_areas(conn: &mut _, bid_year_id: i64) -> Result<Vec<Area>, PersistenceError> {
-    let rows: Vec<(i64, String, Option<String>)> = areas::table
-        .select((areas::area_id, areas::area_code, areas::area_name))
+    let rows: Vec<(i64, String, Option<String>, i32)> = areas::table
+        .select((areas::area_id, areas::area_code, areas::area_name, areas::is_system_area))
         .filter(areas::bid_year_id.eq(bid_year_id))
         .order(areas::area_code.asc())
-        .load::<(i64, String, Option<String>)>(conn)?;
+        .load::<(i64, String, Option<String>, i32)>(conn)?;
 
     let areas_list: Vec<Area> = rows
         .into_iter()
-        .map(|(area_id, code, name)| Area::with_id(area_id, &code, name))
+        .map(|(area_id, code, name, is_sys)| Area::with_id(area_id, &code, name, is_sys != 0))
         .collect();
 
     Ok(areas_list)
@@ -589,5 +590,159 @@ pub fn get_actual_user_count(
     count
         .to_usize()
         .ok_or_else(|| PersistenceError::DatabaseError("Count conversion failed".to_string()))
+}
+}
+
+backend_fn! {
+/// Finds the system area (No Bid) for a given bid year.
+///
+/// Phase 25B: Returns the area ID and area code of the system area.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+///
+/// # Returns
+///
+/// * `Ok(Some((area_id, area_code)))` if a system area exists
+/// * `Ok(None)` if no system area exists
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried.
+pub fn find_system_area(
+    conn: &mut _,
+    bid_year_id: i64,
+) -> Result<Option<(i64, String)>, PersistenceError> {
+    let result: Option<(i64, String)> = areas::table
+        .filter(areas::bid_year_id.eq(bid_year_id))
+        .filter(areas::is_system_area.eq(1))
+        .select((areas::area_id, areas::area_code))
+        .first(conn)
+        .optional()?;
+
+    Ok(result)
+}
+}
+
+backend_fn! {
+/// Counts users in the system area (No Bid) for a given bid year.
+///
+/// Phase 25B: Used to check if bootstrap can be completed.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+///
+/// # Returns
+///
+/// The number of users in the No Bid area (0 if no system area exists).
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried.
+pub fn count_users_in_system_area(
+    conn: &mut _,
+    bid_year_id: i64,
+) -> Result<usize, PersistenceError> {
+    // First find the system area ID
+    let system_area_id: Option<i64> = areas::table
+        .filter(areas::bid_year_id.eq(bid_year_id))
+        .filter(areas::is_system_area.eq(1))
+        .select(areas::area_id)
+        .first(conn)
+        .optional()?;
+
+    if let Some(sys_area_id) = system_area_id {
+        let count: i64 = users::table
+            .filter(users::bid_year_id.eq(bid_year_id))
+            .filter(users::area_id.eq(sys_area_id))
+            .count()
+            .get_result(conn)?;
+
+        count
+            .to_usize()
+            .ok_or_else(|| PersistenceError::DatabaseError("Count conversion failed".to_string()))
+    } else {
+        Ok(0)
+    }
+}
+}
+
+backend_fn! {
+/// Lists users in the system area (No Bid) for a given bid year.
+///
+/// Phase 25B: Returns up to `limit` user initials for error reporting.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `limit` - Maximum number of initials to return
+///
+/// # Returns
+///
+/// A vector of user initials (empty if no system area or no users).
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried.
+pub fn list_users_in_system_area(
+    conn: &mut _,
+    bid_year_id: i64,
+    limit: i64,
+) -> Result<Vec<String>, PersistenceError> {
+    // First find the system area ID
+    let system_area_id: Option<i64> = areas::table
+        .filter(areas::bid_year_id.eq(bid_year_id))
+        .filter(areas::is_system_area.eq(1))
+        .select(areas::area_id)
+        .first(conn)
+        .optional()?;
+
+    if let Some(sys_area_id) = system_area_id {
+        let initials: Vec<String> = users::table
+            .filter(users::bid_year_id.eq(bid_year_id))
+            .filter(users::area_id.eq(sys_area_id))
+            .select(users::initials)
+            .limit(limit)
+            .load(conn)?;
+
+        Ok(initials)
+    } else {
+        Ok(Vec::new())
+    }
+}
+}
+
+backend_fn! {
+/// Checks if an area is a system area.
+///
+/// Phase 25B: Used to prevent deletion/renaming of system areas.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `area_id` - The canonical area ID to check
+///
+/// # Returns
+///
+/// `true` if the area is a system area, `false` otherwise.
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried or the area doesn't exist.
+pub fn is_system_area(
+    conn: &mut _,
+    area_id: i64,
+) -> Result<bool, PersistenceError> {
+    let system_flag: i32 = areas::table
+        .filter(areas::area_id.eq(area_id))
+        .select(areas::is_system_area)
+        .first(conn)?;
+
+    Ok(system_flag != 0)
 }
 }

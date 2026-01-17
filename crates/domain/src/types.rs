@@ -201,6 +201,8 @@ impl Initials {
 ///
 /// Phase 23A: An area now has a canonical numeric ID (`area_id`)
 /// as well as a human-readable area code.
+///
+/// Phase 25B: Areas may be system-managed (e.g., "No Bid").
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(clippy::struct_field_names)]
 pub struct Area {
@@ -212,6 +214,8 @@ pub struct Area {
     area_code: String,
     /// Optional area name for additional context.
     area_name: Option<String>,
+    /// Phase 25B: Whether this is a system-managed area (e.g., "No Bid").
+    is_system_area: bool,
 }
 
 // Phase 23A: Custom PartialEq and Hash that ignore area_id
@@ -231,7 +235,10 @@ impl std::hash::Hash for Area {
 }
 
 impl Area {
-    /// Creates a new `Area` without a persisted ID.
+    /// The canonical area code for the No Bid system area.
+    pub const NO_BID_AREA_CODE: &'static str = "NO BID";
+
+    /// Creates a new regular (non-system) `Area` without a persisted ID.
     ///
     /// Area codes are normalized to uppercase to ensure case-insensitive uniqueness.
     ///
@@ -244,6 +251,22 @@ impl Area {
             area_id: None,
             area_code: area_code.to_uppercase(),
             area_name: None,
+            is_system_area: false,
+        }
+    }
+
+    /// Creates a new system area (e.g., "No Bid") without a persisted ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `area_code` - The area code (will be normalized to uppercase)
+    #[must_use]
+    pub fn new_system_area(area_code: &str) -> Self {
+        Self {
+            area_id: None,
+            area_code: area_code.to_uppercase(),
+            area_name: None,
+            is_system_area: true,
         }
     }
 
@@ -254,12 +277,19 @@ impl Area {
     /// * `area_id` - The canonical numeric identifier
     /// * `area_code` - The area code
     /// * `area_name` - Optional area name
+    /// * `is_system_area` - Whether this is a system-managed area
     #[must_use]
-    pub fn with_id(area_id: i64, area_code: &str, area_name: Option<String>) -> Self {
+    pub fn with_id(
+        area_id: i64,
+        area_code: &str,
+        area_name: Option<String>,
+        is_system_area: bool,
+    ) -> Self {
         Self {
             area_id: Some(area_id),
             area_code: area_code.to_uppercase(),
             area_name,
+            is_system_area,
         }
     }
 
@@ -279,6 +309,12 @@ impl Area {
     #[must_use]
     pub fn area_name(&self) -> Option<&str> {
         self.area_name.as_deref()
+    }
+
+    /// Returns whether this is a system-managed area.
+    #[must_use]
+    pub const fn is_system_area(&self) -> bool {
+        self.is_system_area
     }
 
     /// Legacy method for backward compatibility - returns `area_code`.

@@ -15,6 +15,7 @@ diesel::table! {
         area_code -> Text,
         area_name -> Nullable<Text>,
         expected_user_count -> Nullable<Integer>,
+        is_system_area -> Integer,
     }
 }
 
