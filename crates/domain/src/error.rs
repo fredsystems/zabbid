@@ -118,6 +118,29 @@ pub enum DomainError {
     },
     /// Cannot remove the last active admin operator.
     CannotRemoveLastActiveAdmin,
+    /// Invalid lifecycle state string.
+    InvalidLifecycleState(String),
+    /// Invalid state transition attempted.
+    InvalidStateTransition {
+        /// The current state.
+        current: String,
+        /// The requested target state.
+        target: String,
+    },
+    /// Bootstrap must be complete before transitioning to `BootstrapComplete` state.
+    BootstrapIncomplete,
+    /// Another bid year is already active.
+    AnotherBidYearAlreadyActive {
+        /// The currently active bid year.
+        active_year: u16,
+    },
+    /// Operation not allowed in current lifecycle state.
+    OperationNotAllowedInState {
+        /// The operation that was attempted.
+        operation: String,
+        /// The current lifecycle state.
+        state: String,
+    },
 }
 
 impl std::fmt::Display for DomainError {
@@ -217,6 +240,30 @@ impl std::fmt::Display for DomainError {
             }
             Self::CannotRemoveLastActiveAdmin => {
                 write!(f, "Cannot disable or delete the last active admin operator")
+            }
+            Self::InvalidLifecycleState(state) => {
+                write!(f, "Invalid lifecycle state: '{state}'")
+            }
+            Self::InvalidStateTransition { current, target } => {
+                write!(f, "Invalid state transition from '{current}' to '{target}'")
+            }
+            Self::BootstrapIncomplete => {
+                write!(
+                    f,
+                    "Cannot transition to BootstrapComplete: bootstrap is not marked complete"
+                )
+            }
+            Self::AnotherBidYearAlreadyActive { active_year } => {
+                write!(
+                    f,
+                    "Cannot activate bid year: year {active_year} is already active"
+                )
+            }
+            Self::OperationNotAllowedInState { operation, state } => {
+                write!(
+                    f,
+                    "Operation '{operation}' not allowed in lifecycle state '{state}'"
+                )
             }
         }
     }

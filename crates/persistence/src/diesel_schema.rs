@@ -45,6 +45,7 @@ diesel::table! {
         num_pay_periods -> Integer,
         is_active -> Integer,
         expected_area_count -> Nullable<Integer>,
+        lifecycle_state -> Text,
     }
 }
 
