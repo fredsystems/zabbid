@@ -122,6 +122,8 @@ pub struct BidYearInfo {
     pub area_count: usize,
     /// The total number of users across all areas in this bid year.
     pub total_user_count: usize,
+    /// The lifecycle state of the bid year.
+    pub lifecycle_state: String,
 }
 
 /// API response for listing bid years.
@@ -1053,4 +1055,84 @@ pub struct UserCapabilities {
     pub can_move_area: Capability,
     /// Whether this user's seniority data can be edited.
     pub can_edit_seniority: Capability,
+}
+
+/// API request to transition a bid year to `BootstrapComplete` state.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct TransitionToBootstrapCompleteRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+}
+
+/// API response for transitioning to `BootstrapComplete`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TransitionToBootstrapCompleteResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The year value.
+    pub year: u16,
+    /// The new lifecycle state.
+    pub lifecycle_state: String,
+    /// A success message.
+    pub message: String,
+}
+
+/// API request to transition a bid year to `Canonicalized` state.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct TransitionToCanonicalizedRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+}
+
+/// API response for transitioning to `Canonicalized`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TransitionToCanonicalizedResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The year value.
+    pub year: u16,
+    /// The new lifecycle state.
+    pub lifecycle_state: String,
+    /// A success message.
+    pub message: String,
+}
+
+/// API request to transition a bid year to `BiddingActive` state.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct TransitionToBiddingActiveRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+}
+
+/// API response for transitioning to `BiddingActive`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TransitionToBiddingActiveResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The year value.
+    pub year: u16,
+    /// The new lifecycle state.
+    pub lifecycle_state: String,
+    /// A success message.
+    pub message: String,
+}
+
+/// API request to transition a bid year to `BiddingClosed` state.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct TransitionToBiddingClosedRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+}
+
+/// API response for transitioning to `BiddingClosed`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TransitionToBiddingClosedResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The year value.
+    pub year: u16,
+    /// The new lifecycle state.
+    pub lifecycle_state: String,
+    /// A success message.
+    pub message: String,
 }

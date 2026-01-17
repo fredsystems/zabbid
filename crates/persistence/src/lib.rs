@@ -1395,6 +1395,72 @@ impl Persistence {
         }
     }
 
+    /// Gets the lifecycle state for a bid year.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bid year doesn't exist or the database cannot be queried.
+    pub fn get_lifecycle_state(&mut self, bid_year_id: i64) -> Result<String, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::canonical::get_lifecycle_state_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::canonical::get_lifecycle_state_mysql(conn, bid_year_id)
+            }
+        }
+    }
+
+    /// Updates the lifecycle state for a bid year.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `new_state` - The new lifecycle state as a string
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bid year doesn't exist or the database cannot be updated.
+    pub fn update_lifecycle_state(
+        &mut self,
+        bid_year_id: i64,
+        new_state: &str,
+    ) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::canonical::update_lifecycle_state_sqlite(conn, bid_year_id, new_state)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::canonical::update_lifecycle_state_mysql(conn, bid_year_id, new_state)
+            }
+        }
+    }
+
+    /// Queries whether any bid year is in the `BiddingActive` lifecycle state.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some(year))` if a bid year is `BiddingActive`
+    /// * `Ok(None)` if no bid year is `BiddingActive`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn get_bidding_active_year(&mut self) -> Result<Option<u16>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::canonical::get_bidding_active_year_sqlite(conn)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::canonical::get_bidding_active_year_mysql(conn)
+            }
+        }
+    }
+
     // ========================================================================
     // Canonical ID Lookups (Test Support)
     // ========================================================================

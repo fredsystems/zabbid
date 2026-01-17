@@ -12,8 +12,9 @@ use zab_bid::{
 };
 use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
 use zab_bid_domain::{
-    Area, BidYear, CanonicalBidYear, Crew, Initials, LeaveAccrualResult, LeaveAvailabilityResult,
-    LeaveUsage, SeniorityData, UserType, calculate_leave_accrual, calculate_leave_availability,
+    Area, BidYear, CanonicalBidYear, Crew, DomainError, Initials, LeaveAccrualResult,
+    LeaveAvailabilityResult, LeaveUsage, SeniorityData, UserType, calculate_leave_accrual,
+    calculate_leave_availability,
 };
 use zab_bid_persistence::{OperatorData, SqlitePersistence};
 
@@ -34,7 +35,11 @@ use crate::request_response::{
     PreviewCsvUsersResponse, RegisterUserRequest, ResetPasswordRequest, ResetPasswordResponse,
     SetActiveBidYearRequest, SetActiveBidYearResponse, SetExpectedAreaCountRequest,
     SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
-    UpdateUserRequest, UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
+    TransitionToBiddingActiveRequest, TransitionToBiddingActiveResponse,
+    TransitionToBiddingClosedRequest, TransitionToBiddingClosedResponse,
+    TransitionToBootstrapCompleteRequest, TransitionToBootstrapCompleteResponse,
+    TransitionToCanonicalizedRequest, TransitionToCanonicalizedResponse, UpdateUserRequest,
+    UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
 };
 use zab_bid_persistence::PersistenceError;
 
@@ -483,6 +488,7 @@ pub fn create_area(
 ///
 /// # Arguments
 ///
+/// * `persistence` - The persistence layer
 /// * `metadata` - The current bootstrap metadata with bid year IDs
 /// * `canonical_bid_years` - The list of canonical bid years from persistence
 ///
@@ -494,6 +500,7 @@ pub fn create_area(
 ///
 /// Returns an error if end date derivation fails due to date arithmetic overflow.
 pub fn list_bid_years(
+    persistence: &mut SqlitePersistence,
     metadata: &BootstrapMetadata,
     canonical_bid_years: &[CanonicalBidYear],
 ) -> Result<ListBidYearsResponse, ApiError> {
@@ -515,6 +522,11 @@ pub fn list_bid_years(
                     ),
                 })?;
 
+            // Fetch lifecycle state from persistence
+            let lifecycle_state: String = persistence
+                .get_lifecycle_state(bid_year_id)
+                .unwrap_or_else(|_| String::from("Draft"));
+
             Ok(BidYearInfo {
                 bid_year_id,
                 year: c.year(),
@@ -523,6 +535,7 @@ pub fn list_bid_years(
                 end_date,
                 area_count: 0,       // Will be populated by server layer
                 total_user_count: 0, // Will be populated by server layer
+                lifecycle_state,
             })
         })
         .collect();
@@ -2152,6 +2165,409 @@ pub fn set_active_bid_year(
         bid_year_id: request.bid_year_id,
         year,
         message: format!("Bid year {year} is now active"),
+    })
+}
+
+/// Transitions a bid year from `Draft` to `BootstrapComplete`.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+/// * `request` - The transition request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data
+/// * `cause` - The cause or reason for this action
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The bid year does not exist
+/// - Bootstrap is not complete
+/// - The transition is invalid
+pub fn transition_to_bootstrap_complete(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    request: &TransitionToBootstrapCompleteRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<TransitionToBootstrapCompleteResponse, ApiError> {
+    // Enforce authorization - only admins can transition lifecycle states
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("transition_to_bootstrap_complete"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Resolve bid_year_id to BidYear from metadata
+    let bid_year: &BidYear = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.bid_year_id() == Some(request.bid_year_id))
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("BidYear"),
+            message: format!("Bid year with ID {} not found", request.bid_year_id),
+        })?;
+
+    let year: u16 = bid_year.year();
+
+    // Load current lifecycle state
+    let current_state_str: String = persistence
+        .get_lifecycle_state(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get lifecycle state: {e}"),
+        })?;
+
+    let current_state: zab_bid_domain::BidYearLifecycle =
+        current_state_str.parse().map_err(translate_domain_error)?;
+
+    let target_state = zab_bid_domain::BidYearLifecycle::BootstrapComplete;
+
+    // Validate transition
+    if !current_state.can_transition_to(target_state) {
+        return Err(translate_domain_error(
+            DomainError::InvalidStateTransition {
+                current: current_state.as_str().to_string(),
+                target: target_state.as_str().to_string(),
+            },
+        ));
+    }
+
+    // Check bootstrap completeness
+    let completeness_response: GetBootstrapCompletenessResponse =
+        get_bootstrap_completeness(persistence, metadata)?;
+    if !completeness_response.is_ready_for_bidding {
+        return Err(translate_domain_error(DomainError::BootstrapIncomplete));
+    }
+
+    // Apply the command
+    let command = Command::TransitionToBootstrapComplete { year };
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
+    let result: BootstrapResult =
+        apply_bootstrap(metadata, bid_year, command, actor, cause).map_err(translate_core_error)?;
+
+    // Persist the lifecycle state change
+    persistence
+        .update_lifecycle_state(request.bid_year_id, target_state.as_str())
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to update lifecycle state: {e}"),
+        })?;
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&result.audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    Ok(TransitionToBootstrapCompleteResponse {
+        bid_year_id: request.bid_year_id,
+        year,
+        lifecycle_state: target_state.as_str().to_string(),
+        message: format!("Bid year {year} transitioned to {}", target_state.as_str()),
+    })
+}
+
+/// Transitions a bid year from `BootstrapComplete` to `Canonicalized`.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+/// * `request` - The transition request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data
+/// * `cause` - The cause or reason for this action
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The bid year does not exist
+/// - The transition is invalid
+pub fn transition_to_canonicalized(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    request: &TransitionToCanonicalizedRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<TransitionToCanonicalizedResponse, ApiError> {
+    // Enforce authorization - only admins can transition lifecycle states
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("transition_to_canonicalized"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Resolve bid_year_id to BidYear from metadata
+    let bid_year: &BidYear = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.bid_year_id() == Some(request.bid_year_id))
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("BidYear"),
+            message: format!("Bid year with ID {} not found", request.bid_year_id),
+        })?;
+
+    let year: u16 = bid_year.year();
+
+    // Load current lifecycle state
+    let current_state_str: String = persistence
+        .get_lifecycle_state(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get lifecycle state: {e}"),
+        })?;
+
+    let current_state: zab_bid_domain::BidYearLifecycle =
+        current_state_str.parse().map_err(translate_domain_error)?;
+
+    let target_state = zab_bid_domain::BidYearLifecycle::Canonicalized;
+
+    // Validate transition
+    if !current_state.can_transition_to(target_state) {
+        return Err(translate_domain_error(
+            DomainError::InvalidStateTransition {
+                current: current_state.as_str().to_string(),
+                target: target_state.as_str().to_string(),
+            },
+        ));
+    }
+
+    // Apply the command
+    let command = Command::TransitionToCanonicalized { year };
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
+    let result: BootstrapResult =
+        apply_bootstrap(metadata, bid_year, command, actor, cause).map_err(translate_core_error)?;
+
+    // Persist the lifecycle state change
+    persistence
+        .update_lifecycle_state(request.bid_year_id, target_state.as_str())
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to update lifecycle state: {e}"),
+        })?;
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&result.audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    Ok(TransitionToCanonicalizedResponse {
+        bid_year_id: request.bid_year_id,
+        year,
+        lifecycle_state: target_state.as_str().to_string(),
+        message: format!("Bid year {year} transitioned to {}", target_state.as_str()),
+    })
+}
+
+/// Transitions a bid year from `Canonicalized` to `BiddingActive`.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+/// * `request` - The transition request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data
+/// * `cause` - The cause or reason for this action
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The bid year does not exist
+/// - Another bid year is already `BiddingActive`
+/// - The transition is invalid
+pub fn transition_to_bidding_active(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    request: &TransitionToBiddingActiveRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<TransitionToBiddingActiveResponse, ApiError> {
+    // Enforce authorization - only admins can transition lifecycle states
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("transition_to_bidding_active"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Resolve bid_year_id to BidYear from metadata
+    let bid_year: &BidYear = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.bid_year_id() == Some(request.bid_year_id))
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("BidYear"),
+            message: format!("Bid year with ID {} not found", request.bid_year_id),
+        })?;
+
+    let year: u16 = bid_year.year();
+
+    // Load current lifecycle state
+    let current_state_str: String = persistence
+        .get_lifecycle_state(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get lifecycle state: {e}"),
+        })?;
+
+    let current_state: zab_bid_domain::BidYearLifecycle =
+        current_state_str.parse().map_err(translate_domain_error)?;
+
+    let target_state = zab_bid_domain::BidYearLifecycle::BiddingActive;
+
+    // Validate transition
+    if !current_state.can_transition_to(target_state) {
+        return Err(translate_domain_error(
+            DomainError::InvalidStateTransition {
+                current: current_state.as_str().to_string(),
+                target: target_state.as_str().to_string(),
+            },
+        ));
+    }
+
+    // Check if another bid year is already BiddingActive
+    if let Some(active_year) =
+        persistence
+            .get_bidding_active_year()
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to check for active bid year: {e}"),
+            })?
+        && active_year != year
+    {
+        return Err(translate_domain_error(
+            DomainError::AnotherBidYearAlreadyActive { active_year },
+        ));
+    }
+
+    // Apply the command
+    let command = Command::TransitionToBiddingActive { year };
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
+    let result: BootstrapResult =
+        apply_bootstrap(metadata, bid_year, command, actor, cause).map_err(translate_core_error)?;
+
+    // Persist the lifecycle state change
+    persistence
+        .update_lifecycle_state(request.bid_year_id, target_state.as_str())
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to update lifecycle state: {e}"),
+        })?;
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&result.audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    Ok(TransitionToBiddingActiveResponse {
+        bid_year_id: request.bid_year_id,
+        year,
+        lifecycle_state: target_state.as_str().to_string(),
+        message: format!("Bid year {year} transitioned to {}", target_state.as_str()),
+    })
+}
+
+/// Transitions a bid year from `BiddingActive` to `BiddingClosed`.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+/// * `request` - The transition request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data
+/// * `cause` - The cause or reason for this action
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not authorized (not an Admin)
+/// - The bid year does not exist
+/// - The transition is invalid
+pub fn transition_to_bidding_closed(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    request: &TransitionToBiddingClosedRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<TransitionToBiddingClosedResponse, ApiError> {
+    // Enforce authorization - only admins can transition lifecycle states
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("transition_to_bidding_closed"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Resolve bid_year_id to BidYear from metadata
+    let bid_year: &BidYear = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.bid_year_id() == Some(request.bid_year_id))
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("BidYear"),
+            message: format!("Bid year with ID {} not found", request.bid_year_id),
+        })?;
+
+    let year: u16 = bid_year.year();
+
+    // Load current lifecycle state
+    let current_state_str: String = persistence
+        .get_lifecycle_state(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get lifecycle state: {e}"),
+        })?;
+
+    let current_state: zab_bid_domain::BidYearLifecycle =
+        current_state_str.parse().map_err(translate_domain_error)?;
+
+    let target_state = zab_bid_domain::BidYearLifecycle::BiddingClosed;
+
+    // Validate transition
+    if !current_state.can_transition_to(target_state) {
+        return Err(translate_domain_error(
+            DomainError::InvalidStateTransition {
+                current: current_state.as_str().to_string(),
+                target: target_state.as_str().to_string(),
+            },
+        ));
+    }
+
+    // Apply the command
+    let command = Command::TransitionToBiddingClosed { year };
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
+    let result: BootstrapResult =
+        apply_bootstrap(metadata, bid_year, command, actor, cause).map_err(translate_core_error)?;
+
+    // Persist the lifecycle state change
+    persistence
+        .update_lifecycle_state(request.bid_year_id, target_state.as_str())
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to update lifecycle state: {e}"),
+        })?;
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&result.audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    Ok(TransitionToBiddingClosedResponse {
+        bid_year_id: request.bid_year_id,
+        year,
+        lifecycle_state: target_state.as_str().to_string(),
+        message: format!("Bid year {year} transitioned to {}", target_state.as_str()),
     })
 }
 

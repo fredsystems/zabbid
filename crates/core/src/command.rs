@@ -83,4 +83,24 @@ pub enum Command {
         /// The user's seniority data.
         seniority_data: SeniorityData,
     },
+    /// Transition a bid year from `Draft` to `BootstrapComplete`.
+    TransitionToBootstrapComplete {
+        /// The year to transition.
+        year: u16,
+    },
+    /// Transition a bid year from `BootstrapComplete` to `Canonicalized`.
+    TransitionToCanonicalized {
+        /// The year to transition.
+        year: u16,
+    },
+    /// Transition a bid year from `Canonicalized` to `BiddingActive`.
+    TransitionToBiddingActive {
+        /// The year to transition.
+        year: u16,
+    },
+    /// Transition a bid year from `BiddingActive` to `BiddingClosed`.
+    TransitionToBiddingClosed {
+        /// The year to transition.
+        year: u16,
+    },
 }

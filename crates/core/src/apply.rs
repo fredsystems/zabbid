@@ -303,6 +303,177 @@ pub fn apply_bootstrap(
                 canonical_bid_year: None,
             })
         }
+        Command::TransitionToBootstrapComplete { year } => {
+            let bid_year = BidYear::new(year);
+
+            // Validate bid year exists
+            if !metadata.has_bid_year(&bid_year) {
+                return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
+                    year,
+                )));
+            }
+
+            // Create new metadata (unchanged)
+            let new_metadata: BootstrapMetadata = metadata.clone();
+
+            // Create audit event recording the transition
+            let before: StateSnapshot = StateSnapshot::new(String::from("lifecycle_state=Draft"));
+            let after: StateSnapshot =
+                StateSnapshot::new(String::from("lifecycle_state=BootstrapComplete"));
+
+            let action: Action = Action::new(
+                String::from("TransitionToBootstrapComplete"),
+                Some(format!(
+                    "Transitioned bid year {year} from Draft to BootstrapComplete"
+                )),
+            );
+
+            let audit_event: AuditEvent = AuditEvent {
+                event_id: None,
+                actor,
+                cause,
+                action,
+                before,
+                after,
+                bid_year: Some(bid_year),
+                area: None,
+            };
+
+            Ok(BootstrapResult {
+                new_metadata,
+                audit_event,
+                canonical_bid_year: None,
+            })
+        }
+        Command::TransitionToCanonicalized { year } => {
+            let bid_year = BidYear::new(year);
+
+            // Validate bid year exists
+            if !metadata.has_bid_year(&bid_year) {
+                return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
+                    year,
+                )));
+            }
+
+            // Create new metadata (unchanged)
+            let new_metadata: BootstrapMetadata = metadata.clone();
+
+            // Create audit event recording the transition
+            let before: StateSnapshot =
+                StateSnapshot::new(String::from("lifecycle_state=BootstrapComplete"));
+            let after: StateSnapshot =
+                StateSnapshot::new(String::from("lifecycle_state=Canonicalized"));
+
+            let action: Action = Action::new(
+                String::from("TransitionToCanonicalized"),
+                Some(format!(
+                    "Transitioned bid year {year} from BootstrapComplete to Canonicalized"
+                )),
+            );
+
+            let audit_event: AuditEvent = AuditEvent {
+                event_id: None,
+                actor,
+                cause,
+                action,
+                before,
+                after,
+                bid_year: Some(bid_year),
+                area: None,
+            };
+
+            Ok(BootstrapResult {
+                new_metadata,
+                audit_event,
+                canonical_bid_year: None,
+            })
+        }
+        Command::TransitionToBiddingActive { year } => {
+            let bid_year = BidYear::new(year);
+
+            // Validate bid year exists
+            if !metadata.has_bid_year(&bid_year) {
+                return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
+                    year,
+                )));
+            }
+
+            // Create new metadata (unchanged)
+            let new_metadata: BootstrapMetadata = metadata.clone();
+
+            // Create audit event recording the transition
+            let before: StateSnapshot =
+                StateSnapshot::new(String::from("lifecycle_state=Canonicalized"));
+            let after: StateSnapshot =
+                StateSnapshot::new(String::from("lifecycle_state=BiddingActive"));
+
+            let action: Action = Action::new(
+                String::from("TransitionToBiddingActive"),
+                Some(format!(
+                    "Transitioned bid year {year} from Canonicalized to BiddingActive"
+                )),
+            );
+
+            let audit_event: AuditEvent = AuditEvent {
+                event_id: None,
+                actor,
+                cause,
+                action,
+                before,
+                after,
+                bid_year: Some(bid_year),
+                area: None,
+            };
+
+            Ok(BootstrapResult {
+                new_metadata,
+                audit_event,
+                canonical_bid_year: None,
+            })
+        }
+        Command::TransitionToBiddingClosed { year } => {
+            let bid_year = BidYear::new(year);
+
+            // Validate bid year exists
+            if !metadata.has_bid_year(&bid_year) {
+                return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
+                    year,
+                )));
+            }
+
+            // Create new metadata (unchanged)
+            let new_metadata: BootstrapMetadata = metadata.clone();
+
+            // Create audit event recording the transition
+            let before: StateSnapshot =
+                StateSnapshot::new(String::from("lifecycle_state=BiddingActive"));
+            let after: StateSnapshot =
+                StateSnapshot::new(String::from("lifecycle_state=BiddingClosed"));
+
+            let action: Action = Action::new(
+                String::from("TransitionToBiddingClosed"),
+                Some(format!(
+                    "Transitioned bid year {year} from BiddingActive to BiddingClosed"
+                )),
+            );
+
+            let audit_event: AuditEvent = AuditEvent {
+                event_id: None,
+                actor,
+                cause,
+                action,
+                before,
+                after,
+                bid_year: Some(bid_year),
+                area: None,
+            };
+
+            Ok(BootstrapResult {
+                new_metadata,
+                audit_event,
+                canonical_bid_year: None,
+            })
+        }
         _ => {
             // Non-bootstrap commands should use apply() instead
             unreachable!("apply_bootstrap called with non-bootstrap command")
@@ -601,7 +772,11 @@ pub fn apply(
         | Command::CreateArea { .. }
         | Command::SetActiveBidYear { .. }
         | Command::SetExpectedAreaCount { .. }
-        | Command::SetExpectedUserCount { .. } => {
+        | Command::SetExpectedUserCount { .. }
+        | Command::TransitionToBootstrapComplete { .. }
+        | Command::TransitionToCanonicalized { .. }
+        | Command::TransitionToBiddingActive { .. }
+        | Command::TransitionToBiddingClosed { .. } => {
             // Bootstrap commands should use apply_bootstrap() instead
             unreachable!("apply called with bootstrap command")
         }

@@ -466,6 +466,104 @@ pub fn get_actual_area_count(conn: &mut _, bid_year_id: i64) -> Result<usize, Pe
 }
 
 backend_fn! {
+/// Gets the lifecycle state for a bid year.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+///
+/// # Errors
+///
+/// Returns an error if the bid year doesn't exist or the database cannot be queried.
+pub fn get_lifecycle_state(
+    conn: &mut _,
+    bid_year_id: i64,
+) -> Result<String, PersistenceError> {
+    let result: Result<String, _> = bid_years::table
+        .select(bid_years::lifecycle_state)
+        .filter(bid_years::bid_year_id.eq(bid_year_id))
+        .first::<String>(conn);
+
+    match result {
+        Ok(state) => Ok(state),
+        Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
+            "Bid year with ID {bid_year_id} not found"
+        ))),
+        Err(e) => Err(PersistenceError::from(e)),
+    }
+}
+}
+
+backend_fn! {
+/// Updates the lifecycle state for a bid year.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `new_state` - The new lifecycle state as a string
+///
+/// # Errors
+///
+/// Returns an error if the bid year doesn't exist or the database cannot be updated.
+pub fn update_lifecycle_state(
+    conn: &mut _,
+    bid_year_id: i64,
+    new_state: &str,
+) -> Result<(), PersistenceError> {
+    use diesel::prelude::*;
+
+    let rows_affected = diesel::update(bid_years::table)
+        .filter(bid_years::bid_year_id.eq(bid_year_id))
+        .set(bid_years::lifecycle_state.eq(new_state))
+        .execute(conn)?;
+
+    if rows_affected == 0 {
+        Err(PersistenceError::NotFound(format!(
+            "Bid year with ID {bid_year_id} not found"
+        )))
+    } else {
+        Ok(())
+    }
+}
+}
+
+backend_fn! {
+/// Queries whether any bid year is in the `BiddingActive` lifecycle state.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+///
+/// # Returns
+///
+/// * `Ok(Some(year))` if a bid year is `BiddingActive`
+/// * `Ok(None)` if no bid year is `BiddingActive`
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried.
+pub fn get_bidding_active_year(conn: &mut _) -> Result<Option<u16>, PersistenceError> {
+    let result: Result<i32, _> = bid_years::table
+        .select(bid_years::year)
+        .filter(bid_years::lifecycle_state.eq("BiddingActive"))
+        .first::<i32>(conn);
+
+    match result {
+        Ok(year_i32) => {
+            let year: u16 = year_i32
+                .to_u16()
+                .ok_or_else(|| PersistenceError::Other("Year out of range".to_string()))?;
+            Ok(Some(year))
+        }
+        Err(diesel::result::Error::NotFound) => Ok(None),
+        Err(e) => Err(PersistenceError::from(e)),
+    }
+}
+}
+
+backend_fn! {
 /// Gets the actual user count for a bid year and area.
 ///
 /// # Arguments
