@@ -717,6 +717,114 @@ impl Persistence {
         }
     }
 
+    /// Finds the system area (No Bid) for a given bid year.
+    ///
+    /// Phase 25B: Returns the area ID and area code of the system area.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some((area_id, area_code)))` if a system area exists
+    /// * `Ok(None)` if no system area exists
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn find_system_area(
+        &mut self,
+        bid_year_id: i64,
+    ) -> Result<Option<(i64, String)>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::find_system_area_sqlite(conn, bid_year_id),
+            BackendConnection::Mysql(conn) => queries::find_system_area_mysql(conn, bid_year_id),
+        }
+    }
+
+    /// Counts users in the system area (No Bid) for a given bid year.
+    ///
+    /// Phase 25B: Used to check if bootstrap can be completed.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    ///
+    /// # Returns
+    ///
+    /// The number of users in the No Bid area (0 if no system area exists).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn count_users_in_system_area(
+        &mut self,
+        bid_year_id: i64,
+    ) -> Result<usize, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::count_users_in_system_area_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::count_users_in_system_area_mysql(conn, bid_year_id)
+            }
+        }
+    }
+
+    /// Lists users in the system area (No Bid) for a given bid year.
+    ///
+    /// Phase 25B: Returns up to `limit` user initials for error reporting.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `limit` - Maximum number of initials to return
+    ///
+    /// # Returns
+    ///
+    /// A vector of user initials (empty if no system area or no users).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn list_users_in_system_area(
+        &mut self,
+        bid_year_id: i64,
+        limit: i64,
+    ) -> Result<Vec<String>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::list_users_in_system_area_sqlite(conn, bid_year_id, limit)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::list_users_in_system_area_mysql(conn, bid_year_id, limit)
+            }
+        }
+    }
+
+    /// Checks if an area is a system area.
+    ///
+    /// Phase 25B: Used to prevent deletion/renaming of system areas.
+    ///
+    /// # Arguments
+    ///
+    /// * `area_id` - The canonical area ID to check
+    ///
+    /// # Returns
+    ///
+    /// `true` if the area is a system area, `false` otherwise.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried or the area doesn't exist.
+    pub fn is_system_area(&mut self, area_id: i64) -> Result<bool, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::is_system_area_sqlite(conn, area_id),
+            BackendConnection::Mysql(conn) => queries::is_system_area_mysql(conn, area_id),
+        }
+    }
+
     /// Determines if a given action requires a full snapshot.
     ///
     /// # Arguments
@@ -1392,6 +1500,37 @@ impl Persistence {
                 service_computation_date,
                 lottery_value,
             ),
+        }
+    }
+
+    /// Creates a system area (e.g., "No Bid") for a bid year.
+    ///
+    /// Phase 25B: System areas are auto-created and cannot be deleted or renamed.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `area_code` - The area code (e.g., "NO BID")
+    ///
+    /// # Returns
+    ///
+    /// The generated `area_id` for the new system area.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database operation fails.
+    pub fn create_system_area(
+        &mut self,
+        bid_year_id: i64,
+        area_code: &str,
+    ) -> Result<i64, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::create_system_area_sqlite(conn, bid_year_id, area_code)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::create_system_area_mysql(conn, bid_year_id, area_code)
+            }
         }
     }
 

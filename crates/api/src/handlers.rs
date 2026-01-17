@@ -2243,6 +2243,27 @@ pub fn transition_to_bootstrap_complete(
         return Err(translate_domain_error(DomainError::BootstrapIncomplete));
     }
 
+    // Phase 25B: Check for users in No Bid area
+    let users_in_no_bid: usize = persistence
+        .count_users_in_system_area(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to check No Bid area: {e}"),
+        })?;
+
+    if users_in_no_bid > 0 {
+        let sample_initials: Vec<String> = persistence
+            .list_users_in_system_area(request.bid_year_id, 5)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to list users in No Bid area: {e}"),
+            })?;
+
+        return Err(translate_domain_error(DomainError::UsersInNoBidArea {
+            bid_year: year,
+            user_count: users_in_no_bid,
+            sample_initials,
+        }));
+    }
+
     // Apply the command
     let command = Command::TransitionToBootstrapComplete { year };
     let actor: Actor = authenticated_actor.to_audit_actor(operator);

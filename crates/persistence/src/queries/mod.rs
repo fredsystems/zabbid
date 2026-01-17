@@ -39,10 +39,12 @@ pub use audit::{
     get_events_after_sqlite, get_global_audit_events_mysql, get_global_audit_events_sqlite,
 };
 pub use canonical::{
-    get_bootstrap_metadata_mysql, get_bootstrap_metadata_sqlite, list_areas_mysql,
-    list_areas_sqlite, list_bid_years_mysql, list_bid_years_sqlite, list_users_mysql,
-    list_users_sqlite, lookup_area_id_mysql, lookup_area_id_sqlite, lookup_bid_year_id_mysql,
-    lookup_bid_year_id_sqlite,
+    count_users_in_system_area_mysql, count_users_in_system_area_sqlite, find_system_area_mysql,
+    find_system_area_sqlite, get_bootstrap_metadata_mysql, get_bootstrap_metadata_sqlite,
+    is_system_area_mysql, is_system_area_sqlite, list_areas_mysql, list_areas_sqlite,
+    list_bid_years_mysql, list_bid_years_sqlite, list_users_in_system_area_mysql,
+    list_users_in_system_area_sqlite, list_users_mysql, list_users_sqlite, lookup_area_id_mysql,
+    lookup_area_id_sqlite, lookup_bid_year_id_mysql, lookup_bid_year_id_sqlite,
 };
 pub use completeness::{
     count_areas_by_bid_year_mysql, count_areas_by_bid_year_sqlite, count_users_by_area_mysql,

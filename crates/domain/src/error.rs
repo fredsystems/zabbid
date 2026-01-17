@@ -141,6 +141,44 @@ pub enum DomainError {
         /// The current lifecycle state.
         state: String,
     },
+    /// System area already exists for this bid year.
+    SystemAreaAlreadyExists {
+        /// The bid year.
+        bid_year: u16,
+    },
+    /// Cannot complete bootstrap while users remain in No Bid area.
+    UsersInNoBidArea {
+        /// The bid year.
+        bid_year: u16,
+        /// Count of users still in No Bid area.
+        user_count: usize,
+        /// Sample of user initials (first 5).
+        sample_initials: Vec<String>,
+    },
+    /// Cannot delete a system area.
+    CannotDeleteSystemArea {
+        /// The area code.
+        area_code: String,
+    },
+    /// Cannot rename a system area.
+    CannotRenameSystemArea {
+        /// The area code.
+        area_code: String,
+    },
+    /// Cannot delete users after canonicalization.
+    CannotDeleteUserAfterCanonicalization {
+        /// The bid year.
+        bid_year: u16,
+        /// The lifecycle state.
+        lifecycle_state: String,
+    },
+    /// Cannot assign users to No Bid area after canonicalization.
+    CannotAssignToNoBidAfterCanonicalization {
+        /// The bid year.
+        bid_year: u16,
+        /// The lifecycle state.
+        lifecycle_state: String,
+    },
 }
 
 impl std::fmt::Display for DomainError {
@@ -264,6 +302,46 @@ impl std::fmt::Display for DomainError {
                 write!(
                     f,
                     "Operation '{operation}' not allowed in lifecycle state '{state}'"
+                )
+            }
+            Self::SystemAreaAlreadyExists { bid_year } => {
+                write!(f, "System area already exists for bid year {bid_year}")
+            }
+            Self::UsersInNoBidArea {
+                bid_year,
+                user_count,
+                sample_initials,
+            } => {
+                write!(
+                    f,
+                    "Cannot complete bootstrap for bid year {}: {} user(s) remain in No Bid area (sample: {})",
+                    bid_year,
+                    user_count,
+                    sample_initials.join(", ")
+                )
+            }
+            Self::CannotDeleteSystemArea { area_code } => {
+                write!(f, "Cannot delete system area '{area_code}'")
+            }
+            Self::CannotRenameSystemArea { area_code } => {
+                write!(f, "Cannot rename system area '{area_code}'")
+            }
+            Self::CannotDeleteUserAfterCanonicalization {
+                bid_year,
+                lifecycle_state,
+            } => {
+                write!(
+                    f,
+                    "Cannot delete user after canonicalization (bid year {bid_year}, state: {lifecycle_state})"
+                )
+            }
+            Self::CannotAssignToNoBidAfterCanonicalization {
+                bid_year,
+                lifecycle_state,
+            } => {
+                write!(
+                    f,
+                    "Cannot assign user to No Bid area after canonicalization (bid year {bid_year}, state: {lifecycle_state})"
                 )
             }
         }
