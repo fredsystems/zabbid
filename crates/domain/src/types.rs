@@ -6,6 +6,93 @@
 use crate::error::DomainError;
 use serde::{Deserialize, Serialize};
 
+/// Represents the lifecycle state of a bid year.
+///
+/// Phase 25A: Explicit lifecycle states govern what operations are permitted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Default)]
+pub enum BidYearLifecycle {
+    /// Initial state after creation. Full editing allowed.
+    #[default]
+    Draft,
+    /// Bootstrap phase complete. Ready for canonicalization.
+    BootstrapComplete,
+    /// Data locked. Canonical tables authoritative.
+    Canonicalized,
+    /// Bidding rounds in progress.
+    BiddingActive,
+    /// Bidding finished. System read-only.
+    BiddingClosed,
+}
+
+impl BidYearLifecycle {
+    /// Converts a string representation to a `BidYearLifecycle`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DomainError::InvalidLifecycleState` if the string does not match
+    /// a valid lifecycle state.
+    pub fn from_str(s: &str) -> Result<Self, DomainError> {
+        match s {
+            "Draft" => Ok(Self::Draft),
+            "BootstrapComplete" => Ok(Self::BootstrapComplete),
+            "Canonicalized" => Ok(Self::Canonicalized),
+            "BiddingActive" => Ok(Self::BiddingActive),
+            "BiddingClosed" => Ok(Self::BiddingClosed),
+            _ => Err(DomainError::InvalidLifecycleState(s.to_string())),
+        }
+    }
+
+    /// Converts this lifecycle state to its string representation.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Draft => "Draft",
+            Self::BootstrapComplete => "BootstrapComplete",
+            Self::Canonicalized => "Canonicalized",
+            Self::BiddingActive => "BiddingActive",
+            Self::BiddingClosed => "BiddingClosed",
+        }
+    }
+
+    /// Checks if a transition from this state to another is valid.
+    ///
+    /// Valid transitions are:
+    /// - Draft → `BootstrapComplete`
+    /// - `BootstrapComplete` → Canonicalized
+    /// - Canonicalized → `BiddingActive`
+    /// - `BiddingActive` → `BiddingClosed`
+    #[must_use]
+    pub const fn can_transition_to(&self, target: Self) -> bool {
+        matches!(
+            (self, target),
+            (Self::Draft, Self::BootstrapComplete)
+                | (Self::BootstrapComplete, Self::Canonicalized)
+                | (Self::Canonicalized, Self::BiddingActive)
+                | (Self::BiddingActive, Self::BiddingClosed)
+        )
+    }
+
+    /// Returns whether operations are restricted in this lifecycle state.
+    ///
+    /// Draft and `BootstrapComplete` allow full editing.
+    /// Canonicalized and later states restrict editing.
+    #[must_use]
+    pub const fn is_locked(&self) -> bool {
+        matches!(
+            self,
+            Self::Canonicalized | Self::BiddingActive | Self::BiddingClosed
+        )
+    }
+
+    /// Returns whether structural changes (area/user creation/deletion) are allowed.
+    #[must_use]
+    pub const fn allows_structural_changes(&self) -> bool {
+        matches!(self, Self::Draft | Self::BootstrapComplete)
+    }
+}
+
+
 /// Represents a bid year identifier.
 ///
 /// Phase 23A: A bid year now has a canonical numeric ID (`bid_year_id`)

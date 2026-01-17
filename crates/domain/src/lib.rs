@@ -29,5 +29,5 @@ pub use leave_accrual::{
     AccrualReason, LeaveAccrualResult, PayPeriodAccrual, calculate_leave_accrual,
 };
 pub use leave_availability::{LeaveAvailabilityResult, LeaveUsage, calculate_leave_availability};
-pub use types::{Area, BidYear, Crew, Initials, SeniorityData, User, UserType};
+pub use types::{Area, BidYear, BidYearLifecycle, Crew, Initials, SeniorityData, User, UserType};
 pub use validation::{validate_bid_year, validate_initials_unique, validate_user_fields};
