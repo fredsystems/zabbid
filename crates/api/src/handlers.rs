@@ -2359,24 +2359,45 @@ pub fn transition_to_canonicalized(
         ));
     }
 
-    // Apply the command
+    // Check for users in No Bid area (Phase 25B enforcement)
+    let users_in_no_bid: usize = persistence
+        .count_users_in_system_area(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to check No Bid area: {e}"),
+        })?;
+
+    if users_in_no_bid > 0 {
+        let sample_initials: Vec<String> = persistence
+            .list_users_in_system_area(request.bid_year_id, 5)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to list users in No Bid area: {e}"),
+            })?;
+
+        return Err(translate_domain_error(DomainError::UsersInNoBidArea {
+            bid_year: year,
+            user_count: users_in_no_bid,
+            sample_initials,
+        }));
+    }
+
+    // Apply the command to get the audit event
     let command = Command::TransitionToCanonicalized { year };
     let actor: Actor = authenticated_actor.to_audit_actor(operator);
     let result: BootstrapResult =
         apply_bootstrap(metadata, bid_year, command, actor, cause).map_err(translate_core_error)?;
 
-    // Persist the lifecycle state change
+    // Perform canonicalization (within implicit transaction via persistence layer)
+    persistence
+        .canonicalize_bid_year(request.bid_year_id, &result.audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to canonicalize bid year: {e}"),
+        })?;
+
+    // Update lifecycle state
     persistence
         .update_lifecycle_state(request.bid_year_id, target_state.as_str())
         .map_err(|e| ApiError::Internal {
             message: format!("Failed to update lifecycle state: {e}"),
-        })?;
-
-    // Persist audit event
-    persistence
-        .persist_audit_event(&result.audit_event)
-        .map_err(|e| ApiError::Internal {
-            message: format!("Failed to persist audit event: {e}"),
         })?;
 
     Ok(TransitionToCanonicalizedResponse {

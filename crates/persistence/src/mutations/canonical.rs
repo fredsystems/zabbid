@@ -16,6 +16,10 @@ use tracing::debug;
 use zab_bid::State;
 use zab_bid_domain::{Area, Initials};
 
+use crate::data_models::{
+    NewCanonicalAreaMembership, NewCanonicalBidOrder, NewCanonicalBidWindows,
+    NewCanonicalEligibility,
+};
 use crate::diesel_schema;
 use crate::error::PersistenceError;
 use crate::queries::canonical::{
@@ -508,4 +512,186 @@ pub fn create_system_area_mysql(
     debug!(area_id, bid_year_id, area_code, "Created system area");
 
     Ok(area_id)
+}
+
+/// Bulk inserts canonical area membership records (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `records` - The canonical area membership records to insert
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn bulk_insert_canonical_area_membership_sqlite(
+    conn: &mut SqliteConnection,
+    records: &[NewCanonicalAreaMembership],
+) -> Result<(), PersistenceError> {
+    diesel::insert_into(diesel_schema::canonical_area_membership::table)
+        .values(records)
+        .execute(conn)?;
+
+    debug!(
+        count = records.len(),
+        "Bulk inserted canonical area membership"
+    );
+    Ok(())
+}
+
+/// Bulk inserts canonical area membership records (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `records` - The canonical area membership records to insert
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn bulk_insert_canonical_area_membership_mysql(
+    conn: &mut MysqlConnection,
+    records: &[NewCanonicalAreaMembership],
+) -> Result<(), PersistenceError> {
+    diesel::insert_into(diesel_schema::canonical_area_membership::table)
+        .values(records)
+        .execute(conn)?;
+
+    debug!(
+        count = records.len(),
+        "Bulk inserted canonical area membership"
+    );
+    Ok(())
+}
+
+/// Bulk inserts canonical eligibility records (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `records` - The canonical eligibility records to insert
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn bulk_insert_canonical_eligibility_sqlite(
+    conn: &mut SqliteConnection,
+    records: &[NewCanonicalEligibility],
+) -> Result<(), PersistenceError> {
+    diesel::insert_into(diesel_schema::canonical_eligibility::table)
+        .values(records)
+        .execute(conn)?;
+
+    debug!(count = records.len(), "Bulk inserted canonical eligibility");
+    Ok(())
+}
+
+/// Bulk inserts canonical eligibility records (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `records` - The canonical eligibility records to insert
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn bulk_insert_canonical_eligibility_mysql(
+    conn: &mut MysqlConnection,
+    records: &[NewCanonicalEligibility],
+) -> Result<(), PersistenceError> {
+    diesel::insert_into(diesel_schema::canonical_eligibility::table)
+        .values(records)
+        .execute(conn)?;
+
+    debug!(count = records.len(), "Bulk inserted canonical eligibility");
+    Ok(())
+}
+
+/// Bulk inserts canonical bid order records (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `records` - The canonical bid order records to insert
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn bulk_insert_canonical_bid_order_sqlite(
+    conn: &mut SqliteConnection,
+    records: &[NewCanonicalBidOrder],
+) -> Result<(), PersistenceError> {
+    diesel::insert_into(diesel_schema::canonical_bid_order::table)
+        .values(records)
+        .execute(conn)?;
+
+    debug!(count = records.len(), "Bulk inserted canonical bid order");
+    Ok(())
+}
+
+/// Bulk inserts canonical bid order records (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `records` - The canonical bid order records to insert
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn bulk_insert_canonical_bid_order_mysql(
+    conn: &mut MysqlConnection,
+    records: &[NewCanonicalBidOrder],
+) -> Result<(), PersistenceError> {
+    diesel::insert_into(diesel_schema::canonical_bid_order::table)
+        .values(records)
+        .execute(conn)?;
+
+    debug!(count = records.len(), "Bulk inserted canonical bid order");
+    Ok(())
+}
+
+/// Bulk inserts canonical bid windows records (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `records` - The canonical bid windows records to insert
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn bulk_insert_canonical_bid_windows_sqlite(
+    conn: &mut SqliteConnection,
+    records: &[NewCanonicalBidWindows],
+) -> Result<(), PersistenceError> {
+    diesel::insert_into(diesel_schema::canonical_bid_windows::table)
+        .values(records)
+        .execute(conn)?;
+
+    debug!(count = records.len(), "Bulk inserted canonical bid windows");
+    Ok(())
+}
+
+/// Bulk inserts canonical bid windows records (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `records` - The canonical bid windows records to insert
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn bulk_insert_canonical_bid_windows_mysql(
+    conn: &mut MysqlConnection,
+    records: &[NewCanonicalBidWindows],
+) -> Result<(), PersistenceError> {
+    diesel::insert_into(diesel_schema::canonical_bid_windows::table)
+        .values(records)
+        .execute(conn)?;
+
+    debug!(count = records.len(), "Bulk inserted canonical bid windows");
+    Ok(())
 }

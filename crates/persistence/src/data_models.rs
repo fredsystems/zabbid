@@ -88,3 +88,109 @@ pub struct SessionData {
     pub last_activity_at: String,
     pub expires_at: String,
 }
+
+/// Canonical area membership row (diesel queryable).
+#[allow(dead_code)]
+#[derive(Debug, Clone, diesel::Queryable, diesel::Selectable)]
+#[diesel(table_name = crate::diesel_schema::canonical_area_membership)]
+pub struct CanonicalAreaMembershipRow {
+    pub id: Option<i64>,
+    pub bid_year_id: i64,
+    pub audit_event_id: i64,
+    pub user_id: i64,
+    pub area_id: i64,
+    pub is_overridden: i32,
+    pub override_reason: Option<String>,
+}
+
+/// Canonical area membership insertable (diesel insertable).
+#[derive(Debug, Clone, diesel::Insertable)]
+#[diesel(table_name = crate::diesel_schema::canonical_area_membership)]
+pub struct NewCanonicalAreaMembership {
+    pub bid_year_id: i64,
+    pub audit_event_id: i64,
+    pub user_id: i64,
+    pub area_id: i64,
+    pub is_overridden: i32,
+    pub override_reason: Option<String>,
+}
+
+/// Canonical eligibility row (diesel queryable).
+#[allow(dead_code)]
+#[derive(Debug, Clone, diesel::Queryable, diesel::Selectable)]
+#[diesel(table_name = crate::diesel_schema::canonical_eligibility)]
+pub struct CanonicalEligibilityRow {
+    pub id: Option<i64>,
+    pub bid_year_id: i64,
+    pub audit_event_id: i64,
+    pub user_id: i64,
+    pub can_bid: i32,
+    pub is_overridden: i32,
+    pub override_reason: Option<String>,
+}
+
+/// Canonical eligibility insertable (diesel insertable).
+#[derive(Debug, Clone, diesel::Insertable)]
+#[diesel(table_name = crate::diesel_schema::canonical_eligibility)]
+pub struct NewCanonicalEligibility {
+    pub bid_year_id: i64,
+    pub audit_event_id: i64,
+    pub user_id: i64,
+    pub can_bid: i32,
+    pub is_overridden: i32,
+    pub override_reason: Option<String>,
+}
+
+/// Canonical bid order row (diesel queryable).
+#[allow(dead_code)]
+#[derive(Debug, Clone, diesel::Queryable, diesel::Selectable)]
+#[diesel(table_name = crate::diesel_schema::canonical_bid_order)]
+pub struct CanonicalBidOrderRow {
+    pub id: Option<i64>,
+    pub bid_year_id: i64,
+    pub audit_event_id: i64,
+    pub user_id: i64,
+    pub bid_order: Option<i32>,
+    pub is_overridden: i32,
+    pub override_reason: Option<String>,
+}
+
+/// Canonical bid order insertable (diesel insertable).
+#[derive(Debug, Clone, diesel::Insertable)]
+#[diesel(table_name = crate::diesel_schema::canonical_bid_order)]
+pub struct NewCanonicalBidOrder {
+    pub bid_year_id: i64,
+    pub audit_event_id: i64,
+    pub user_id: i64,
+    pub bid_order: Option<i32>,
+    pub is_overridden: i32,
+    pub override_reason: Option<String>,
+}
+
+/// Canonical bid windows row (diesel queryable).
+#[allow(dead_code)]
+#[derive(Debug, Clone, diesel::Queryable, diesel::Selectable)]
+#[diesel(table_name = crate::diesel_schema::canonical_bid_windows)]
+pub struct CanonicalBidWindowsRow {
+    pub id: Option<i64>,
+    pub bid_year_id: i64,
+    pub audit_event_id: i64,
+    pub user_id: i64,
+    pub window_start_date: Option<String>,
+    pub window_end_date: Option<String>,
+    pub is_overridden: i32,
+    pub override_reason: Option<String>,
+}
+
+/// Canonical bid windows insertable (diesel insertable).
+#[derive(Debug, Clone, diesel::Insertable)]
+#[diesel(table_name = crate::diesel_schema::canonical_bid_windows)]
+pub struct NewCanonicalBidWindows {
+    pub bid_year_id: i64,
+    pub audit_event_id: i64,
+    pub user_id: i64,
+    pub window_start_date: Option<String>,
+    pub window_end_date: Option<String>,
+    pub is_overridden: i32,
+    pub override_reason: Option<String>,
+}

@@ -172,7 +172,7 @@ pub type SqlitePersistence = Persistence;
 ///
 /// This enum allows the persistence adapter to work with either `SQLite` or `MySQL`
 /// backends while maintaining a single public API.
-enum BackendConnection {
+pub enum BackendConnection {
     Sqlite(SqliteConnection),
     Mysql(MysqlConnection),
 }
@@ -182,7 +182,7 @@ enum BackendConnection {
 /// This adapter is backend-agnostic and works with both `SQLite` and `MySQL`/`MariaDB`.
 /// Backend selection happens once at construction time and is transparent to callers.
 pub struct Persistence {
-    conn: BackendConnection,
+    pub(crate) conn: BackendConnection,
 }
 
 impl Persistence {
@@ -1754,6 +1754,41 @@ impl Persistence {
                     )),
                     Err(e) => Err(PersistenceError::from(e)),
                 }
+            }
+        }
+    }
+
+    /// Canonicalizes a bid year by populating canonical data tables.
+    ///
+    /// This function persists the audit event and creates canonical rows for:
+    /// - Area membership
+    /// - Eligibility
+    /// - Bid order (NULL until computed)
+    /// - Bid windows (NULL until computed)
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The bid year to canonicalize
+    /// * `audit_event` - The audit event recording canonicalization
+    ///
+    /// # Returns
+    ///
+    /// The `event_id` of the persisted audit event.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any database operation fails.
+    pub fn canonicalize_bid_year(
+        &mut self,
+        bid_year_id: i64,
+        audit_event: &zab_bid_audit::AuditEvent,
+    ) -> Result<i64, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::bootstrap::canonicalize_bid_year_sqlite(conn, bid_year_id, audit_event)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::bootstrap::canonicalize_bid_year_mysql(conn, bid_year_id, audit_event)
             }
         }
     }
