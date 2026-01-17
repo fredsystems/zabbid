@@ -51,6 +51,55 @@ diesel::table! {
 }
 
 diesel::table! {
+    canonical_area_membership (id) {
+        id -> Nullable<BigInt>,
+        bid_year_id -> BigInt,
+        audit_event_id -> BigInt,
+        user_id -> BigInt,
+        area_id -> BigInt,
+        is_overridden -> Integer,
+        override_reason -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    canonical_bid_order (id) {
+        id -> Nullable<BigInt>,
+        bid_year_id -> BigInt,
+        audit_event_id -> BigInt,
+        user_id -> BigInt,
+        bid_order -> Nullable<Integer>,
+        is_overridden -> Integer,
+        override_reason -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    canonical_bid_windows (id) {
+        id -> Nullable<BigInt>,
+        bid_year_id -> BigInt,
+        audit_event_id -> BigInt,
+        user_id -> BigInt,
+        window_start_date -> Nullable<Text>,
+        window_end_date -> Nullable<Text>,
+        is_overridden -> Integer,
+        override_reason -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    canonical_eligibility (id) {
+        id -> Nullable<BigInt>,
+        bid_year_id -> BigInt,
+        audit_event_id -> BigInt,
+        user_id -> BigInt,
+        can_bid -> Integer,
+        is_overridden -> Integer,
+        override_reason -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     operators (operator_id) {
         operator_id -> BigInt,
         login_name -> Text,
@@ -118,6 +167,10 @@ diesel::allow_tables_to_appear_in_same_query!(
     areas,
     audit_events,
     bid_years,
+    canonical_area_membership,
+    canonical_bid_order,
+    canonical_bid_windows,
+    canonical_eligibility,
     operators,
     sessions,
     state_snapshots,

@@ -17,6 +17,10 @@ use zab_bid::{BootstrapResult, State, TransitionResult};
 use zab_bid_domain::CanonicalBidYear;
 
 use crate::backend::PersistenceBackend;
+use crate::data_models::{
+    NewCanonicalAreaMembership, NewCanonicalBidOrder, NewCanonicalBidWindows,
+    NewCanonicalEligibility,
+};
 use crate::diesel_schema;
 use crate::error::PersistenceError;
 use crate::mutations::audit::{
@@ -25,6 +29,10 @@ use crate::mutations::audit::{
     persist_state_snapshot_sqlite,
 };
 use crate::mutations::canonical::{
+    bulk_insert_canonical_area_membership_mysql, bulk_insert_canonical_area_membership_sqlite,
+    bulk_insert_canonical_bid_order_mysql, bulk_insert_canonical_bid_order_sqlite,
+    bulk_insert_canonical_bid_windows_mysql, bulk_insert_canonical_bid_windows_sqlite,
+    bulk_insert_canonical_eligibility_mysql, bulk_insert_canonical_eligibility_sqlite,
     insert_new_user_mysql, insert_new_user_sqlite, sync_canonical_users_mysql,
     sync_canonical_users_sqlite,
 };
@@ -561,4 +569,222 @@ pub fn set_expected_user_count(
     debug!(bid_year_id, area_id, count, "Set expected user count");
     Ok(())
 }
+}
+
+/// Canonicalize a bid year by populating canonical data tables (`SQLite` version).
+///
+/// This function:
+/// 1. Inserts canonical rows for area membership, eligibility, bid order, and bid windows
+/// 2. Persists the audit event
+/// 3. Returns the `event_id`
+///
+/// Canonicalization must be called within a transaction to ensure atomicity.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The bid year to canonicalize
+/// * `audit_event` - The audit event recording canonicalization
+///
+/// # Returns
+///
+/// The `event_id` of the persisted audit event.
+///
+/// # Errors
+///
+/// Returns an error if any database operation fails.
+pub fn canonicalize_bid_year_sqlite(
+    conn: &mut SqliteConnection,
+    bid_year_id: i64,
+    audit_event: &zab_bid_audit::AuditEvent,
+) -> Result<i64, PersistenceError> {
+    use crate::diesel_schema::users;
+
+    // First, persist the audit event to get the `event_id`
+    let event_id: i64 = persist_audit_event_sqlite(conn, audit_event)?;
+    debug!(
+        event_id,
+        bid_year_id, "Persisted canonicalization audit event"
+    );
+
+    // Query all users for this bid year to build canonical records
+    let user_rows: Vec<(i64, i64, i64)> = users::table
+        .select((users::user_id, users::area_id, users::bid_year_id))
+        .filter(users::bid_year_id.eq(bid_year_id))
+        .load(conn)?;
+
+    debug!(
+        bid_year_id,
+        user_count = user_rows.len(),
+        "Loaded users for canonicalization"
+    );
+
+    // Build canonical records
+    let mut area_membership_records: Vec<NewCanonicalAreaMembership> = Vec::new();
+    let mut eligibility_records: Vec<NewCanonicalEligibility> = Vec::new();
+    let mut bid_order_records: Vec<NewCanonicalBidOrder> = Vec::new();
+    let mut bid_windows_records: Vec<NewCanonicalBidWindows> = Vec::new();
+
+    for (user_id, area_id, _) in user_rows {
+        area_membership_records.push(NewCanonicalAreaMembership {
+            bid_year_id,
+            audit_event_id: event_id,
+            user_id,
+            area_id,
+            is_overridden: 0,
+            override_reason: None,
+        });
+
+        eligibility_records.push(NewCanonicalEligibility {
+            bid_year_id,
+            audit_event_id: event_id,
+            user_id,
+            can_bid: 1, // Default to eligible
+            is_overridden: 0,
+            override_reason: None,
+        });
+
+        bid_order_records.push(NewCanonicalBidOrder {
+            bid_year_id,
+            audit_event_id: event_id,
+            user_id,
+            bid_order: None, // NULL until computed
+            is_overridden: 0,
+            override_reason: None,
+        });
+
+        bid_windows_records.push(NewCanonicalBidWindows {
+            bid_year_id,
+            audit_event_id: event_id,
+            user_id,
+            window_start_date: None, // NULL until computed
+            window_end_date: None,   // NULL until computed
+            is_overridden: 0,
+            override_reason: None,
+        });
+    }
+
+    // Bulk insert canonical records
+    bulk_insert_canonical_area_membership_sqlite(conn, &area_membership_records)?;
+    bulk_insert_canonical_eligibility_sqlite(conn, &eligibility_records)?;
+    bulk_insert_canonical_bid_order_sqlite(conn, &bid_order_records)?;
+    bulk_insert_canonical_bid_windows_sqlite(conn, &bid_windows_records)?;
+
+    info!(
+        event_id,
+        bid_year_id,
+        user_count = area_membership_records.len(),
+        "Canonicalized bid year"
+    );
+
+    Ok(event_id)
+}
+
+/// Canonicalize a bid year by populating canonical data tables (`MySQL` version).
+///
+/// This function:
+/// 1. Inserts canonical rows for area membership, eligibility, bid order, and bid windows
+/// 2. Persists the audit event
+/// 3. Returns the `event_id`
+///
+/// Canonicalization must be called within a transaction to ensure atomicity.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The bid year to canonicalize
+/// * `audit_event` - The audit event recording canonicalization
+///
+/// # Returns
+///
+/// The `event_id` of the persisted audit event.
+///
+/// # Errors
+///
+/// Returns an error if any database operation fails.
+pub fn canonicalize_bid_year_mysql(
+    conn: &mut MysqlConnection,
+    bid_year_id: i64,
+    audit_event: &zab_bid_audit::AuditEvent,
+) -> Result<i64, PersistenceError> {
+    use crate::diesel_schema::users;
+
+    // First, persist the audit event to get the `event_id`
+    let event_id: i64 = persist_audit_event_mysql(conn, audit_event)?;
+    debug!(
+        event_id,
+        bid_year_id, "Persisted canonicalization audit event"
+    );
+
+    // Query all users for this bid year to build canonical records
+    let user_rows: Vec<(i64, i64, i64)> = users::table
+        .select((users::user_id, users::area_id, users::bid_year_id))
+        .filter(users::bid_year_id.eq(bid_year_id))
+        .load(conn)?;
+
+    debug!(
+        bid_year_id,
+        user_count = user_rows.len(),
+        "Loaded users for canonicalization"
+    );
+
+    // Build canonical records
+    let mut area_membership_records: Vec<NewCanonicalAreaMembership> = Vec::new();
+    let mut eligibility_records: Vec<NewCanonicalEligibility> = Vec::new();
+    let mut bid_order_records: Vec<NewCanonicalBidOrder> = Vec::new();
+    let mut bid_windows_records: Vec<NewCanonicalBidWindows> = Vec::new();
+
+    for (user_id, area_id, _) in user_rows {
+        area_membership_records.push(NewCanonicalAreaMembership {
+            bid_year_id,
+            audit_event_id: event_id,
+            user_id,
+            area_id,
+            is_overridden: 0,
+            override_reason: None,
+        });
+
+        eligibility_records.push(NewCanonicalEligibility {
+            bid_year_id,
+            audit_event_id: event_id,
+            user_id,
+            can_bid: 1, // Default to eligible
+            is_overridden: 0,
+            override_reason: None,
+        });
+
+        bid_order_records.push(NewCanonicalBidOrder {
+            bid_year_id,
+            audit_event_id: event_id,
+            user_id,
+            bid_order: None, // NULL until computed
+            is_overridden: 0,
+            override_reason: None,
+        });
+
+        bid_windows_records.push(NewCanonicalBidWindows {
+            bid_year_id,
+            audit_event_id: event_id,
+            user_id,
+            window_start_date: None, // NULL until computed
+            window_end_date: None,   // NULL until computed
+            is_overridden: 0,
+            override_reason: None,
+        });
+    }
+
+    // Bulk insert canonical records
+    bulk_insert_canonical_area_membership_mysql(conn, &area_membership_records)?;
+    bulk_insert_canonical_eligibility_mysql(conn, &eligibility_records)?;
+    bulk_insert_canonical_bid_order_mysql(conn, &bid_order_records)?;
+    bulk_insert_canonical_bid_windows_mysql(conn, &bid_windows_records)?;
+
+    info!(
+        event_id,
+        bid_year_id,
+        user_count = area_membership_records.len(),
+        "Canonicalized bid year"
+    );
+
+    Ok(event_id)
 }
