@@ -165,6 +165,13 @@ pub enum DomainError {
         /// The area code.
         area_code: String,
     },
+    /// Cannot edit area metadata after canonicalization.
+    CannotEditAreaAfterCanonicalization {
+        /// The bid year.
+        bid_year: u16,
+        /// The lifecycle state.
+        lifecycle_state: String,
+    },
     /// Cannot delete users after canonicalization.
     CannotDeleteUserAfterCanonicalization {
         /// The bid year.
@@ -355,6 +362,15 @@ impl std::fmt::Display for DomainError {
             }
             Self::CannotRenameSystemArea { area_code } => {
                 write!(f, "Cannot rename system area '{area_code}'")
+            }
+            Self::CannotEditAreaAfterCanonicalization {
+                bid_year,
+                lifecycle_state,
+            } => {
+                write!(
+                    f,
+                    "Cannot edit area metadata after canonicalization (bid year {bid_year}, state: {lifecycle_state})"
+                )
             }
             Self::CannotDeleteUserAfterCanonicalization {
                 bid_year,

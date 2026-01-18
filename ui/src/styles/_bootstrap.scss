@@ -368,7 +368,7 @@
       align-items: center;
 
       label {
-        min-width: 140px;
+        min-width: 200px;
         flex-shrink: 0;
       }
     }
@@ -384,6 +384,7 @@
     input[type="date"],
     select {
       flex: 1;
+      box-sizing: border-box;
       padding: $spacing-sm $spacing-md;
       border: 2px solid $color-border;
       border-radius: $radius-sm;

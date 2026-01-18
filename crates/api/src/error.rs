@@ -340,6 +340,15 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
             rule: String::from("system_area_immutable"),
             message: format!("Cannot rename system area '{area_code}'"),
         },
+        DomainError::CannotEditAreaAfterCanonicalization {
+            bid_year,
+            lifecycle_state,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("no_area_edit_after_canonicalization"),
+            message: format!(
+                "Cannot edit area metadata after canonicalization (bid year {bid_year}, state: {lifecycle_state})"
+            ),
+        },
         DomainError::CannotDeleteUserAfterCanonicalization {
             bid_year,
             lifecycle_state,

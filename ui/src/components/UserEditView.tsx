@@ -110,13 +110,11 @@ export function UserEditView({
         setName(foundUser.name);
         setUserType(foundUser.user_type);
         setCrew(foundUser.crew?.toString() ?? "");
-        // Note: Seniority dates are not in UserInfo, we'd need a separate endpoint
-        // For now, use placeholder values
-        setCumulativeNatcaBuDate("2020-01-01");
-        setNatcaBuDate("2020-01-01");
-        setEodFaaDate("2020-01-01");
-        setServiceComputationDate("2020-01-01");
-        setLotteryValue("");
+        setCumulativeNatcaBuDate(foundUser.cumulative_natca_bu_date);
+        setNatcaBuDate(foundUser.natca_bu_date);
+        setEodFaaDate(foundUser.eod_faa_date);
+        setServiceComputationDate(foundUser.service_computation_date);
+        setLotteryValue(foundUser.lottery_value?.toString() ?? "");
 
         // Load areas for override modal and bid year lifecycle
         if (bidYearIdNum) {
@@ -144,18 +142,31 @@ export function UserEditView({
 
   // Auto-refresh on connection restore
   useEffect(() => {
-    if (connectionState === "connected" && user && sessionToken && areaIdNum) {
+    // Capture stable user_id to avoid infinite loop from user object reference
+    const currentUserId = user?.user_id;
+
+    if (
+      connectionState === "connected" &&
+      currentUserId &&
+      sessionToken &&
+      areaIdNum
+    ) {
       const refresh = async () => {
         try {
           const usersResponse = await listUsers(sessionToken, areaIdNum);
           const foundUser = usersResponse.users.find(
-            (u) => u.user_id === user.user_id,
+            (u) => u.user_id === currentUserId,
           );
           if (foundUser) {
             setUser(foundUser);
             setName(foundUser.name);
             setUserType(foundUser.user_type);
             setCrew(foundUser.crew?.toString() ?? "");
+            setCumulativeNatcaBuDate(foundUser.cumulative_natca_bu_date);
+            setNatcaBuDate(foundUser.natca_bu_date);
+            setEodFaaDate(foundUser.eod_faa_date);
+            setServiceComputationDate(foundUser.service_computation_date);
+            setLotteryValue(foundUser.lottery_value?.toString() ?? "");
           }
         } catch (err) {
           console.error("Failed to refresh user data:", err);
@@ -163,7 +174,7 @@ export function UserEditView({
       };
       void refresh();
     }
-  }, [connectionState, user, sessionToken, areaIdNum]);
+  }, [connectionState, sessionToken, areaIdNum, user?.user_id]);
 
   // Handle save
   const handleSave = async (e: React.FormEvent) => {

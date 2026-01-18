@@ -205,6 +205,16 @@ pub struct UserInfo {
     pub crew: Option<u8>,
     /// The user's type classification (CPC, CPC-IT, Dev-R, Dev-D).
     pub user_type: String,
+    /// Cumulative NATCA bargaining unit date (ISO 8601 date string).
+    pub cumulative_natca_bu_date: String,
+    /// NATCA bargaining unit date (ISO 8601 date string).
+    pub natca_bu_date: String,
+    /// Entry on Duty / FAA date (ISO 8601 date string).
+    pub eod_faa_date: String,
+    /// Service Computation Date (ISO 8601 date string).
+    pub service_computation_date: String,
+    /// Optional lottery value for tie-breaking.
+    pub lottery_value: Option<u32>,
     /// Total hours earned (from Phase 9, post-rounding).
     pub earned_hours: u16,
     /// Total days earned.
@@ -599,6 +609,32 @@ pub struct SetExpectedUserCountResponse {
     pub area_code: String,
     /// The expected user count that was set.
     pub expected_count: u32,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to update area metadata.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateAreaRequest {
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The new display name (optional).
+    pub area_name: Option<String>,
+}
+
+/// API response for successful area metadata update.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateAreaResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year (display value).
+    pub bid_year: u16,
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The area code (immutable).
+    pub area_code: String,
+    /// The updated display name.
+    pub area_name: Option<String>,
     /// Success message.
     pub message: String,
 }

@@ -58,8 +58,9 @@ pub use request_response::{
     TransitionToBiddingActiveRequest, TransitionToBiddingActiveResponse,
     TransitionToBiddingClosedRequest, TransitionToBiddingClosedResponse,
     TransitionToBootstrapCompleteRequest, TransitionToBootstrapCompleteResponse,
-    TransitionToCanonicalizedRequest, TransitionToCanonicalizedResponse, UpdateUserRequest,
-    UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
+    TransitionToCanonicalizedRequest, TransitionToCanonicalizedResponse, UpdateAreaRequest,
+    UpdateAreaResponse, UpdateUserRequest, UpdateUserResponse, UserCapabilities, UserInfo,
+    WhoAmIResponse,
 };
 
 // Re-export public functions from capabilities module
@@ -77,5 +78,5 @@ pub use handlers::{
     override_area_assignment, preview_csv_users, register_user, reset_password, rollback,
     set_active_bid_year, set_expected_area_count, set_expected_user_count,
     transition_to_bidding_active, transition_to_bidding_closed, transition_to_bootstrap_complete,
-    transition_to_canonicalized, update_user, whoami,
+    transition_to_canonicalized, update_area, update_user, whoami,
 };

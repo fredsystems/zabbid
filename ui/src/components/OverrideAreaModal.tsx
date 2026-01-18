@@ -105,9 +105,8 @@ export function OverrideAreaModal({
   const reasonValid = reason.trim().length >= 10;
 
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: Modal overlay uses Escape key for accessibility
-    // biome-ignore lint/a11y/noStaticElementInteractions: Modal overlay click-to-close is standard UX pattern
-    <div
+    <button
+      type="button"
       className="modal-overlay"
       onClick={handleCancel}
       onKeyDown={(e) => {
@@ -115,10 +114,7 @@ export function OverrideAreaModal({
           handleCancel();
         }
       }}
-      role="presentation"
     >
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation prevents overlay close */}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: Content area prevents event bubbling */}
       <div
         className="modal-content"
         onClick={(e) => e.stopPropagation()}
@@ -219,6 +215,6 @@ export function OverrideAreaModal({
           )}
         </div>
       </div>
-    </div>
+    </button>
   );
 }

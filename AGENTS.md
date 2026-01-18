@@ -220,7 +220,10 @@ the correct action is to add one or stop and ask.
 ### Users
 
 - Users are scoped to a single bid year
-- A user’s initials are the sole identifier for that user within a bid year
+- Users are uniquely identified by a canonical `user_id`
+- User initials are **display metadata only**
+- Initials are not required to be unique
+- Initials may be edited at any time
 - User names are informational and are not unique
 - A user must belong to exactly one area
 - A user must belong to exactly one crew

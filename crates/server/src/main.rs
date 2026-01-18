@@ -43,13 +43,14 @@ use zab_bid_api::{
     TransitionToBiddingActiveResponse, TransitionToBiddingClosedRequest,
     TransitionToBiddingClosedResponse, TransitionToBootstrapCompleteRequest,
     TransitionToBootstrapCompleteResponse, TransitionToCanonicalizedRequest,
-    TransitionToCanonicalizedResponse, UpdateUserRequest, UpdateUserResponse, checkpoint,
-    create_area, create_bid_year, finalize, get_active_bid_year, get_bootstrap_completeness,
-    get_bootstrap_status, get_current_state, get_historical_state, get_leave_availability,
-    import_csv_users, list_areas, list_bid_years, list_users, override_area_assignment,
-    preview_csv_users, register_user, rollback, set_active_bid_year, set_expected_area_count,
-    set_expected_user_count, transition_to_bidding_active, transition_to_bidding_closed,
-    transition_to_bootstrap_complete, transition_to_canonicalized, update_user,
+    TransitionToCanonicalizedResponse, UpdateAreaRequest, UpdateAreaResponse, UpdateUserRequest,
+    UpdateUserResponse, checkpoint, create_area, create_bid_year, finalize, get_active_bid_year,
+    get_bootstrap_completeness, get_bootstrap_status, get_current_state, get_historical_state,
+    get_leave_availability, import_csv_users, list_areas, list_bid_years, list_users,
+    override_area_assignment, preview_csv_users, register_user, rollback, set_active_bid_year,
+    set_expected_area_count, set_expected_user_count, transition_to_bidding_active,
+    transition_to_bidding_closed, transition_to_bootstrap_complete, transition_to_canonicalized,
+    update_area, update_user,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, BidYearLifecycle, CanonicalBidYear, Initials};
@@ -2192,6 +2193,41 @@ async fn handle_set_expected_user_count(
     Ok(Json(response))
 }
 
+/// Handler for PUT `/api/areas/update` endpoint.
+///
+/// Updates area metadata (display name). Admin only.
+async fn handle_update_area(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<UpdateAreaRequest>,
+) -> Result<Json<UpdateAreaResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        area_id = req.area_id,
+        ?req.area_name,
+        "Handling update_area request"
+    );
+
+    // Get current bootstrap metadata
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Execute command via API
+    let response: UpdateAreaResponse =
+        update_area(&mut persistence, &metadata, &req, &actor, &operator)?;
+    drop(persistence);
+
+    info!(
+        area_id = response.area_id,
+        area_code = %response.area_code,
+        ?response.area_name,
+        "Successfully updated area metadata"
+    );
+
+    Ok(Json(response))
+}
+
 /// Handler for PUT `/users/{initials}` endpoint.
 ///
 /// Updates an existing user. Admin only.
@@ -2525,6 +2561,7 @@ fn build_router(state: AppState) -> Router {
             "/bootstrap/areas/expected-users",
             post(handle_set_expected_user_count),
         )
+        .route("/areas/update", post(handle_update_area))
         .route(
             "/bootstrap/completeness",
             get(handle_get_bootstrap_completeness),

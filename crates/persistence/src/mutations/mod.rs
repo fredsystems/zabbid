@@ -35,7 +35,8 @@ pub use bootstrap::{
     set_expected_user_count_sqlite,
 };
 pub use canonical::{
-    create_system_area_mysql, create_system_area_sqlite, update_user_mysql, update_user_sqlite,
+    create_system_area_mysql, create_system_area_sqlite, update_area_name_mysql,
+    update_area_name_sqlite, update_user_mysql, update_user_sqlite,
 };
 pub use operators::{
     create_operator_mysql, create_operator_sqlite, create_session_mysql, create_session_sqlite,

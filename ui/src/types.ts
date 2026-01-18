@@ -114,6 +114,24 @@ export interface CreateAreaResponse {
   /** A success message */
   message: string;
 }
+
+/**
+ * Response for updating area metadata.
+ */
+export interface UpdateAreaResponse {
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year (display value) */
+  bid_year: number;
+  /** The canonical area identifier */
+  area_id: number;
+  /** The area code (immutable) */
+  area_code: string;
+  /** The updated display name */
+  area_name: string | null;
+  /** Success message */
+  message: string;
+}
 /**
  * Information about a single area.
  */
@@ -160,6 +178,16 @@ export interface UserInfo {
   crew: number | null;
   /** The user's type classification (CPC, CPC-IT, Dev-R, Dev-D) */
   user_type: string;
+  /** Cumulative NATCA bargaining unit date (ISO 8601 date string) */
+  cumulative_natca_bu_date: string;
+  /** NATCA bargaining unit date (ISO 8601 date string) */
+  natca_bu_date: string;
+  /** Entry on Duty / FAA date (ISO 8601 date string) */
+  eod_faa_date: string;
+  /** Service Computation Date (ISO 8601 date string) */
+  service_computation_date: string;
+  /** Optional lottery value for tie-breaking */
+  lottery_value: number | null;
   /** Total hours earned (from Phase 9, post-rounding) */
   earned_hours: number;
   /** Total days earned */

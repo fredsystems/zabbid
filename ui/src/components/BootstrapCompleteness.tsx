@@ -26,16 +26,19 @@ import {
   createArea,
   createBidYear,
   getBootstrapCompleteness,
+  listAreas,
   listUsers,
   NetworkError,
   registerUser,
   setActiveBidYear,
   setExpectedAreaCount as setExpectedAreaCountApi,
   setExpectedUserCount as setExpectedUserCountApi,
+  updateArea,
   updateUser,
 } from "../api";
 import type {
   AreaCompletenessInfo,
+  AreaInfo,
   BidYearCompletenessInfo,
   BlockingReason,
   ConnectionState,
@@ -68,6 +71,14 @@ export function BootstrapCompleteness({
   // Derive isAdmin from capabilities for backward compatibility
   // TODO: Replace all isAdmin checks with specific capability checks
   const isAdmin = capabilities?.can_create_bid_year ?? false;
+
+  // Helper to get lifecycle state for a bid year
+  const getLifecycleStateForBidYear = (bidYearId: number): string => {
+    const bidYear = completeness?.bid_years.find(
+      (by) => by.bid_year_id === bidYearId,
+    );
+    return bidYear?.lifecycle_state ?? "Draft";
+  };
 
   const loadCompleteness = useCallback(async () => {
     try {
@@ -285,6 +296,7 @@ export function BootstrapCompleteness({
                 area={area}
                 isAdmin={isAdmin}
                 sessionToken={sessionToken}
+                lifecycleState={getLifecycleStateForBidYear(area.bid_year_id)}
                 onRefresh={loadCompleteness}
                 onError={setError}
               />
@@ -762,6 +774,7 @@ interface AreaItemProps {
   area: AreaCompletenessInfo;
   isAdmin: boolean;
   sessionToken: string | null;
+  lifecycleState: string;
   onRefresh: () => Promise<void>;
   onError: (error: string) => void;
 }
@@ -770,14 +783,46 @@ function AreaItem({
   area,
   isAdmin,
   sessionToken,
+  lifecycleState,
   onRefresh,
   onError,
 }: AreaItemProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
   const [expectedUserCount, setExpectedUserCount] = useState(
     area.expected_user_count?.toString() ?? "",
   );
+  const [areaName, setAreaName] = useState("");
+  const [areaDetails, setAreaDetails] = useState<AreaInfo | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Fetch full area details to get area_name and is_system_area
+  useEffect(() => {
+    const fetchAreaDetails = async () => {
+      if (!sessionToken) {
+        setLoadingDetails(false);
+        return;
+      }
+
+      try {
+        const response = await listAreas(area.bid_year_id);
+        const fullAreaInfo = response.areas.find(
+          (a) => a.area_id === area.area_id,
+        );
+        if (fullAreaInfo) {
+          setAreaDetails(fullAreaInfo);
+          setAreaName(fullAreaInfo.area_name ?? "");
+        }
+      } catch (err) {
+        console.error("Failed to fetch area details:", err);
+      } finally {
+        setLoadingDetails(false);
+      }
+    };
+
+    void fetchAreaDetails();
+  }, [area.area_id, area.bid_year_id, sessionToken]);
 
   const handleSetExpectedUserCount = async () => {
     if (!sessionToken || !expectedUserCount) return;
@@ -809,6 +854,48 @@ function AreaItem({
     }
   };
 
+  const handleSetAreaName = async () => {
+    if (!sessionToken) return;
+
+    try {
+      setSaving(true);
+      onError("");
+      await updateArea(sessionToken, area.area_id, areaName || null);
+      await onRefresh();
+      setIsEditingName(false);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        onError(`Failed to update area name: ${err.message}`);
+      } else {
+        onError(
+          err instanceof Error ? err.message : "Failed to update area name",
+        );
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Determine if this area is a system area (e.g., "No Bid")
+  const isSystemArea =
+    areaDetails?.is_system_area ?? area.area_code === "NO BID";
+
+  // Lifecycle gating: editing only allowed pre-canonicalization
+  const isCanonicalizedOrLater =
+    lifecycleState === "Canonicalized" ||
+    lifecycleState === "BiddingActive" ||
+    lifecycleState === "BiddingClosed";
+
+  const canEditMetadata = !isSystemArea && !isCanonicalizedOrLater;
+
+  if (loadingDetails) {
+    return (
+      <div className="area-item">
+        <p className="loading-text">Loading area details...</p>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`area-item ${area.is_complete ? "complete" : "incomplete"}`}
@@ -818,6 +905,14 @@ function AreaItem({
           <h4>
             {area.area_code}{" "}
             <span className="area-year">(Year {area.bid_year})</span>
+            {isSystemArea && (
+              <span
+                className="badge system-area-badge"
+                title="System-managed area. Cannot be edited."
+              >
+                System Area
+              </span>
+            )}
           </h4>
           {area.is_complete ? (
             <span className="badge complete">✓ Complete</span>
@@ -828,23 +923,114 @@ function AreaItem({
       </div>
 
       <div className="item-body">
-        {!isEditing ? (
+        {!isEditing && !isEditingName ? (
           <div className="item-details">
             <dl>
+              <dt>Area Code (immutable):</dt>
+              <dd style={{ fontFamily: "monospace" }}>{area.area_code}</dd>
+              <dt>Display Name:</dt>
+              <dd>
+                {areaDetails?.area_name ? (
+                  areaDetails.area_name
+                ) : (
+                  <span style={{ fontStyle: "italic", color: "#888" }}>
+                    Not set
+                  </span>
+                )}
+              </dd>
               <dt>Expected Users:</dt>
-              <dd>{area.expected_user_count ?? "Not Set"}</dd>
+              <dd>
+                {isSystemArea ? (
+                  <span style={{ fontStyle: "italic", color: "#888" }}>
+                    N/A (System Area)
+                  </span>
+                ) : (
+                  (area.expected_user_count ?? "Not Set")
+                )}
+              </dd>
               <dt>Actual Users:</dt>
               <dd>{area.actual_user_count}</dd>
             </dl>
-            {isAdmin && (
+            {isAdmin && !isSystemArea && (
+              <div
+                style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setIsEditingName(true)}
+                  disabled={!canEditMetadata}
+                  className="btn-edit"
+                  title={
+                    isCanonicalizedOrLater
+                      ? "Area metadata cannot be changed after canonicalization"
+                      : "Edit display name"
+                  }
+                >
+                  Edit Name
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  disabled={!canEditMetadata}
+                  className="btn-edit"
+                  title={
+                    isCanonicalizedOrLater
+                      ? "Area metadata cannot be changed after canonicalization"
+                      : "Edit expected user count"
+                  }
+                >
+                  Edit Count
+                </button>
+              </div>
+            )}
+          </div>
+        ) : isEditingName ? (
+          <div className="item-edit-form">
+            <div className="form-row">
+              <label htmlFor={`area-name-${area.bid_year}-${area.area_code}`}>
+                Display Name:
+              </label>
+              <input
+                id={`area-name-${area.bid_year}-${area.area_code}`}
+                type="text"
+                value={areaName}
+                onChange={(e) => setAreaName(e.target.value)}
+                disabled={saving}
+                placeholder="Optional display name"
+              />
+            </div>
+            {isCanonicalizedOrLater && (
+              <p
+                style={{
+                  fontSize: "0.9rem",
+                  color: "#666",
+                  marginTop: "0.5rem",
+                }}
+              >
+                🔒 Area metadata is locked after canonicalization
+              </p>
+            )}
+            <div className="form-actions">
               <button
                 type="button"
-                onClick={() => setIsEditing(true)}
-                className="btn-edit"
+                onClick={handleSetAreaName}
+                disabled={saving}
+                className="btn-save"
               >
-                Edit
+                {saving ? "Saving..." : "Save"}
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditingName(false);
+                  setAreaName(areaDetails?.area_name ?? "");
+                }}
+                disabled={saving}
+                className="btn-cancel"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         ) : (
           <div className="item-edit-form">
@@ -863,6 +1049,17 @@ function AreaItem({
                 disabled={saving}
               />
             </div>
+            {isCanonicalizedOrLater && (
+              <p
+                style={{
+                  fontSize: "0.9rem",
+                  color: "#666",
+                  marginTop: "0.5rem",
+                }}
+              >
+                🔒 Area metadata is locked after canonicalization
+              </p>
+            )}
             <div className="form-actions">
               <button
                 type="button"
@@ -1491,8 +1688,17 @@ function EditUserForm({
   const [name, setName] = useState(user.name);
   const [userType, setUserType] = useState(user.user_type);
   const [crew, setCrew] = useState(user.crew?.toString() ?? "");
-  // Note: We don't have the seniority dates in UserInfo, so we can't edit them here
-  // This would need to be fetched from a separate endpoint or included in UserInfo
+  const [cumulativeNatcaBuDate, setCumulativeNatcaBuDate] = useState(
+    user.cumulative_natca_bu_date,
+  );
+  const [natcaBuDate, setNatcaBuDate] = useState(user.natca_bu_date);
+  const [eodFaaDate, setEodFaaDate] = useState(user.eod_faa_date);
+  const [serviceComputationDate, setServiceComputationDate] = useState(
+    user.service_computation_date,
+  );
+  const [lotteryValue, setLotteryValue] = useState(
+    user.lottery_value?.toString() ?? "",
+  );
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -1511,8 +1717,6 @@ function EditUserForm({
     try {
       setSaving(true);
       onError("");
-      // Note: This is a simplified update - we're using placeholder dates
-      // In a full implementation, we'd need to fetch the full user data first
       await updateUser(
         sessionToken,
         user.user_id,
@@ -1521,11 +1725,11 @@ function EditUserForm({
         areaId,
         userType,
         crewNum,
-        "2020-01-01", // Placeholder - should fetch actual values
-        "2020-01-01",
-        "2020-01-01",
-        "2020-01-01",
-        null,
+        cumulativeNatcaBuDate,
+        natcaBuDate,
+        eodFaaDate,
+        serviceComputationDate,
+        lotteryValue ? Number.parseInt(lotteryValue, 10) : null,
       );
       onSuccess();
     } catch (err) {
@@ -1581,6 +1785,71 @@ function EditUserForm({
             max="7"
             value={crew}
             onChange={(e) => setCrew(e.target.value)}
+            disabled={saving}
+          />
+        </div>
+
+        <div className="form-row">
+          <label htmlFor={`edit-user-cumulative-natca-${user.initials}`}>
+            Cumulative NATCA BU Date:
+          </label>
+          <input
+            id={`edit-user-cumulative-natca-${user.initials}`}
+            type="date"
+            value={cumulativeNatcaBuDate}
+            onChange={(e) => setCumulativeNatcaBuDate(e.target.value)}
+            disabled={saving}
+          />
+        </div>
+
+        <div className="form-row">
+          <label htmlFor={`edit-user-natca-${user.initials}`}>
+            NATCA BU Date:
+          </label>
+          <input
+            id={`edit-user-natca-${user.initials}`}
+            type="date"
+            value={natcaBuDate}
+            onChange={(e) => setNatcaBuDate(e.target.value)}
+            disabled={saving}
+          />
+        </div>
+
+        <div className="form-row">
+          <label htmlFor={`edit-user-eod-${user.initials}`}>
+            EOD/FAA Date:
+          </label>
+          <input
+            id={`edit-user-eod-${user.initials}`}
+            type="date"
+            value={eodFaaDate}
+            onChange={(e) => setEodFaaDate(e.target.value)}
+            disabled={saving}
+          />
+        </div>
+
+        <div className="form-row">
+          <label htmlFor={`edit-user-scd-${user.initials}`}>
+            Service Computation Date:
+          </label>
+          <input
+            id={`edit-user-scd-${user.initials}`}
+            type="date"
+            value={serviceComputationDate}
+            onChange={(e) => setServiceComputationDate(e.target.value)}
+            disabled={saving}
+          />
+        </div>
+
+        <div className="form-row">
+          <label htmlFor={`edit-user-lottery-${user.initials}`}>
+            Lottery Value (optional):
+          </label>
+          <input
+            id={`edit-user-lottery-${user.initials}`}
+            type="number"
+            value={lotteryValue}
+            onChange={(e) => setLotteryValue(e.target.value)}
             disabled={saving}
           />
         </div>
