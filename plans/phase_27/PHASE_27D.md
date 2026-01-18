@@ -23,7 +23,8 @@ Each ignored test must be categorized as one of:
 - **Obsolete**: Test for removed functionality or superseded by other tests
 - **Integration**: Requires external infrastructure (should be gated via xtask)
 - **Hermetic-Candidate**: Was ignored for flakiness but could now be fixed
-- **Justified**: Legitimately deferred (e.g., performance tests, future features)
+- **Justified**: Legitimately deferred with documented rationale in code (e.g. long-running performance tests or tests blocked by an explicitly planned future phase)
+- If the reason for `#[ignore]` is not documented in code comments, the catalog must explicitly say “Reason undocumented” — no inferred justification.
 
 ### Output Artifact
 
@@ -129,3 +130,12 @@ Include enough context that someone unfamiliar with the test can understand:
 - Why it matters
 - What's blocking it from running
 - What would be required to enable it
+
+## Summary
+
+| Category           | Count |
+| ------------------ | ----- |
+| Obsolete           | 3     |
+| Integration        | 5     |
+| Hermetic-Candidate | 2     |
+| Justified          | 1     |
