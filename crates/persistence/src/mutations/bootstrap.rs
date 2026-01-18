@@ -593,78 +593,197 @@ pub fn set_expected_user_count(
 /// # Errors
 ///
 /// Returns an error if any database operation fails.
-pub fn canonicalize_bid_year_sqlite(
-    conn: &mut SqliteConnection,
+/// Helper to build canonical records and snapshot from user/area data.
+#[allow(clippy::type_complexity)]
+fn build_canonical_records_and_snapshot(
     bid_year_id: i64,
-    audit_event: &zab_bid_audit::AuditEvent,
-) -> Result<i64, PersistenceError> {
-    use crate::diesel_schema::users;
-
-    // First, persist the audit event to get the `event_id`
-    let event_id: i64 = persist_audit_event_sqlite(conn, audit_event)?;
-    debug!(
-        event_id,
-        bid_year_id, "Persisted canonicalization audit event"
-    );
-
-    // Query all users for this bid year to build canonical records
-    let user_rows: Vec<(i64, i64, i64)> = users::table
-        .select((users::user_id, users::area_id, users::bid_year_id))
-        .filter(users::bid_year_id.eq(bid_year_id))
-        .load(conn)?;
-
-    debug!(
-        bid_year_id,
-        user_count = user_rows.len(),
-        "Loaded users for canonicalization"
-    );
-
-    // Build canonical records
+    year: i32,
+    user_rows: &[(i64, String, String, i64, String, Option<String>)],
+    area_rows: &[(i64, String, Option<String>)],
+) -> Result<
+    (
+        Vec<NewCanonicalAreaMembership>,
+        Vec<NewCanonicalEligibility>,
+        Vec<NewCanonicalBidOrder>,
+        Vec<NewCanonicalBidWindows>,
+        crate::data_models::CanonicalizationSnapshot,
+    ),
+    PersistenceError,
+> {
     let mut area_membership_records: Vec<NewCanonicalAreaMembership> = Vec::new();
     let mut eligibility_records: Vec<NewCanonicalEligibility> = Vec::new();
     let mut bid_order_records: Vec<NewCanonicalBidOrder> = Vec::new();
     let mut bid_windows_records: Vec<NewCanonicalBidWindows> = Vec::new();
+    let mut snapshot_users: Vec<crate::data_models::CanonicalizedUserSnapshot> = Vec::new();
 
-    for (user_id, area_id, _) in user_rows {
+    for (user_id, initials, name, area_id, area_code, area_name) in user_rows {
         area_membership_records.push(NewCanonicalAreaMembership {
             bid_year_id,
-            audit_event_id: event_id,
-            user_id,
-            area_id,
+            audit_event_id: 0,
+            user_id: *user_id,
+            area_id: *area_id,
             is_overridden: 0,
             override_reason: None,
         });
 
         eligibility_records.push(NewCanonicalEligibility {
             bid_year_id,
-            audit_event_id: event_id,
-            user_id,
-            can_bid: 1, // Default to eligible
+            audit_event_id: 0,
+            user_id: *user_id,
+            can_bid: 1,
             is_overridden: 0,
             override_reason: None,
         });
 
         bid_order_records.push(NewCanonicalBidOrder {
             bid_year_id,
-            audit_event_id: event_id,
-            user_id,
-            bid_order: None, // NULL until computed
+            audit_event_id: 0,
+            user_id: *user_id,
+            bid_order: None,
             is_overridden: 0,
             override_reason: None,
         });
 
         bid_windows_records.push(NewCanonicalBidWindows {
             bid_year_id,
-            audit_event_id: event_id,
-            user_id,
-            window_start_date: None, // NULL until computed
-            window_end_date: None,   // NULL until computed
+            audit_event_id: 0,
+            user_id: *user_id,
+            window_start_date: None,
+            window_end_date: None,
             is_overridden: 0,
             override_reason: None,
         });
+
+        snapshot_users.push(crate::data_models::CanonicalizedUserSnapshot {
+            user_id: *user_id,
+            initials: initials.clone(),
+            name: name.clone(),
+            area_id: *area_id,
+            area_code: area_code.clone(),
+            area_name: area_name.clone().unwrap_or_default(),
+            can_bid: true,
+            bid_order: None,
+            window_start_date: None,
+            window_end_date: None,
+        });
     }
 
-    // Bulk insert canonical records
+    let snapshot_areas: Vec<crate::data_models::CanonicalizedAreaSnapshot> = area_rows
+        .iter()
+        .map(|(area_id, area_code, area_name)| {
+            let user_count = user_rows
+                .iter()
+                .filter(|(_, _, _, uid, _, _)| uid == area_id)
+                .count();
+
+            crate::data_models::CanonicalizedAreaSnapshot {
+                area_id: *area_id,
+                area_code: area_code.clone(),
+                area_name: area_name.clone().unwrap_or_default(),
+                user_count,
+            }
+        })
+        .collect();
+
+    let snapshot = crate::data_models::CanonicalizationSnapshot {
+        bid_year_id,
+        year: year.to_u16().ok_or_else(|| {
+            PersistenceError::ReconstructionError("Year out of range".to_string())
+        })?,
+        user_count: user_rows.len(),
+        area_count: area_rows.len(),
+        users: snapshot_users,
+        areas: snapshot_areas,
+        timestamp: {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let duration = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("System time before UNIX epoch");
+            format!("unix_{}", duration.as_secs())
+        },
+    };
+
+    Ok((
+        area_membership_records,
+        eligibility_records,
+        bid_order_records,
+        bid_windows_records,
+        snapshot,
+    ))
+}
+
+pub fn canonicalize_bid_year_sqlite(
+    conn: &mut SqliteConnection,
+    bid_year_id: i64,
+    audit_event: &zab_bid_audit::AuditEvent,
+) -> Result<i64, PersistenceError> {
+    use crate::diesel_schema::{areas, bid_years, canonical_area_membership, users};
+    use crate::queries::canonical::canonical_rows_exist_sqlite;
+
+    type UserWithAreaTuple = (i64, String, String, i64, String, Option<String>);
+    type AreaTuple = (i64, String, Option<String>);
+
+    if canonical_rows_exist_sqlite(conn, bid_year_id)? {
+        info!(bid_year_id, "Canonicalization already complete");
+        let existing_event_id: i64 = canonical_area_membership::table
+            .filter(canonical_area_membership::bid_year_id.eq(bid_year_id))
+            .select(canonical_area_membership::audit_event_id)
+            .first(conn)?;
+        return Ok(existing_event_id);
+    }
+
+    let user_rows: Vec<UserWithAreaTuple> = users::table
+        .inner_join(areas::table.on(users::area_id.eq(areas::area_id)))
+        .select((
+            users::user_id,
+            users::initials,
+            users::name,
+            areas::area_id,
+            areas::area_code,
+            areas::area_name,
+        ))
+        .filter(users::bid_year_id.eq(bid_year_id))
+        .order(users::initials.asc())
+        .load(conn)?;
+
+    let area_rows: Vec<AreaTuple> = areas::table
+        .select((areas::area_id, areas::area_code, areas::area_name))
+        .filter(areas::bid_year_id.eq(bid_year_id))
+        .order(areas::area_code.asc())
+        .load(conn)?;
+
+    let year: i32 = bid_years::table
+        .select(bid_years::year)
+        .filter(bid_years::bid_year_id.eq(bid_year_id))
+        .first(conn)?;
+
+    let (
+        mut area_membership_records,
+        mut eligibility_records,
+        mut bid_order_records,
+        mut bid_windows_records,
+        snapshot,
+    ) = build_canonical_records_and_snapshot(bid_year_id, year, &user_rows, &area_rows)?;
+
+    let snapshot_json = serde_json::to_string(&snapshot)?;
+    let mut audit_event_with_snapshot = audit_event.clone();
+    audit_event_with_snapshot.after = zab_bid_audit::StateSnapshot::new(snapshot_json);
+
+    let event_id: i64 = persist_audit_event_sqlite(conn, &audit_event_with_snapshot)?;
+
+    for record in &mut area_membership_records {
+        record.audit_event_id = event_id;
+    }
+    for record in &mut eligibility_records {
+        record.audit_event_id = event_id;
+    }
+    for record in &mut bid_order_records {
+        record.audit_event_id = event_id;
+    }
+    for record in &mut bid_windows_records {
+        record.audit_event_id = event_id;
+    }
+
     bulk_insert_canonical_area_membership_sqlite(conn, &area_membership_records)?;
     bulk_insert_canonical_eligibility_sqlite(conn, &eligibility_records)?;
     bulk_insert_canonical_bid_order_sqlite(conn, &bid_order_records)?;
@@ -676,7 +795,6 @@ pub fn canonicalize_bid_year_sqlite(
         user_count = area_membership_records.len(),
         "Canonicalized bid year"
     );
-
     Ok(event_id)
 }
 
@@ -707,73 +825,73 @@ pub fn canonicalize_bid_year_mysql(
     bid_year_id: i64,
     audit_event: &zab_bid_audit::AuditEvent,
 ) -> Result<i64, PersistenceError> {
-    use crate::diesel_schema::users;
+    use crate::diesel_schema::{areas, bid_years, canonical_area_membership, users};
+    use crate::queries::canonical::canonical_rows_exist_mysql;
 
-    // First, persist the audit event to get the `event_id`
-    let event_id: i64 = persist_audit_event_mysql(conn, audit_event)?;
-    debug!(
-        event_id,
-        bid_year_id, "Persisted canonicalization audit event"
-    );
+    type UserWithAreaTuple = (i64, String, String, i64, String, Option<String>);
+    type AreaTuple = (i64, String, Option<String>);
 
-    // Query all users for this bid year to build canonical records
-    let user_rows: Vec<(i64, i64, i64)> = users::table
-        .select((users::user_id, users::area_id, users::bid_year_id))
-        .filter(users::bid_year_id.eq(bid_year_id))
-        .load(conn)?;
-
-    debug!(
-        bid_year_id,
-        user_count = user_rows.len(),
-        "Loaded users for canonicalization"
-    );
-
-    // Build canonical records
-    let mut area_membership_records: Vec<NewCanonicalAreaMembership> = Vec::new();
-    let mut eligibility_records: Vec<NewCanonicalEligibility> = Vec::new();
-    let mut bid_order_records: Vec<NewCanonicalBidOrder> = Vec::new();
-    let mut bid_windows_records: Vec<NewCanonicalBidWindows> = Vec::new();
-
-    for (user_id, area_id, _) in user_rows {
-        area_membership_records.push(NewCanonicalAreaMembership {
-            bid_year_id,
-            audit_event_id: event_id,
-            user_id,
-            area_id,
-            is_overridden: 0,
-            override_reason: None,
-        });
-
-        eligibility_records.push(NewCanonicalEligibility {
-            bid_year_id,
-            audit_event_id: event_id,
-            user_id,
-            can_bid: 1, // Default to eligible
-            is_overridden: 0,
-            override_reason: None,
-        });
-
-        bid_order_records.push(NewCanonicalBidOrder {
-            bid_year_id,
-            audit_event_id: event_id,
-            user_id,
-            bid_order: None, // NULL until computed
-            is_overridden: 0,
-            override_reason: None,
-        });
-
-        bid_windows_records.push(NewCanonicalBidWindows {
-            bid_year_id,
-            audit_event_id: event_id,
-            user_id,
-            window_start_date: None, // NULL until computed
-            window_end_date: None,   // NULL until computed
-            is_overridden: 0,
-            override_reason: None,
-        });
+    if canonical_rows_exist_mysql(conn, bid_year_id)? {
+        info!(bid_year_id, "Canonicalization already complete");
+        let existing_event_id: i64 = canonical_area_membership::table
+            .filter(canonical_area_membership::bid_year_id.eq(bid_year_id))
+            .select(canonical_area_membership::audit_event_id)
+            .first(conn)?;
+        return Ok(existing_event_id);
     }
 
-    // Bulk insert canonical records
+    let user_rows: Vec<UserWithAreaTuple> = users::table
+        .inner_join(areas::table.on(users::area_id.eq(areas::area_id)))
+        .select((
+            users::user_id,
+            users::initials,
+            users::name,
+            areas::area_id,
+            areas::area_code,
+            areas::area_name,
+        ))
+        .filter(users::bid_year_id.eq(bid_year_id))
+        .order(users::initials.asc())
+        .load(conn)?;
+
+    let area_rows: Vec<AreaTuple> = areas::table
+        .select((areas::area_id, areas::area_code, areas::area_name))
+        .filter(areas::bid_year_id.eq(bid_year_id))
+        .order(areas::area_code.asc())
+        .load(conn)?;
+
+    let year: i32 = bid_years::table
+        .select(bid_years::year)
+        .filter(bid_years::bid_year_id.eq(bid_year_id))
+        .first(conn)?;
+
+    let (
+        mut area_membership_records,
+        mut eligibility_records,
+        mut bid_order_records,
+        mut bid_windows_records,
+        snapshot,
+    ) = build_canonical_records_and_snapshot(bid_year_id, year, &user_rows, &area_rows)?;
+
+    let snapshot_json = serde_json::to_string(&snapshot)?;
+    let mut audit_event_with_snapshot = audit_event.clone();
+    audit_event_with_snapshot.after = zab_bid_audit::StateSnapshot::new(snapshot_json);
+
+    let event_id: i64 = persist_audit_event_mysql(conn, &audit_event_with_snapshot)?;
+
+    for record in &mut area_membership_records {
+        record.audit_event_id = event_id;
+    }
+    for record in &mut eligibility_records {
+        record.audit_event_id = event_id;
+    }
+    for record in &mut bid_order_records {
+        record.audit_event_id = event_id;
+    }
+    for record in &mut bid_windows_records {
+        record.audit_event_id = event_id;
+    }
+
     bulk_insert_canonical_area_membership_mysql(conn, &area_membership_records)?;
     bulk_insert_canonical_eligibility_mysql(conn, &eligibility_records)?;
     bulk_insert_canonical_bid_order_mysql(conn, &bid_order_records)?;
@@ -785,6 +903,5 @@ pub fn canonicalize_bid_year_mysql(
         user_count = area_membership_records.len(),
         "Canonicalized bid year"
     );
-
     Ok(event_id)
 }

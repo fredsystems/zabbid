@@ -194,3 +194,39 @@ pub struct NewCanonicalBidWindows {
     pub is_overridden: i32,
     pub override_reason: Option<String>,
 }
+
+/// Canonicalization snapshot: per-user data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanonicalizedUserSnapshot {
+    pub user_id: i64,
+    pub initials: String,
+    pub name: String,
+    pub area_id: i64,
+    pub area_code: String,
+    pub area_name: String,
+    pub can_bid: bool,
+    pub bid_order: Option<i32>,
+    pub window_start_date: Option<String>,
+    pub window_end_date: Option<String>,
+}
+
+/// Canonicalization snapshot: per-area data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanonicalizedAreaSnapshot {
+    pub area_id: i64,
+    pub area_code: String,
+    pub area_name: String,
+    pub user_count: usize,
+}
+
+/// Complete canonicalization snapshot payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanonicalizationSnapshot {
+    pub bid_year_id: i64,
+    pub year: u16,
+    pub user_count: usize,
+    pub area_count: usize,
+    pub users: Vec<CanonicalizedUserSnapshot>,
+    pub areas: Vec<CanonicalizedAreaSnapshot>,
+    pub timestamp: String,
+}

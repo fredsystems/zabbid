@@ -36,6 +36,8 @@ pub enum PersistenceError {
     OperatorReferenced { operator_id: i64 },
     /// The requested resource was not found.
     NotFound(String),
+    /// Canonical data is missing when lifecycle state requires it.
+    CanonicalDataMissing { bid_year_id: i64, table: String },
     /// A general error occurred.
     Other(String),
 }
@@ -69,6 +71,12 @@ impl std::fmt::Display for PersistenceError {
                 )
             }
             Self::NotFound(msg) => write!(f, "Not found: {msg}"),
+            Self::CanonicalDataMissing { bid_year_id, table } => {
+                write!(
+                    f,
+                    "Canonical data missing for bid_year_id={bid_year_id}, table={table} (lifecycle state requires canonical tables)"
+                )
+            }
             Self::Other(msg) => write!(f, "{msg}"),
         }
     }
