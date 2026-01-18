@@ -184,6 +184,20 @@ Bootstrap completion requires:
 
 - Manual confirmation of all users in No Bid
 
+#### No Bid Review Semantics
+
+- Having users in No Bid is **not inherently invalid**
+- Bootstrap completion requires **explicit review**, not automatic emptiness
+- Review means:
+  - An administrator has consciously confirmed that remaining users are intentionally unassigned
+- The system may block bootstrap until review is acknowledged
+- Review does NOT imply assignment
+
+UI workflows may distinguish:
+
+- "Users present and unreviewed" (blocking)
+- "Users present but reviewed" (allowed)
+
 ---
 
 ### 7. Audit & Observability Guarantees

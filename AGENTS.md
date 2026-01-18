@@ -19,6 +19,9 @@ All changes must advance these goals. If unsure, stop and ask.
 - No breaking changes without migration notes
 - All code paths must have corresponding tests, including error cases
 - Correctness and auditability always take precedence over performance
+- AGENTS.md is authoritative
+- Agents must not reinterpret, weaken, or “improve” rules found here
+- If a rule appears inconsistent with the codebase, stop and ask
 
 ## Architectural Constraints
 
@@ -35,16 +38,6 @@ All changes must advance these goals. If unsure, stop and ask.
 - If additional system dependencies or services are required (e.g. databases),
   the correct action is to update the Nix environment or ask for intervention
 - Environment-related failures must not trigger refactors or logic changes
-
-## API changes
-
-- `api_cli.py` must be updated whenever:
-  - API endpoints change
-  - Request schemas change
-  - Response schemas change
-- CLI updates are considered **required**, not optional
-- CLI behavior must remain aligned with the current API surface
-- CLI drift is considered a correctness failure, not a tooling issue
 
 ## Audit & Data Integrity Rules
 
@@ -221,12 +214,13 @@ the correct action is to add one or stop and ask.
 
 - Users are scoped to a single bid year
 - Users are uniquely identified by a canonical `user_id`
+- **All persistence, lookup, and state transitions must use `user_id`**
 - User initials are **display metadata only**
-- Initials are not required to be unique
-- Initials may be edited at any time
-- User names are informational and are not unique
-- A user must belong to exactly one area
-- A user must belong to exactly one crew
+- Initials:
+  - are unique within a bid year by policy
+  - may change at any time
+  - must never be treated as a stable identifier
+  - must not be used as primary keys, foreign keys, or authoritative lookup inputs
 
 ### Crews
 
@@ -593,6 +587,17 @@ Unacceptable refactors include:
 ### UI Styling Guidelines
 
 UI styling should follow these proven patterns from the Bootstrap Completeness implementation:
+
+### Styling Enforcement
+
+- Inline styles (`style={{ ... }}` or `style="..."`) are **not permitted**
+- All styling must be implemented via:
+  - SCSS modules
+  - Shared style partials
+  - Existing design tokens and variables
+- Exceptions require explicit user approval
+
+Inline styles obscure intent, bypass design consistency, and are not auditable.
 
 #### Component Organization
 
