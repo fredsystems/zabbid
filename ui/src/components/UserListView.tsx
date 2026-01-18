@@ -308,6 +308,12 @@ export function UserListView({
                   >
                     View Details
                   </Link>
+                  <Link
+                    to={`/admin/bid-year/${bidYearIdNum}/areas/${areaIdNum}/users/${user.user_id}/edit`}
+                    className="link-edit"
+                  >
+                    Edit
+                  </Link>
                 </div>
               </div>
             );

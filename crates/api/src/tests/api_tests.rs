@@ -2467,3 +2467,153 @@ PU,Pam User,EAST,3,CPC,2012-04-01,2012-04-01,2012-08-05,2012-08-05,";
     assert!(initials_set.contains("SB"), "SB should exist");
     assert!(initials_set.contains("PU"), "PU should exist");
 }
+
+// ============================================================================
+// Bootstrap Readiness Tests
+// ============================================================================
+
+/// Test that `is_ready_for_bidding` is true when no blocking reasons exist.
+///
+/// See: Phase 26B bootstrap readiness consistency fix.
+#[test]
+fn test_bootstrap_readiness_with_no_blockers() {
+    use crate::{AreaCompletenessInfo, BidYearCompletenessInfo, GetBootstrapCompletenessResponse};
+
+    let response = GetBootstrapCompletenessResponse {
+        active_bid_year_id: Some(1),
+        active_bid_year: Some(2026),
+        bid_years: vec![BidYearCompletenessInfo {
+            bid_year_id: 1,
+            year: 2026,
+            is_active: true,
+            expected_area_count: Some(1),
+            actual_area_count: 1,
+            is_complete: true,
+            blocking_reasons: vec![],
+            lifecycle_state: "Bootstrap".to_string(),
+        }],
+        areas: vec![AreaCompletenessInfo {
+            bid_year_id: 1,
+            bid_year: 2026,
+            area_id: 1,
+            area_code: "EAST".to_string(),
+            expected_user_count: Some(0),
+            actual_user_count: 0,
+            is_complete: true,
+            blocking_reasons: vec![],
+        }],
+        is_ready_for_bidding: true,
+        blocking_reasons: vec![],
+    };
+
+    assert!(
+        response.is_ready_for_bidding,
+        "Should be ready when no blocking reasons exist"
+    );
+}
+
+/// Test that `is_ready_for_bidding` is false when top-level blocking reasons exist.
+///
+/// This is the primary regression test for the bug: `UsersInNoBidArea` in
+/// top-level `blocking_reasons` should prevent readiness, even when `is_complete`
+/// flags are true.
+///
+/// See: Phase 26B bootstrap readiness consistency fix.
+#[test]
+fn test_bootstrap_readiness_with_top_level_blocker() {
+    use crate::{
+        AreaCompletenessInfo, BidYearCompletenessInfo, BlockingReason,
+        GetBootstrapCompletenessResponse,
+    };
+
+    let response = GetBootstrapCompletenessResponse {
+        active_bid_year_id: Some(1),
+        active_bid_year: Some(2026),
+        bid_years: vec![BidYearCompletenessInfo {
+            bid_year_id: 1,
+            year: 2026,
+            is_active: true,
+            expected_area_count: Some(1),
+            actual_area_count: 1,
+            is_complete: true,
+            blocking_reasons: vec![],
+            lifecycle_state: "Bootstrap".to_string(),
+        }],
+        areas: vec![AreaCompletenessInfo {
+            bid_year_id: 1,
+            bid_year: 2026,
+            area_id: 1,
+            area_code: "EAST".to_string(),
+            expected_user_count: Some(0),
+            actual_user_count: 0,
+            is_complete: true,
+            blocking_reasons: vec![],
+        }],
+        is_ready_for_bidding: false,
+        blocking_reasons: vec![BlockingReason::UsersInNoBidArea {
+            bid_year_id: 1,
+            bid_year: 2026,
+            user_count: 1,
+            sample_initials: vec!["TEST".to_string()],
+        }],
+    };
+
+    assert!(
+        !response.is_ready_for_bidding,
+        "Should NOT be ready when top-level blocking reasons exist"
+    );
+    assert!(
+        !response.blocking_reasons.is_empty(),
+        "Top-level blocking reasons should be present"
+    );
+}
+
+/// Test that `is_ready_for_bidding` is false when area-level blocking reasons exist.
+///
+/// See: Phase 26B bootstrap readiness consistency fix.
+#[test]
+fn test_bootstrap_readiness_with_area_level_blocker() {
+    use crate::{
+        AreaCompletenessInfo, BidYearCompletenessInfo, BlockingReason,
+        GetBootstrapCompletenessResponse,
+    };
+
+    let response = GetBootstrapCompletenessResponse {
+        active_bid_year_id: Some(1),
+        active_bid_year: Some(2026),
+        bid_years: vec![BidYearCompletenessInfo {
+            bid_year_id: 1,
+            year: 2026,
+            is_active: true,
+            expected_area_count: Some(1),
+            actual_area_count: 1,
+            is_complete: true,
+            blocking_reasons: vec![],
+            lifecycle_state: "Bootstrap".to_string(),
+        }],
+        areas: vec![AreaCompletenessInfo {
+            bid_year_id: 1,
+            bid_year: 2026,
+            area_id: 1,
+            area_code: "EAST".to_string(),
+            expected_user_count: Some(5),
+            actual_user_count: 3,
+            is_complete: false,
+            blocking_reasons: vec![BlockingReason::UserCountMismatch {
+                bid_year_id: 1,
+                bid_year: 2026,
+                area_id: 1,
+                area_code: "EAST".to_string(),
+                expected: 5,
+                actual: 3,
+            }],
+        }],
+        is_ready_for_bidding: false,
+        blocking_reasons: vec![],
+    };
+
+    assert!(
+        !response.is_ready_for_bidding,
+        "Should NOT be ready when area-level blocking reasons exist"
+    );
+}

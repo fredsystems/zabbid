@@ -35,8 +35,9 @@ use zab_bid_api::{
     CreateBidYearRequest, CreateBidYearResponse, CsvImportRowStatus, GetActiveBidYearResponse,
     GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse, ImportCsvUsersRequest,
     ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
-    ListUsersResponse, PreviewCsvUsersRequest, PreviewCsvUsersResponse, RegisterUserRequest,
-    RegisterUserResponse, RegisterUserResult, SetActiveBidYearRequest, SetActiveBidYearResponse,
+    ListUsersResponse, OverrideAreaAssignmentRequest, OverrideAreaAssignmentResponse,
+    PreviewCsvUsersRequest, PreviewCsvUsersResponse, RegisterUserRequest, RegisterUserResponse,
+    RegisterUserResult, SetActiveBidYearRequest, SetActiveBidYearResponse,
     SetExpectedAreaCountRequest, SetExpectedAreaCountResponse, SetExpectedUserCountRequest,
     SetExpectedUserCountResponse, TransitionToBiddingActiveRequest,
     TransitionToBiddingActiveResponse, TransitionToBiddingClosedRequest,
@@ -45,10 +46,10 @@ use zab_bid_api::{
     TransitionToCanonicalizedResponse, UpdateUserRequest, UpdateUserResponse, checkpoint,
     create_area, create_bid_year, finalize, get_active_bid_year, get_bootstrap_completeness,
     get_bootstrap_status, get_current_state, get_historical_state, get_leave_availability,
-    import_csv_users, list_areas, list_bid_years, list_users, preview_csv_users, register_user,
-    rollback, set_active_bid_year, set_expected_area_count, set_expected_user_count,
-    transition_to_bidding_active, transition_to_bidding_closed, transition_to_bootstrap_complete,
-    transition_to_canonicalized, update_user,
+    import_csv_users, list_areas, list_bid_years, list_users, override_area_assignment,
+    preview_csv_users, register_user, rollback, set_active_bid_year, set_expected_area_count,
+    set_expected_user_count, transition_to_bidding_active, transition_to_bidding_closed,
+    transition_to_bootstrap_complete, transition_to_canonicalized, update_user,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, BidYearLifecycle, CanonicalBidYear, Initials};
@@ -1779,6 +1780,17 @@ struct ImportCsvUsersApiRequest {
     selected_row_indices: Vec<usize>,
 }
 
+/// API request to override a user's area assignment.
+#[derive(Debug, serde::Deserialize)]
+struct OverrideAreaAssignmentApiRequest {
+    /// The user's canonical identifier.
+    user_id: i64,
+    /// The new area ID to assign.
+    new_area_id: i64,
+    /// The reason for the override (min 10 characters).
+    reason: String,
+}
+
 /// Request body for logout endpoint.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct LogoutRequest {
@@ -2414,6 +2426,49 @@ async fn handle_import_csv_users(
     Ok(Json(response))
 }
 
+/// Handler for POST `/users/override-area` endpoint.
+///
+/// Overrides a user's area assignment after canonicalization.
+async fn handle_override_area_assignment(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<OverrideAreaAssignmentApiRequest>,
+) -> Result<Json<OverrideAreaAssignmentResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        user_id = req.user_id,
+        new_area_id = req.new_area_id,
+        "Handling override_area_assignment request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    // Build API request
+    let override_request = OverrideAreaAssignmentRequest {
+        user_id: req.user_id,
+        new_area_id: req.new_area_id,
+        reason: req.reason.clone(),
+    };
+
+    // Execute override via API
+    let response =
+        override_area_assignment(&mut persistence, &override_request, &actor, &operator)?;
+
+    drop(persistence);
+
+    info!(
+        user_id = req.user_id,
+        audit_event_id = response.audit_event_id,
+        "Successfully overrode area assignment"
+    );
+
+    // Note: We could broadcast a user_updated event here, but the override
+    // is a special case that may need its own event type in the future
+
+    Ok(Json(response))
+}
+
 fn build_router(state: AppState) -> Router {
     let live_broadcaster = Arc::clone(&state.live_events);
 
@@ -2492,6 +2547,10 @@ fn build_router(state: AppState) -> Router {
             post(handle_transition_to_bidding_closed),
         )
         .route("/users/update", post(handle_update_user))
+        .route(
+            "/users/override-area",
+            post(handle_override_area_assignment),
+        )
         .route(
             "/bootstrap/users/csv/preview",
             post(handle_preview_csv_users),
