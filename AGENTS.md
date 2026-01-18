@@ -72,6 +72,27 @@ All changes must advance these goals. If unsure, stop and ask.
 
 ## Code Semantics & Readability
 
+### Testing
+
+Testing is mandatory and treated as first-class code.
+
+- Every non-trivial behavior change **must be testable**
+- Every test must document a **specific domain invariant**
+- Success and failure cases are both required unless one is provably impossible
+
+- Any bug fix **must** include a regression test unless explicitly justified by context
+- Tests must be hermetic:
+  - No shared mutable state
+  - No reliance on execution order
+  - No hidden setup or teardown
+
+- Tests must be written for **humans first**
+  - Clarity is more important than reuse
+  - Duplication in tests is acceptable if it improves readability
+
+- Tests must assert **observable outcomes**, not internal mechanics
+- A failing test should immediately explain _why_ the behavior is invalid
+
 ### Boolean Usage Guidelines
 
 Booleans are permitted and encouraged when they represent:

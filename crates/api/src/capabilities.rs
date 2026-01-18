@@ -13,6 +13,7 @@ use crate::auth::{AuthenticatedActor, Role};
 use crate::request_response::{
     Capability, GlobalCapabilities, OperatorCapabilities, UserCapabilities,
 };
+use zab_bid_domain::BidYearLifecycle;
 use zab_bid_persistence::{OperatorData, SqlitePersistence};
 
 /// Computes global capabilities for an authenticated operator.
@@ -139,13 +140,14 @@ pub fn compute_operator_capabilities(
 ///
 /// Target-specific capabilities depend on:
 /// - The authenticated actor's role and state
-/// - The target user's state (e.g., whether they have bids)
+/// - The bid year's lifecycle state
 /// - Domain invariants (e.g., bidding locks)
 ///
 /// # Arguments
 ///
 /// * `actor` - The authenticated actor
 /// * `actor_operator` - The authenticated operator's data
+/// * `lifecycle_state` - The bid year's current lifecycle state
 ///
 /// # Returns
 ///
@@ -157,6 +159,7 @@ pub fn compute_operator_capabilities(
 pub const fn compute_user_capabilities(
     actor: &AuthenticatedActor,
     actor_operator: &OperatorData,
+    lifecycle_state: BidYearLifecycle,
 ) -> Result<UserCapabilities, &'static str> {
     // Disabled actors have no capabilities
     if actor_operator.is_disabled {
@@ -167,14 +170,37 @@ pub const fn compute_user_capabilities(
         });
     }
 
+    // Lifecycle-aware capability computation
+    // After canonicalization, structural changes (delete, move) are denied
+    let is_canonicalized_or_later = matches!(
+        lifecycle_state,
+        BidYearLifecycle::Canonicalized
+            | BidYearLifecycle::BiddingActive
+            | BidYearLifecycle::BiddingClosed
+    );
+
     // Only admins can delete users or move them between areas
     // Bidders can edit seniority data
     match actor.role {
-        Role::Admin => Ok(UserCapabilities {
-            can_delete: Capability::Allowed, // TODO: Phase 26 will restrict based on bid data
-            can_move_area: Capability::Allowed, // TODO: Future phase will restrict based on bidding state
-            can_edit_seniority: Capability::Allowed,
-        }),
+        Role::Admin => {
+            let can_delete = if is_canonicalized_or_later {
+                Capability::Denied
+            } else {
+                Capability::Allowed
+            };
+
+            let can_move_area = if is_canonicalized_or_later {
+                Capability::Denied
+            } else {
+                Capability::Allowed
+            };
+
+            Ok(UserCapabilities {
+                can_delete,
+                can_move_area,
+                can_edit_seniority: Capability::Allowed,
+            })
+        }
         Role::Bidder => Ok(UserCapabilities {
             can_delete: Capability::Denied,
             can_move_area: Capability::Denied,
@@ -414,11 +440,12 @@ mod tests {
     }
 
     #[test]
-    fn test_user_capabilities_admin() {
+    fn test_user_capabilities_admin_draft() {
         let actor = create_test_admin();
         let operator = create_operator_data(1, "admin", "Admin", false);
+        let lifecycle = BidYearLifecycle::Draft;
 
-        let caps = compute_user_capabilities(&actor, &operator).unwrap();
+        let caps = compute_user_capabilities(&actor, &operator, lifecycle).unwrap();
 
         assert!(caps.can_delete.is_allowed());
         assert!(caps.can_move_area.is_allowed());
@@ -426,26 +453,132 @@ mod tests {
     }
 
     #[test]
-    fn test_user_capabilities_bidder() {
-        let actor = create_test_bidder();
-        let operator = create_operator_data(1, "bidder", "Bidder", false);
+    fn test_user_capabilities_admin_bootstrap_complete() {
+        let actor = create_test_admin();
+        let operator = create_operator_data(1, "admin", "Admin", false);
+        let lifecycle = BidYearLifecycle::BootstrapComplete;
 
-        let caps = compute_user_capabilities(&actor, &operator).unwrap();
+        let caps = compute_user_capabilities(&actor, &operator, lifecycle).unwrap();
+
+        assert!(caps.can_delete.is_allowed());
+        assert!(caps.can_move_area.is_allowed());
+        assert!(caps.can_edit_seniority.is_allowed());
+    }
+
+    #[test]
+    fn test_user_capabilities_admin_canonicalized() {
+        let actor = create_test_admin();
+        let operator = create_operator_data(1, "admin", "Admin", false);
+        let lifecycle = BidYearLifecycle::Canonicalized;
+
+        let caps = compute_user_capabilities(&actor, &operator, lifecycle).unwrap();
 
         assert!(!caps.can_delete.is_allowed());
         assert!(!caps.can_move_area.is_allowed());
-        assert!(caps.can_edit_seniority.is_allowed()); // Bidders can edit seniority
+        assert!(caps.can_edit_seniority.is_allowed());
+    }
+
+    #[test]
+    fn test_user_capabilities_admin_bidding_active() {
+        let actor = create_test_admin();
+        let operator = create_operator_data(1, "admin", "Admin", false);
+        let lifecycle = BidYearLifecycle::BiddingActive;
+
+        let caps = compute_user_capabilities(&actor, &operator, lifecycle).unwrap();
+
+        assert!(!caps.can_delete.is_allowed());
+        assert!(!caps.can_move_area.is_allowed());
+        assert!(caps.can_edit_seniority.is_allowed());
+    }
+
+    #[test]
+    fn test_user_capabilities_admin_bidding_closed() {
+        let actor = create_test_admin();
+        let operator = create_operator_data(1, "admin", "Admin", false);
+        let lifecycle = BidYearLifecycle::BiddingClosed;
+
+        let caps = compute_user_capabilities(&actor, &operator, lifecycle).unwrap();
+
+        assert!(!caps.can_delete.is_allowed());
+        assert!(!caps.can_move_area.is_allowed());
+        assert!(caps.can_edit_seniority.is_allowed());
+    }
+
+    #[test]
+    fn test_user_capabilities_bidder_draft() {
+        let actor = create_test_bidder();
+        let operator = create_operator_data(1, "bidder", "Bidder", false);
+        let lifecycle = BidYearLifecycle::Draft;
+
+        let caps = compute_user_capabilities(&actor, &operator, lifecycle).unwrap();
+
+        assert!(!caps.can_delete.is_allowed());
+        assert!(!caps.can_move_area.is_allowed());
+        assert!(caps.can_edit_seniority.is_allowed());
+    }
+
+    #[test]
+    fn test_user_capabilities_bidder_canonicalized() {
+        let actor = create_test_bidder();
+        let operator = create_operator_data(1, "bidder", "Bidder", false);
+        let lifecycle = BidYearLifecycle::Canonicalized;
+
+        let caps = compute_user_capabilities(&actor, &operator, lifecycle).unwrap();
+
+        assert!(!caps.can_delete.is_allowed());
+        assert!(!caps.can_move_area.is_allowed());
+        assert!(caps.can_edit_seniority.is_allowed());
     }
 
     #[test]
     fn test_user_capabilities_disabled_actor() {
         let actor = create_test_admin();
         let operator = create_operator_data(1, "admin", "Admin", true);
+        let lifecycle = BidYearLifecycle::Draft;
 
-        let caps = compute_user_capabilities(&actor, &operator).unwrap();
+        let caps = compute_user_capabilities(&actor, &operator, lifecycle).unwrap();
 
         assert!(!caps.can_delete.is_allowed());
         assert!(!caps.can_move_area.is_allowed());
         assert!(!caps.can_edit_seniority.is_allowed());
+    }
+
+    #[test]
+    fn test_user_capabilities_lifecycle_transition() {
+        let actor = create_test_admin();
+        let operator = create_operator_data(1, "admin", "Admin", false);
+
+        // Before canonicalization: allowed
+        let caps_draft =
+            compute_user_capabilities(&actor, &operator, BidYearLifecycle::Draft).unwrap();
+        assert!(caps_draft.can_delete.is_allowed());
+        assert!(caps_draft.can_move_area.is_allowed());
+
+        let caps_bootstrap =
+            compute_user_capabilities(&actor, &operator, BidYearLifecycle::BootstrapComplete)
+                .unwrap();
+        assert!(caps_bootstrap.can_delete.is_allowed());
+        assert!(caps_bootstrap.can_move_area.is_allowed());
+
+        // After canonicalization: denied
+        let caps_canonical =
+            compute_user_capabilities(&actor, &operator, BidYearLifecycle::Canonicalized).unwrap();
+        assert!(!caps_canonical.can_delete.is_allowed());
+        assert!(!caps_canonical.can_move_area.is_allowed());
+
+        let caps_active =
+            compute_user_capabilities(&actor, &operator, BidYearLifecycle::BiddingActive).unwrap();
+        assert!(!caps_active.can_delete.is_allowed());
+        assert!(!caps_active.can_move_area.is_allowed());
+
+        let caps_closed =
+            compute_user_capabilities(&actor, &operator, BidYearLifecycle::BiddingClosed).unwrap();
+        assert!(!caps_closed.can_delete.is_allowed());
+        assert!(!caps_closed.can_move_area.is_allowed());
+
+        // Seniority editing always allowed for admins
+        assert!(caps_draft.can_edit_seniority.is_allowed());
+        assert!(caps_canonical.can_edit_seniority.is_allowed());
+        assert!(caps_closed.can_edit_seniority.is_allowed());
     }
 }
