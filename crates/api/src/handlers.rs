@@ -5,6 +5,7 @@
 
 //! API handler functions for state-changing and read-only operations.
 
+use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use zab_bid::{
     BootstrapMetadata, BootstrapResult, Command, State, TransitionResult, apply, apply_bootstrap,
@@ -41,8 +42,8 @@ use crate::request_response::{
     TransitionToBiddingActiveResponse, TransitionToBiddingClosedRequest,
     TransitionToBiddingClosedResponse, TransitionToBootstrapCompleteRequest,
     TransitionToBootstrapCompleteResponse, TransitionToCanonicalizedRequest,
-    TransitionToCanonicalizedResponse, UpdateUserRequest, UpdateUserResponse, UserCapabilities,
-    UserInfo, WhoAmIResponse,
+    TransitionToCanonicalizedResponse, UpdateAreaRequest, UpdateAreaResponse, UpdateUserRequest,
+    UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
 };
 use zab_bid_persistence::PersistenceError;
 
@@ -610,6 +611,210 @@ pub fn list_areas(
     })
 }
 
+/// Checks if an area is a system area and returns an error if it is.
+///
+/// # Errors
+///
+/// Returns an error if the area is a system area.
+fn validate_not_system_area(
+    persistence: &mut SqlitePersistence,
+    area_id: i64,
+    area_code: &str,
+) -> Result<(), ApiError> {
+    let is_system = persistence
+        .is_system_area(area_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to check system area status: {e}"),
+        })?;
+
+    if is_system {
+        return Err(translate_domain_error(
+            DomainError::CannotRenameSystemArea {
+                area_code: area_code.to_string(),
+            },
+        ));
+    }
+
+    Ok(())
+}
+
+/// Validates that the lifecycle state allows area metadata editing.
+///
+/// # Errors
+///
+/// Returns an error if the lifecycle state is >= Canonicalized.
+fn validate_lifecycle_allows_area_edit(
+    persistence: &mut SqlitePersistence,
+    bid_year_id: i64,
+    bid_year: u16,
+) -> Result<(), ApiError> {
+    let lifecycle_state_str =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    let lifecycle_state = zab_bid_domain::BidYearLifecycle::from_str(&lifecycle_state_str)
+        .map_err(|_| ApiError::Internal {
+            message: format!("Invalid lifecycle state: {lifecycle_state_str}"),
+        })?;
+
+    if matches!(
+        lifecycle_state,
+        zab_bid_domain::BidYearLifecycle::Canonicalized
+            | zab_bid_domain::BidYearLifecycle::BiddingActive
+            | zab_bid_domain::BidYearLifecycle::BiddingClosed
+    ) {
+        return Err(translate_domain_error(
+            DomainError::CannotEditAreaAfterCanonicalization {
+                bid_year,
+                lifecycle_state: lifecycle_state_str,
+            },
+        ));
+    }
+
+    Ok(())
+}
+
+/// Updates area metadata (display name only).
+///
+/// Phase 26C: Enables editing of area display names with lifecycle-aware gating.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+/// * `request` - The update area request
+/// * `authenticated_actor` - The authenticated actor (must be Admin)
+/// * `operator` - The operator data
+///
+/// # Returns
+///
+/// * `Ok(UpdateAreaResponse)` on success
+/// * `Err(ApiError)` if authorization fails, lifecycle state prevents editing,
+///   or the area is a system area
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not an Admin
+/// - The area is a system area (immutable)
+/// - The bid year lifecycle state is >= Canonicalized
+/// - The area does not exist
+pub fn update_area(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    request: &UpdateAreaRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+) -> Result<UpdateAreaResponse, ApiError> {
+    // Enforce authorization - only admins can update areas
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("update_area"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Resolve area from metadata
+    let area = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(request.area_id))
+        .map(|(_, a)| a)
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("Area"),
+            message: format!("Area with ID {} not found", request.area_id),
+        })?;
+
+    // Get the bid year for this area
+    let bid_year = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(request.area_id))
+        .map(|(by, _)| by)
+        .ok_or_else(|| ApiError::Internal {
+            message: format!("Area {} has no associated bid year", request.area_id),
+        })?;
+
+    // Get bid_year_id for lifecycle check
+    let bid_year_id = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == bid_year.year())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| ApiError::Internal {
+            message: format!("Bid year {} has no ID", bid_year.year()),
+        })?;
+
+    // Validate this is not a system area
+    validate_not_system_area(persistence, request.area_id, area.area_code())?;
+
+    // Validate lifecycle state allows editing
+    validate_lifecycle_allows_area_edit(persistence, bid_year_id, bid_year.year())?;
+
+    // Update the area name in the canonical table
+    persistence
+        .update_area_name(request.area_id, request.area_name.as_deref())
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to update area name: {e}"),
+        })?;
+
+    // Create audit event for the metadata change
+    let actor = authenticated_actor.to_audit_actor(operator);
+    let cause = Cause::new(
+        String::from("operator_action"),
+        String::from("Area metadata update via admin interface"),
+    );
+
+    let before = StateSnapshot::new(format!(
+        "area_name={}",
+        area.area_name().unwrap_or("(none)")
+    ));
+    let after = StateSnapshot::new(format!(
+        "area_name={}",
+        request.area_name.as_deref().unwrap_or("(none)")
+    ));
+
+    let action = Action::new(
+        String::from("UpdateAreaMetadata"),
+        Some(format!(
+            "Updated display name for area '{}' to '{}'",
+            area.area_code(),
+            request.area_name.as_deref().unwrap_or("(none)")
+        )),
+    );
+
+    let audit_event = AuditEvent::new(
+        actor,
+        cause,
+        action,
+        before,
+        after,
+        bid_year.clone(),
+        area.clone(),
+    );
+
+    persistence
+        .persist_audit_event(&audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    Ok(UpdateAreaResponse {
+        bid_year_id,
+        bid_year: bid_year.year(),
+        area_id: request.area_id,
+        area_code: area.area_code().to_string(),
+        area_name: request.area_name.clone(),
+        message: format!(
+            "Area '{}' display name updated successfully",
+            area.area_code()
+        ),
+    })
+}
+
 /// Lists all users in a given bid year and area with leave balances and capabilities.
 ///
 /// This is a read-only operation. No authorization check is performed.
@@ -638,7 +843,7 @@ pub fn list_areas(
 /// Phase 26A: Added `lifecycle_state` parameter for lifecycle-aware capability computation.
 /// This brings the parameter count to 8, which exceeds clippy's default limit of 7.
 /// Grouping these into a struct would add complexity without improving clarity.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub fn list_users(
     metadata: &BootstrapMetadata,
     canonical_bid_years: &[CanonicalBidYear],
@@ -749,6 +954,11 @@ pub fn list_users(
                 name: user.name.clone(),
                 crew: user.crew.as_ref().map(Crew::number),
                 user_type: user.user_type.as_str().to_string(),
+                cumulative_natca_bu_date: user.seniority_data.cumulative_natca_bu_date.clone(),
+                natca_bu_date: user.seniority_data.natca_bu_date.clone(),
+                eod_faa_date: user.seniority_data.eod_faa_date.clone(),
+                service_computation_date: user.seniority_data.service_computation_date.clone(),
+                lottery_value: user.seniority_data.lottery_value,
                 earned_hours,
                 earned_days,
                 remaining_hours: availability.remaining_hours,
@@ -2802,6 +3012,62 @@ pub fn set_expected_user_count(
             ),
         })?;
 
+    // Check if this is a system area (No Bid should not have expected count)
+    let is_system =
+        persistence
+            .is_system_area(request.area_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to check system area status: {e}"),
+            })?;
+
+    if is_system {
+        return Err(ApiError::InvalidInput {
+            field: String::from("area_id"),
+            message: format!(
+                "Cannot set expected user count for system area '{}'",
+                area.area_code()
+            ),
+        });
+    }
+
+    // Get bid_year_id for lifecycle check
+    let bid_year_id = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == active_bid_year.year())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| ApiError::Internal {
+            message: format!("Bid year {} has no ID", active_bid_year.year()),
+        })?;
+
+    // Check lifecycle state - reject if >= Canonicalized
+    let lifecycle_state_str =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    let lifecycle_state = zab_bid_domain::BidYearLifecycle::from_str(&lifecycle_state_str)
+        .map_err(|_| ApiError::Internal {
+            message: format!("Invalid lifecycle state: {lifecycle_state_str}"),
+        })?;
+
+    // Expected user count can only be set before canonicalization
+    if matches!(
+        lifecycle_state,
+        zab_bid_domain::BidYearLifecycle::Canonicalized
+            | zab_bid_domain::BidYearLifecycle::BiddingActive
+            | zab_bid_domain::BidYearLifecycle::BiddingClosed
+    ) {
+        return Err(translate_domain_error(
+            DomainError::CannotEditAreaAfterCanonicalization {
+                bid_year: active_bid_year.year(),
+                lifecycle_state: lifecycle_state_str,
+            },
+        ));
+    }
+
     let command = Command::SetExpectedUserCount {
         area: area.clone(),
         expected_count: request.expected_count,
@@ -2824,19 +3090,6 @@ pub fn set_expected_user_count(
         .persist_audit_event(&result.audit_event)
         .map_err(|e| ApiError::Internal {
             message: format!("Failed to persist audit event: {e}"),
-        })?;
-
-    // Extract bid_year_id from metadata
-    let bid_year_id: i64 = metadata
-        .bid_years
-        .iter()
-        .find(|by| by.year() == active_bid_year.year())
-        .and_then(zab_bid_domain::BidYear::bid_year_id)
-        .ok_or_else(|| ApiError::Internal {
-            message: format!(
-                "Bid year {} exists but has no ID in metadata",
-                active_bid_year.year()
-            ),
         })?;
 
     Ok(SetExpectedUserCountResponse {
@@ -4240,3 +4493,10 @@ pub fn override_bid_window(
         message: format!("Bid window overridden for user {user_initials} (audit event {event_id})"),
     })
 }
+
+// TODO Phase 26C: Add integration tests for update_area handler:
+// - test_update_area_allowed_in_draft
+// - test_update_area_denied_after_canonicalization
+// - test_update_area_denied_for_system_area
+// - test_update_area_requires_admin
+// - test_update_area_creates_audit_event

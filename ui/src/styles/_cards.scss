@@ -141,18 +141,24 @@
     justify-content: center;
     text-decoration: none;
     background-color: $color-accent-primary;
-    color: $color-bg-base; // Dark text for better contrast on blue background
+    color: $color-bg-base;
     border-radius: $radius-sm;
     font-weight: 500;
     transition: background-color $transition-base;
 
-    &:hover {
-      background-color: $color-accent-secondary;
-      text-decoration: none;
+    &:visited {
+      background-color: $color-accent-primary;
+      color: $color-bg-base;
     }
 
-    &:visited {
-      color: $color-bg-base; // Dark text for visited links too
+    &:hover {
+      background-color: $color-accent-secondary;
+      color: $color-bg-base;
+    }
+
+    &:active,
+    &:focus {
+      color: $color-bg-base;
     }
   }
 
@@ -378,4 +384,102 @@
     align-items: center;
     justify-content: center;
   }
+
+  a {
+    background-color: $color-accent-primary;
+    color: $color-bg-base;
+    text-decoration: none;
+    border-radius: $radius-sm;
+    font-weight: 500;
+    transition: background-color $transition-base;
+
+    &:visited {
+      background-color: $color-accent-primary;
+      color: $color-bg-base;
+    }
+
+    &:hover {
+      background-color: $color-accent-secondary;
+      color: $color-bg-base;
+    }
+
+    &:active,
+    &:focus {
+      color: $color-bg-base;
+    }
+  }
+}
+
+// ============================================================================
+// Inline Edit Forms (for card-based inline editing)
+// ============================================================================
+
+.inline-edit-form {
+  margin-top: $spacing-sm;
+
+  input[type="text"],
+  input[type="number"],
+  textarea {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: $spacing-sm;
+  }
+
+  .form-actions {
+    display: flex;
+    gap: $spacing-sm;
+    flex-wrap: wrap;
+
+    button {
+      flex: 0 1 auto;
+      min-width: 100px;
+
+      @media (max-width: 599px) {
+        flex: 1;
+      }
+    }
+  }
+}
+
+.card-subtitle-row {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+.btn-edit-inline {
+  padding: $spacing-xs $spacing-sm;
+  background: $color-bg-surface-elevated;
+  color: $color-text-primary;
+  border: 2px solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all $transition-base;
+  min-height: 36px;
+
+  &:hover:not(:disabled) {
+    background: $color-bg-surface-overlay;
+    border-color: $color-accent-primary;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.system-area-badge {
+  display: inline-block;
+  padding: $spacing-xs $spacing-sm;
+  background: $color-bg-surface-overlay;
+  color: $color-text-muted;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-xs;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-left: $spacing-sm;
 }

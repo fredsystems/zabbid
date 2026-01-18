@@ -28,6 +28,7 @@ import type {
   SetActiveBidYearResponse,
   SetExpectedAreaCountResponse,
   SetExpectedUserCountResponse,
+  UpdateAreaResponse,
   UpdateUserResponse,
   WhoAmIResponse,
 } from "./types";
@@ -678,4 +679,30 @@ export async function overrideAreaAssignment(
       }),
     },
   );
+}
+
+/**
+ * Update area metadata (display name).
+ *
+ * @param sessionToken - The session token for authentication
+ * @param areaId - The area's canonical identifier
+ * @param areaName - The new display name (null to clear)
+ * @returns Promise resolving to the update response
+ */
+export async function updateArea(
+  sessionToken: string,
+  areaId: number,
+  areaName: string | null,
+): Promise<UpdateAreaResponse> {
+  return fetchJson<UpdateAreaResponse>(`${API_BASE}/areas/update`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      area_id: areaId,
+      area_name: areaName,
+    }),
+  });
 }

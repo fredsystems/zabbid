@@ -1217,3 +1217,69 @@ pub fn override_bid_window_mysql(
 
     Ok((previous_start, previous_end, was_overridden != 0))
 }
+
+/// Updates an area's display name (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `area_id` - The canonical area identifier
+/// * `area_name` - The new display name (or `None` to clear)
+///
+/// # Errors
+///
+/// Returns an error if the area doesn't exist or the database operation fails.
+pub fn update_area_name_sqlite(
+    conn: &mut SqliteConnection,
+    area_id: i64,
+    area_name: Option<&str>,
+) -> Result<(), PersistenceError> {
+    use crate::diesel_schema::areas;
+
+    let rows_affected = diesel::update(areas::table.filter(areas::area_id.eq(area_id)))
+        .set(areas::area_name.eq(area_name))
+        .execute(conn)?;
+
+    if rows_affected == 0 {
+        return Err(PersistenceError::ReconstructionError(format!(
+            "Area with ID {area_id} not found"
+        )));
+    }
+
+    debug!(area_id, ?area_name, "Updated area display name");
+
+    Ok(())
+}
+
+/// Updates an area's display name (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `area_id` - The canonical area identifier
+/// * `area_name` - The new display name (or `None` to clear)
+///
+/// # Errors
+///
+/// Returns an error if the area doesn't exist or the database operation fails.
+pub fn update_area_name_mysql(
+    conn: &mut MysqlConnection,
+    area_id: i64,
+    area_name: Option<&str>,
+) -> Result<(), PersistenceError> {
+    use crate::diesel_schema::areas;
+
+    let rows_affected = diesel::update(areas::table.filter(areas::area_id.eq(area_id)))
+        .set(areas::area_name.eq(area_name))
+        .execute(conn)?;
+
+    if rows_affected == 0 {
+        return Err(PersistenceError::ReconstructionError(format!(
+            "Area with ID {area_id} not found"
+        )));
+    }
+
+    debug!(area_id, ?area_name, "Updated area display name");
+
+    Ok(())
+}

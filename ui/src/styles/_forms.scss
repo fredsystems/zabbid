@@ -120,6 +120,7 @@ input[type="tel"],
 textarea,
 select {
   width: 100%;
+  box-sizing: border-box;
   padding: $spacing-sm $spacing-md;
   font-size: $font-size-base;
   font-family: $font-family-base;

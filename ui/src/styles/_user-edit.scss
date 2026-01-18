@@ -92,15 +92,26 @@
       }
 
       .form-row {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-xs;
         margin-bottom: $spacing-md;
+
+        @media (min-width: 600px) {
+          flex-direction: row;
+          align-items: center;
+
+          label {
+            min-width: 200px;
+            flex-shrink: 0;
+          }
+        }
 
         &:last-child {
           margin-bottom: 0;
         }
 
         label {
-          display: block;
-          margin-bottom: $spacing-xs;
           font-weight: 600;
           color: $color-text-primary;
         }
@@ -108,13 +119,19 @@
         input,
         select,
         textarea {
+          flex: 1;
           width: 100%;
+          box-sizing: border-box;
           background: $color-bg-base;
           color: $color-text-primary;
           border: 2px solid $color-border;
           padding: $spacing-sm $spacing-md;
           border-radius: $radius-sm;
           font-size: 1rem;
+
+          @media (min-width: 600px) {
+            width: auto;
+          }
 
           &:focus {
             outline: none;
@@ -289,6 +306,15 @@
   justify-content: center;
   z-index: 1000;
   padding: $spacing-md;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+
+  &:focus {
+    outline: 2px solid $color-accent-primary;
+    outline-offset: -2px;
+  }
 }
 
 .modal-content {
@@ -544,22 +570,43 @@
   flex-wrap: wrap;
 
   a {
-    color: $color-accent-primary;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: $spacing-sm $spacing-md;
+    min-height: 44px;
+    background-color: $color-accent-primary;
+    color: $color-bg-base;
     text-decoration: none;
+    border-radius: $radius-sm;
     font-weight: 600;
-    transition: color 0.2s;
+    transition: background-color 0.2s;
+
+    &:visited {
+      background-color: $color-accent-primary;
+      color: $color-bg-base;
+    }
 
     &:hover {
-      color: color.scale($color-accent-primary, $lightness: -15%);
-      text-decoration: underline;
+      background-color: $color-accent-secondary;
+      color: $color-bg-base;
+    }
+
+    &:active,
+    &:focus {
+      color: $color-bg-base;
     }
   }
 
   .link-edit {
-    color: $color-accent-teal;
+    background-color: $color-accent-teal;
+
+    &:visited {
+      background-color: $color-accent-teal;
+    }
 
     &:hover {
-      color: color.scale($color-accent-teal, $lightness: -15%);
+      background-color: color.scale($color-accent-teal, $lightness: -15%);
     }
   }
 }

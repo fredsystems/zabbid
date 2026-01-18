@@ -435,6 +435,7 @@ fn run_cargo_nightly(args: Vec<&str>) -> Result<()> {
 /// - Any backend validation test fails
 ///
 /// Container cleanup happens regardless of test outcome.
+#[allow(clippy::too_many_lines)]
 fn test_mariadb() -> Result<()> {
     use std::thread::sleep;
     use std::time::Duration;
@@ -456,8 +457,16 @@ fn test_mariadb() -> Result<()> {
 
     // Stop and remove any existing container
     tracing::info!("Cleaning up any existing test container");
-    let _ = cmd!("docker", "stop", container_name).run();
-    let _ = cmd!("docker", "rm", container_name).run();
+    let _ = cmd!("docker", "stop", container_name)
+        .stderr_capture()
+        .stderr_null()
+        .stdout_null()
+        .run();
+    let _ = cmd!("docker", "rm", container_name)
+        .stderr_capture()
+        .stderr_null()
+        .stdout_null()
+        .run();
 
     // Start MariaDB container
     tracing::info!("Starting MariaDB container: {}", container_name);
@@ -502,6 +511,9 @@ fn test_mariadb() -> Result<()> {
             "-e",
             "SELECT 1"
         )
+        .stderr_capture()
+        .stderr_null()
+        .stdout_null()
         .run();
 
         if result.is_ok() {
@@ -541,8 +553,16 @@ fn test_mariadb() -> Result<()> {
 
     // Always cleanup container
     tracing::info!("Stopping MariaDB container");
-    let _ = cmd!("docker", "stop", container_name).run();
-    let _ = cmd!("docker", "rm", container_name).run();
+    let _ = cmd!("docker", "stop", container_name)
+        .stderr_capture()
+        .stderr_null()
+        .stdout_null()
+        .run();
+    let _ = cmd!("docker", "rm", container_name)
+        .stderr_capture()
+        .stderr_null()
+        .stdout_null()
+        .run();
 
     // Propagate test result
     test_result.wrap_err("MariaDB backend validation tests failed")?;
@@ -613,8 +633,16 @@ fn verify_migrations() -> Result<()> {
 
     // Stop and remove any existing container
     tracing::info!("Cleaning up any existing verification container");
-    let _ = cmd!("docker", "stop", container_name).run();
-    let _ = cmd!("docker", "rm", container_name).run();
+    let _ = cmd!("docker", "stop", container_name)
+        .stderr_capture()
+        .stderr_null()
+        .stdout_null()
+        .run();
+    let _ = cmd!("docker", "rm", container_name)
+        .stderr_capture()
+        .stderr_null()
+        .stdout_null()
+        .run();
 
     // Start MariaDB container
     tracing::info!("Starting MariaDB container: {}", container_name);
@@ -642,8 +670,16 @@ fn verify_migrations() -> Result<()> {
     // Define cleanup function
     let cleanup = || {
         tracing::info!("Cleaning up MariaDB container");
-        let _ = cmd!("docker", "stop", container_name).run();
-        let _ = cmd!("docker", "rm", container_name).run();
+        let _ = cmd!("docker", "stop", container_name)
+            .stderr_capture()
+            .stderr_null()
+            .stdout_null()
+            .run();
+        let _ = cmd!("docker", "rm", container_name)
+            .stderr_capture()
+            .stderr_null()
+            .stdout_null()
+            .run();
     };
 
     // Wait for MariaDB to be ready
@@ -666,6 +702,9 @@ fn verify_migrations() -> Result<()> {
             "-e",
             "SELECT 1"
         )
+        .stderr_capture()
+        .stderr_null()
+        .stdout_null()
         .run();
 
         if result.is_ok() {

@@ -162,20 +162,27 @@
         align-items: center;
         padding: $spacing-sm $spacing-lg;
         background: $color-accent-primary;
-        color: $color-bg-base; // Dark text for better contrast
+        color: $color-bg-base;
         text-decoration: none;
         border-radius: $radius-sm;
         font-weight: 600;
         transition: all $transition-base;
         box-shadow: $shadow-sm;
 
+        &:visited {
+          background: $color-accent-primary;
+          color: $color-bg-base;
+        }
+
         &:hover {
           background: $color-accent-secondary;
+          color: $color-bg-base;
           box-shadow: $shadow-md;
         }
 
-        &:visited {
-          color: $color-bg-base; // Dark text for visited links
+        &:active,
+        &:focus {
+          color: $color-bg-base;
         }
       }
     }

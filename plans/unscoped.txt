@@ -1,3 +1,5 @@
 Audit clippy allows
 test: remove ignored tests if we don't need them
 test: audit all tests against code paths and ensure coverage
+initials fix
+agents.md fix

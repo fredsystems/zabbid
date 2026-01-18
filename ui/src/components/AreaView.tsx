@@ -13,8 +13,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { listAreas, NetworkError } from "../api";
-import type { AreaInfo, ConnectionState, LiveEvent } from "../types";
+import {
+  ApiError,
+  listAreas,
+  listBidYears,
+  NetworkError,
+  updateArea,
+} from "../api";
+import type {
+  AreaInfo,
+  BidYearInfo,
+  ConnectionState,
+  LiveEvent,
+} from "../types";
 
 interface AreaViewProps {
   connectionState: ConnectionState;
@@ -26,10 +37,18 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
   const navigate = useNavigate();
   const [bidYearIdNum, setBidYearIdNum] = useState<number | null>(null);
   const [bidYear, setBidYear] = useState<number | null>(null);
+  const [lifecycleState, setLifecycleState] = useState<string | null>(null);
   const [areas, setAreas] = useState<AreaInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const previousConnectionState = useRef<ConnectionState | null>(null);
+
+  // Get session token from sessionStorage
+  useEffect(() => {
+    const token = sessionStorage.getItem("sessionToken");
+    setSessionToken(token);
+  }, []);
 
   // Parse and validate bidYearId on mount
   useEffect(() => {
@@ -58,9 +77,18 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
       try {
         setLoading(true);
         setError(null);
-        const response = await listAreas(bidYearIdNum);
-        setAreas(response.areas);
-        setBidYear(response.bid_year);
+        const [areasResponse, bidYearsResponse] = await Promise.all([
+          listAreas(bidYearIdNum),
+          listBidYears(),
+        ]);
+        setAreas(areasResponse.areas);
+        setBidYear(areasResponse.bid_year);
+
+        // Find the lifecycle state for this bid year
+        const bidYearInfo = bidYearsResponse.find(
+          (by: BidYearInfo) => by.bid_year_id === bidYearIdNum,
+        );
+        setLifecycleState(bidYearInfo?.lifecycle_state ?? null);
       } catch (err) {
         if (err instanceof NetworkError) {
           setError(
@@ -95,9 +123,18 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
         try {
           setLoading(true);
           setError(null);
-          const response = await listAreas(bidYearIdNum);
-          setAreas(response.areas);
-          setBidYear(response.bid_year);
+          const [areasResponse, bidYearsResponse] = await Promise.all([
+            listAreas(bidYearIdNum),
+            listBidYears(),
+          ]);
+          setAreas(areasResponse.areas);
+          setBidYear(areasResponse.bid_year);
+
+          // Find the lifecycle state for this bid year
+          const bidYearInfo = bidYearsResponse.find(
+            (by: BidYearInfo) => by.bid_year_id === bidYearIdNum,
+          );
+          setLifecycleState(bidYearInfo?.lifecycle_state ?? null);
         } catch (err) {
           if (err instanceof NetworkError) {
             setError(
@@ -131,9 +168,18 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
       console.log("[AreaView] Relevant event received, refreshing data");
       const loadAreas = async () => {
         try {
-          const response = await listAreas(bidYearIdNum);
-          setAreas(response.areas);
-          setBidYear(response.bid_year);
+          const [areasResponse, bidYearsResponse] = await Promise.all([
+            listAreas(bidYearIdNum),
+            listBidYears(),
+          ]);
+          setAreas(areasResponse.areas);
+          setBidYear(areasResponse.bid_year);
+
+          // Find the lifecycle state for this bid year
+          const bidYearInfo = bidYearsResponse.find(
+            (by: BidYearInfo) => by.bid_year_id === bidYearIdNum,
+          );
+          setLifecycleState(bidYearInfo?.lifecycle_state ?? null);
         } catch (err) {
           // Silently fail on live event refresh - connection state will show the issue
           console.error("Failed to refresh after live event:", err);
@@ -177,10 +223,216 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
     );
   }
 
+  interface AreaCardProps {
+    area: AreaInfo;
+    bidYearIdNum: number | null;
+    sessionToken: string | null;
+    isCanonicalizedOrLater: boolean;
+    onRefresh: () => Promise<void>;
+    onError: (error: string) => void;
+  }
+
+  function AreaCard({
+    area,
+    bidYearIdNum,
+    sessionToken,
+    isCanonicalizedOrLater,
+    onRefresh,
+    onError,
+  }: AreaCardProps) {
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [areaName, setAreaName] = useState(area.area_name ?? "");
+    const [saving, setSaving] = useState(false);
+
+    const handleSaveAreaName = async () => {
+      if (!sessionToken) {
+        onError("You must be logged in to edit areas");
+        return;
+      }
+
+      try {
+        setSaving(true);
+        onError("");
+        await updateArea(sessionToken, area.area_id, areaName || null);
+        await onRefresh();
+        setIsEditingName(false);
+      } catch (err) {
+        if (err instanceof ApiError) {
+          onError(`Failed to update area name: ${err.message}`);
+        } else {
+          onError(
+            err instanceof Error ? err.message : "Failed to update area name",
+          );
+        }
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const handleCancelEdit = () => {
+      setIsEditingName(false);
+      setAreaName(area.area_name ?? "");
+    };
+
+    const canEditMetadata = !area.is_system_area && !isCanonicalizedOrLater;
+
+    return (
+      <div className={`data-card ${area.is_system_area ? "system-area" : ""}`}>
+        <div className="card-header">
+          <div>
+            <h3 className="card-title">
+              Area {area.area_code}
+              {area.is_system_area && (
+                <span
+                  className="badge system-area-badge"
+                  title="System-managed area. Cannot be edited or deleted."
+                >
+                  System Area
+                </span>
+              )}
+            </h3>
+
+            {!isEditingName ? (
+              <div className="card-subtitle-row">
+                {area.area_name ? (
+                  <p className="card-subtitle">{area.area_name}</p>
+                ) : (
+                  <p
+                    className="card-subtitle"
+                    style={{ fontStyle: "italic", color: "#888" }}
+                  >
+                    No display name
+                  </p>
+                )}
+                {sessionToken && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingName(true)}
+                    disabled={!canEditMetadata}
+                    className="btn-edit-inline"
+                    title={
+                      area.is_system_area
+                        ? "System areas cannot be edited"
+                        : isCanonicalizedOrLater
+                          ? "Area metadata cannot be changed after canonicalization"
+                          : "Edit display name"
+                    }
+                  >
+                    Edit Name
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="inline-edit-form">
+                <input
+                  type="text"
+                  value={areaName}
+                  onChange={(e) => setAreaName(e.target.value)}
+                  disabled={saving}
+                  placeholder="Display name (optional)"
+                />
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    onClick={handleSaveAreaName}
+                    disabled={saving}
+                    className="btn-save"
+                  >
+                    {saving ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    disabled={saving}
+                    className="btn-cancel"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <p className="card-subtitle">
+              {area.user_count} {area.user_count === 1 ? "user" : "users"}
+            </p>
+          </div>
+        </div>
+
+        <div className="card-body">
+          <div className="card-field">
+            <span className="card-field-label">Area Code (immutable)</span>
+            <span
+              className="card-field-value"
+              style={{ fontFamily: "monospace" }}
+            >
+              {area.area_code}
+            </span>
+          </div>
+          <div className="card-field">
+            <span className="card-field-label">User Count</span>
+            <span className="card-field-value">{area.user_count}</span>
+          </div>
+          {area.is_system_area && (
+            <div className="card-field">
+              <span className="card-field-label">Type</span>
+              <span className="card-field-value">System Managed</span>
+            </div>
+          )}
+        </div>
+
+        <div className="card-footer">
+          <Link
+            to={`/admin/bid-year/${bidYearIdNum}/areas/${area.area_id}/users`}
+          >
+            View Users
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const handleRefresh = async () => {
+    if (bidYearIdNum === null) return;
+
+    try {
+      const [areasResponse, bidYearsResponse] = await Promise.all([
+        listAreas(bidYearIdNum),
+        listBidYears(),
+      ]);
+      setAreas(areasResponse.areas);
+      setBidYear(areasResponse.bid_year);
+
+      // Find the lifecycle state for this bid year
+      const bidYearInfo = bidYearsResponse.find(
+        (by: BidYearInfo) => by.bid_year_id === bidYearIdNum,
+      );
+      setLifecycleState(bidYearInfo?.lifecycle_state ?? null);
+    } catch (err) {
+      console.error("Failed to refresh:", err);
+    }
+  };
+
+  const isCanonicalizedOrLater =
+    lifecycleState === "Canonicalized" ||
+    lifecycleState === "BiddingActive" ||
+    lifecycleState === "BiddingClosed";
+
   return (
     <div className="area-view">
       <div className="view-header">
-        <h2>Areas for Bid Year {bidYear ?? bidYearIdNum}</h2>
+        <h2>
+          Areas for Bid Year {bidYear ?? bidYearIdNum}
+          {lifecycleState && (
+            <span
+              className={`badge lifecycle-${lifecycleState.toLowerCase()}`}
+              style={{ marginLeft: "1rem", fontSize: "0.8em" }}
+              title={`Lifecycle: ${lifecycleState}`}
+            >
+              {lifecycleState}
+              {isCanonicalizedOrLater && " 🔒"}
+            </span>
+          )}
+        </h2>
         <button type="button" onClick={() => navigate("/admin")}>
           Back to Overview
         </button>
@@ -198,53 +450,15 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
       {areas.length > 0 && (
         <div className="card-list">
           {areas.map((area) => (
-            <div
+            <AreaCard
               key={area.area_id}
-              className={`data-card ${area.is_system_area ? "system-area" : ""}`}
-            >
-              <div className="card-header">
-                <div>
-                  <h3 className="card-title">
-                    Area {area.area_code}
-                    {area.is_system_area && (
-                      <span
-                        className="badge system-area-badge"
-                        title="System-managed area. Cannot be renamed or deleted."
-                      >
-                        System Area
-                      </span>
-                    )}
-                  </h3>
-                  {area.area_name && (
-                    <p className="card-subtitle">{area.area_name}</p>
-                  )}
-                  <p className="card-subtitle">
-                    {area.user_count} {area.user_count === 1 ? "user" : "users"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="card-body">
-                <div className="card-field">
-                  <span className="card-field-label">User Count</span>
-                  <span className="card-field-value">{area.user_count}</span>
-                </div>
-                {area.is_system_area && (
-                  <div className="card-field">
-                    <span className="card-field-label">Type</span>
-                    <span className="card-field-value">System Managed</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="card-footer">
-                <Link
-                  to={`/admin/bid-year/${bidYearIdNum}/areas/${area.area_id}/users`}
-                >
-                  View Users
-                </Link>
-              </div>
-            </div>
+              area={area}
+              bidYearIdNum={bidYearIdNum}
+              sessionToken={sessionToken}
+              isCanonicalizedOrLater={isCanonicalizedOrLater}
+              onRefresh={handleRefresh}
+              onError={setError}
+            />
           ))}
         </div>
       )}

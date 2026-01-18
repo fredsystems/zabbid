@@ -825,6 +825,33 @@ impl Persistence {
         }
     }
 
+    /// Updates an area's display name.
+    ///
+    /// Phase 26C: Used to edit area metadata (display name only, not area code).
+    ///
+    /// # Arguments
+    ///
+    /// * `area_id` - The canonical area ID
+    /// * `area_name` - The new display name (or `None` to clear)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the area doesn't exist or the database operation fails.
+    pub fn update_area_name(
+        &mut self,
+        area_id: i64,
+        area_name: Option<&str>,
+    ) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::update_area_name_sqlite(conn, area_id, area_name)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::update_area_name_mysql(conn, area_id, area_name)
+            }
+        }
+    }
+
     /// Determines if a given action requires a full snapshot.
     ///
     /// # Arguments
