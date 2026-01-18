@@ -17,6 +17,9 @@ Apply identity correctness patterns from Phase 27B to areas and bid years, ensur
 - Grep for `area_code` usage in foreign keys and queries
 - Audit CSV preview logic (`crates/api/src/csv_preview.rs`) for area references
 - Check if area codes can change without breaking references
+  - “changed” here means display metadata mutation, not identity mutation
+  - Restated: Can area codes be changed as display metadata without breaking references?
+- Translation helpers that resolve display values to canonical IDs at ingress boundaries are acceptable and expected.
 
 #### Bid Years
 
@@ -146,6 +149,7 @@ If areas or bid years use display values as identifiers:
 - Assess scope of required changes
 - If fixes are straightforward (similar to user pattern), implement them
 - If fixes require architectural changes, stop and report findings
+- If fixing an identity violation would require changing core command signatures, do not implement the fix in this phase — document it for Phase 28.
 
 ### CSV Import Considerations
 
