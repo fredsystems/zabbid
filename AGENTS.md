@@ -213,7 +213,7 @@ the correct action is to add one or stop and ask.
 ### Users
 
 - Users are scoped to a single bid year
-- Users are uniquely identified by a canonical `user_id`
+- Users are uniquely identified by a canonical `user_id` (i64)
 - **All persistence, lookup, and state transitions must use `user_id`**
 - User initials are **display metadata only**
 - Initials:
@@ -221,6 +221,35 @@ the correct action is to add one or stop and ask.
   - may change at any time
   - must never be treated as a stable identifier
   - must not be used as primary keys, foreign keys, or authoritative lookup inputs
+
+### Areas
+
+- Areas are scoped to a single bid year
+- Areas are uniquely identified by a canonical `area_id` (i64)
+- **All persistence, lookup, and state transitions must use `area_id`**
+- Area code is **display metadata only**
+- Area codes:
+  - are unique within a bid year by policy
+  - are normalized to uppercase for consistency
+  - are immutable after creation
+  - must never be treated as a stable identifier for persistence or mutations
+  - must not be used as primary keys or foreign keys
+- Area names are optional display metadata and may be changed at any time
+- System areas (e.g., "No Bid") cannot be renamed
+- Area metadata edits are prohibited after canonicalization (lifecycle constraint)
+
+### Bid Year Identity
+
+- Bid years are identified by a canonical `bid_year_id` (i64)
+- **All persistence, lookup, and state transitions must use `bid_year_id`**
+- The year value (u16) is **display metadata only**
+- Year values:
+  - are unique across all bid years by policy
+  - are immutable after creation
+  - must never be treated as a stable identifier for persistence or mutations
+  - must not be used as primary keys or foreign keys
+- Label and notes are optional display metadata and may be changed at any time
+- Exactly one bid year may be active at any given time
 
 ### Crews
 
@@ -248,6 +277,53 @@ the correct action is to add one or stop and ask.
 - Seniority-related fields are inputs, not behavior
 - No seniority comparison, ranking, or tie-breaking logic may be implemented in Phase 1
 - The presence of seniority data must not imply ordering or priority without an explicit rule
+
+## Override & Edit Semantics
+
+### Direct Edits (Canonical State Mutations)
+
+Canonical data may be edited directly when lifecycle and authorization constraints allow.
+
+Direct edits:
+
+- Mutate canonical tables in place
+- Generate audit events recording the change
+- Require admin authorization
+- Are subject to lifecycle constraints (e.g., no area edits after canonicalization)
+
+Examples of direct edits:
+
+- Updating a user's initials, name, area assignment, or seniority data
+- Updating an area's display name
+- Updating a bid year's label or notes
+
+Direct edits are **not** overrides. They represent legitimate data corrections or updates.
+
+### Overrides (Exceptional State Changes)
+
+Overrides apply to derived canonical state (e.g., area assignments, eligibility, bid order).
+
+Overrides:
+
+- Require an explicit reason (min 10 characters)
+- Are recorded in separate canonical tables with `is_overridden` flags
+- Generate audit events with override semantics
+- Supersede algorithmically derived values
+- Are permanent and auditable
+
+Examples of overrides:
+
+- Overriding a user's area assignment
+- Overriding a user's eligibility status
+- Overriding a user's bid order
+
+Overrides are **not** edits. They represent exceptional corrections to system-computed state.
+
+### Identity Constraints
+
+- `user_id`, `area_id`, and `bid_year_id` are **always immutable**
+- Display metadata (initials, area codes, year values) may be mutable depending on context
+- Edits and overrides must always reference entities by their canonical IDs
 
 ## Logging & Instrumentation
 
@@ -757,37 +833,50 @@ Once a user is authenticated and has an active session:
 
 This rule applies **only** to authentication and session-establishment flows.
 
-## TODO — Post Phase 23A Enforcement
+## Canonical Identity Enforcement (Phase 23A Complete)
 
-After Phase 23A (Canonical Identity for Area & Bid Year) is complete:
+Phase 23A (Canonical Identity for Area & Bid Year) is complete.
+The following rules are now **active and enforced**:
 
-### Canonical Identity Enforcement Rules
+### Identity Model
 
-Agents must NOT introduce workaround logic to compensate for incomplete work
-in higher layers when modifying **domain** or **persistence** code.
+All primary domain entities use canonical numeric identifiers:
 
-Specifically, agents must NOT:
+- Users: `user_id` (i64)
+- Areas: `area_id` (i64)
+- Bid Years: `bid_year_id` (i64)
+
+Display metadata (initials, area codes, year values) must **never** be used as:
+
+- Primary keys
+- Foreign keys
+- Lookup inputs for persistence operations
+- Authoritative identifiers in state transitions
+
+### Persistence Rules
+
+Agents must NOT:
 
 - Create sentinel or fake canonical records (e.g. negative IDs, year = 0)
 - Insert placeholder rows solely to satisfy foreign key constraints
 - Hardcode identity mappings (e.g. year → ID magic values)
 - Auto-create canonical entities as a side effect of unrelated operations
-- Mutate persistence logic to “heal” missing state for test compatibility
+- Mutate persistence logic to "heal" missing state for test compatibility
 - Add filtering logic to hide non-domain records from queries
 - Modify schema or persistence behavior to make out-of-scope tests pass
 
 Canonical tables must contain **only real domain entities** created via
 explicit bootstrap or domain transitions.
 
-If introducing canonical identity causes failures in:
+### Lookup Functions
 
-- API tests
-- server tests
-- UI behavior
+When display metadata must be converted to canonical IDs, use authoritative lookup functions:
 
-Those failures are **expected** and must be addressed in a later phase.
+- `lookup_bid_year_id(year: u16) -> Result<i64>`
+- `lookup_area_id(bid_year_id: i64, area_code: &str) -> Result<i64>`
 
-Agents must stop and report failures rather than compensating for them.
+These lookups are **input validation only** and must not be used as primary identifiers
+within already-validated domain operations.
 
 ### Tooling Restrictions for Refactors
 
