@@ -198,10 +198,23 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
       {areas.length > 0 && (
         <div className="card-list">
           {areas.map((area) => (
-            <div key={area.area_id} className="data-card">
+            <div
+              key={area.area_id}
+              className={`data-card ${area.is_system_area ? "system-area" : ""}`}
+            >
               <div className="card-header">
                 <div>
-                  <h3 className="card-title">Area {area.area_code}</h3>
+                  <h3 className="card-title">
+                    Area {area.area_code}
+                    {area.is_system_area && (
+                      <span
+                        className="badge system-area-badge"
+                        title="System-managed area. Cannot be renamed or deleted."
+                      >
+                        System Area
+                      </span>
+                    )}
+                  </h3>
                   {area.area_name && (
                     <p className="card-subtitle">{area.area_name}</p>
                   )}
@@ -216,6 +229,12 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
                   <span className="card-field-label">User Count</span>
                   <span className="card-field-value">{area.user_count}</span>
                 </div>
+                {area.is_system_area && (
+                  <div className="card-field">
+                    <span className="card-field-label">Type</span>
+                    <span className="card-field-value">System Managed</span>
+                  </div>
+                )}
               </div>
 
               <div className="card-footer">

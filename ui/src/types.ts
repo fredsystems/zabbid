@@ -74,6 +74,8 @@ export interface BidYearInfo {
   area_count: number;
   /** The total number of users across all areas in this bid year */
   total_user_count: number;
+  /** The lifecycle state of the bid year */
+  lifecycle_state: string;
 }
 
 /**
@@ -124,6 +126,8 @@ export interface AreaInfo {
   area_name: string | null;
   /** The number of users in this area */
   user_count: number;
+  /** Whether this is a system-managed area (e.g., "No Bid") */
+  is_system_area: boolean;
 }
 
 /**
@@ -336,6 +340,14 @@ export type BlockingReason =
         expected: number;
         actual: number;
       };
+    }
+  | {
+      UsersInNoBidArea: {
+        bid_year_id: number;
+        bid_year: number;
+        user_count: number;
+        sample_initials: string[];
+      };
     };
 
 /**
@@ -356,6 +368,8 @@ export interface BidYearCompletenessInfo {
   is_complete: boolean;
   /** Blocking reasons preventing completeness */
   blocking_reasons: BlockingReason[];
+  /** The lifecycle state of the bid year */
+  lifecycle_state: string;
 }
 
 /**
