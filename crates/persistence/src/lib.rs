@@ -2107,6 +2107,30 @@ impl Persistence {
         }
     }
 
+    /// Get the area ID for a user.
+    ///
+    /// # Arguments
+    ///
+    /// * `user_id` - The canonical user ID
+    ///
+    /// # Returns
+    ///
+    /// Returns the `area_id` where the user is currently assigned.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user does not exist or the database operation fails.
+    pub fn get_user_area_id(&mut self, user_id: i64) -> Result<i64, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::canonical::get_user_area_id_sqlite(conn, user_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::canonical::get_user_area_id_mysql(conn, user_id)
+            }
+        }
+    }
+
     /// Get area details for override operations.
     ///
     /// # Arguments

@@ -189,7 +189,7 @@ export function BootstrapCompleteness({
             </ul>
           </div>
         )}
-        {/* Phase 25E: Prominent display for users in No Bid */}
+        {/* Phase 26D: Prominent display for users in No Bid with review link */}
         {completeness.blocking_reasons.some(
           (r) => typeof r === "object" && "UsersInNoBidArea" in r,
         ) && (
@@ -207,7 +207,7 @@ export function BootstrapCompleteness({
                   typeof reason === "object" &&
                   "UsersInNoBidArea" in reason
                 ) {
-                  const { bid_year, user_count, sample_initials } =
+                  const { bid_year_id, bid_year, user_count, sample_initials } =
                     reason.UsersInNoBidArea;
                   return (
                     <div key={bid_year} className="no-bid-users-list">
@@ -229,6 +229,12 @@ export function BootstrapCompleteness({
                           )}
                         </div>
                       )}
+                      <a
+                        href={`/admin/bid-year/${bid_year_id}/no-bid-review`}
+                        className="btn-review-no-bid"
+                      >
+                        Review and Assign Users
+                      </a>
                     </div>
                   );
                 }
@@ -1341,7 +1347,7 @@ function UserManagementForArea({
             <UserItem
               key={user.user_id}
               user={user}
-              areaId={areaCode}
+              areaId={areaId}
               isAdmin={isAdmin}
               sessionToken={sessionToken}
               onRefresh={refreshUsers}
@@ -1384,7 +1390,7 @@ function UserManagementForArea({
 
 interface UserItemProps {
   user: UserInfo;
-  areaId: string;
+  areaId: number;
   isAdmin: boolean;
   sessionToken: string | null;
   onRefresh: () => Promise<void>;
@@ -1670,7 +1676,7 @@ function CreateUserForm({
 
 interface EditUserFormProps {
   user: UserInfo;
-  areaId: string;
+  areaId: number;
   sessionToken: string | null;
   onSuccess: () => void;
   onCancel: () => void;

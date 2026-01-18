@@ -1032,6 +1032,34 @@ pub fn get_area_details_for_override(
 }
 
 backend_fn! {
+/// Get the area ID for a user.
+///
+/// # Arguments
+///
+/// * `user_id` - The canonical user ID
+///
+/// # Returns
+///
+/// Returns the `area_id` where the user is currently assigned.
+///
+/// # Errors
+///
+/// Returns an error if the user does not exist or the database operation fails.
+pub fn get_user_area_id(
+    conn: &mut _,
+    user_id: i64,
+) -> Result<i64, PersistenceError> {
+    users::table
+        .filter(users::user_id.eq(user_id))
+        .select(users::area_id)
+        .first::<i64>(conn)
+        .map_err(|_| {
+            PersistenceError::ReconstructionError(format!("User {user_id} not found"))
+        })
+}
+}
+
+backend_fn! {
 /// Get current canonical area assignment for a user.
 ///
 /// # Arguments
