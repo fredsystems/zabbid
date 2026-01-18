@@ -51,7 +51,7 @@ use zab_bid_api::{
     transition_to_canonicalized, update_user,
 };
 use zab_bid_audit::{AuditEvent, Cause};
-use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials};
+use zab_bid_domain::{Area, BidYear, BidYearLifecycle, CanonicalBidYear, Initials};
 use zab_bid_persistence::{Persistence, PersistenceError};
 
 /// ZAB Bid Server - HTTP server for the ZAB Bidding System
@@ -818,6 +818,22 @@ async fn handle_list_users(
             message: format!("Area with ID {} not found", query.area_id),
         })?;
 
+    // Extract bid_year_id for lifecycle state lookup
+    let bid_year_id: i64 = bid_year.bid_year_id().ok_or_else(|| HttpError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: format!(
+            "Bid year {} exists but has no ID in metadata",
+            bid_year.year()
+        ),
+    })?;
+
+    // Fetch lifecycle state from persistence
+    let lifecycle_state_str: String = persistence.get_lifecycle_state(bid_year_id)?;
+    let lifecycle_state: BidYearLifecycle = lifecycle_state_str.parse().map_err(|e| HttpError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: format!("Failed to parse lifecycle state: {e}"),
+    })?;
+
     let canonical_bid_years: Vec<CanonicalBidYear> = persistence.list_bid_years()?;
     let state: State = persistence
         .get_current_state(&bid_year, &area)
@@ -832,6 +848,7 @@ async fn handle_list_users(
         &state,
         &actor,
         &operator,
+        lifecycle_state,
     )?;
 
     Ok(Json(response))

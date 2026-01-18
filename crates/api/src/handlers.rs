@@ -634,6 +634,11 @@ pub fn list_areas(
 /// Returns an error if:
 /// - The bid year has not been created
 /// - The area has not been created in the bid year
+///
+/// Phase 26A: Added `lifecycle_state` parameter for lifecycle-aware capability computation.
+/// This brings the parameter count to 8, which exceeds clippy's default limit of 7.
+/// Grouping these into a struct would add complexity without improving clarity.
+#[allow(clippy::too_many_arguments)]
 pub fn list_users(
     metadata: &BootstrapMetadata,
     canonical_bid_years: &[CanonicalBidYear],
@@ -642,6 +647,7 @@ pub fn list_users(
     state: &State,
     authenticated_actor: &AuthenticatedActor,
     actor_operator: &OperatorData,
+    lifecycle_state: zab_bid_domain::BidYearLifecycle,
 ) -> Result<ListUsersResponse, ApiError> {
     // Validate bid year and area exist before processing
     validate_area_exists(metadata, bid_year, area).map_err(translate_domain_error)?;
@@ -726,11 +732,14 @@ pub fn list_users(
                     });
 
             // Compute user capabilities
-            let capabilities: UserCapabilities =
-                crate::capabilities::compute_user_capabilities(authenticated_actor, actor_operator)
-                    .map_err(|e| ApiError::Internal {
-                        message: format!("Failed to compute user capabilities: {e}"),
-                    })?;
+            let capabilities: UserCapabilities = crate::capabilities::compute_user_capabilities(
+                authenticated_actor,
+                actor_operator,
+                lifecycle_state,
+            )
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to compute user capabilities: {e}"),
+            })?;
 
             Ok(UserInfo {
                 user_id,

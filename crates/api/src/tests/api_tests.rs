@@ -1523,6 +1523,7 @@ fn test_list_users_empty() {
         &state,
         &actor,
         &operator,
+        zab_bid_domain::BidYearLifecycle::Draft,
     )
     .unwrap();
 
@@ -1631,6 +1632,7 @@ fn test_list_users_with_users() {
         &final_state,
         &actor,
         &operator,
+        zab_bid_domain::BidYearLifecycle::Draft,
     )
     .unwrap();
 
@@ -1723,6 +1725,7 @@ fn test_list_users_with_no_crew() {
         &final_state,
         &actor,
         &operator,
+        zab_bid_domain::BidYearLifecycle::Draft,
     )
     .unwrap();
 
@@ -1754,6 +1757,7 @@ fn test_list_users_nonexistent_bid_year() {
         &state,
         &actor,
         &operator,
+        zab_bid_domain::BidYearLifecycle::Draft,
     );
 
     assert!(result.is_err());
@@ -1791,6 +1795,7 @@ fn test_list_users_nonexistent_area() {
         &state,
         &actor,
         &operator,
+        zab_bid_domain::BidYearLifecycle::Draft,
     );
 
     assert!(result.is_err());
