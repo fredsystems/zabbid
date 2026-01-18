@@ -1792,4 +1792,48 @@ impl Persistence {
             }
         }
     }
+
+    /// Lists users with lifecycle-aware routing.
+    ///
+    /// Phase 25C: Routes reads to canonical or derived tables based on lifecycle state.
+    ///
+    /// When `lifecycle_state >= Canonicalized`, reads come from canonical tables.
+    /// When `lifecycle_state < Canonicalized`, reads come from the users table.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `area_id` - The canonical area ID
+    /// * `bid_year` - The `BidYear` domain object
+    /// * `area` - The Area domain object
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The database cannot be queried
+    /// - Canonical data is missing when lifecycle >= Canonicalized
+    pub fn list_users_with_routing(
+        &mut self,
+        bid_year_id: i64,
+        area_id: i64,
+        bid_year: &BidYear,
+        area: &Area,
+    ) -> Result<Vec<User>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::canonical::list_users_with_routing_sqlite(
+                conn,
+                bid_year_id,
+                area_id,
+                bid_year,
+                area,
+            ),
+            BackendConnection::Mysql(conn) => queries::canonical::list_users_with_routing_mysql(
+                conn,
+                bid_year_id,
+                area_id,
+                bid_year,
+                area,
+            ),
+        }
+    }
 }

@@ -746,3 +746,231 @@ pub fn is_system_area(
     Ok(system_flag != 0)
 }
 }
+
+backend_fn! {
+/// Checks if canonical rows exist for a bid year.
+///
+/// Phase 25C: Used for idempotency checks during canonicalization.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+///
+/// # Returns
+///
+/// `true` if canonical area membership rows exist for this bid year, `false` otherwise.
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried.
+pub fn canonical_rows_exist(
+    conn: &mut _,
+    bid_year_id: i64,
+) -> Result<bool, PersistenceError> {
+    use crate::diesel_schema::canonical_area_membership;
+
+    let count: i64 = canonical_area_membership::table
+        .filter(canonical_area_membership::bid_year_id.eq(bid_year_id))
+        .count()
+        .get_result(conn)?;
+
+    Ok(count > 0)
+}
+}
+
+backend_fn! {
+/// Lists users from canonical tables (post-canonicalization).
+///
+/// Phase 25C: Used when `lifecycle_state` >= `Canonicalized`.
+/// Reads from `canonical_area_membership`, `canonical_eligibility`, `canonical_bid_order`,
+/// and `canonical_bid_windows`.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `area_id` - The canonical area ID
+/// * `bid_year` - The `BidYear` domain object
+/// * `area` - The `Area` domain object
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried or canonical data is missing.
+pub fn list_users_canonical(
+    conn: &mut _,
+    bid_year_id: i64,
+    area_id: i64,
+    bid_year: &BidYear,
+    area: &Area,
+) -> Result<Vec<User>, PersistenceError> {
+    use crate::diesel_schema::{
+        canonical_area_membership, canonical_eligibility, users,
+    };
+
+    // Query users joined with canonical area membership
+    type UserRowTuple = (
+        i64,
+        String,
+        String,
+        String,
+        Option<i32>,
+        String,
+        String,
+        String,
+        String,
+        Option<i32>,
+        i32, // can_bid from canonical_eligibility
+    );
+
+    let rows: Vec<UserRowTuple> = users::table
+        .inner_join(
+            canonical_area_membership::table.on(
+                users::user_id.eq(canonical_area_membership::user_id)
+                    .and(canonical_area_membership::bid_year_id.eq(bid_year_id))
+                    .and(canonical_area_membership::area_id.eq(area_id))
+            )
+        )
+        .inner_join(
+            canonical_eligibility::table.on(
+                users::user_id.eq(canonical_eligibility::user_id)
+                    .and(canonical_eligibility::bid_year_id.eq(bid_year_id))
+            )
+        )
+        .select((
+            users::user_id,
+            users::initials,
+            users::name,
+            users::user_type,
+            users::crew,
+            users::cumulative_natca_bu_date,
+            users::natca_bu_date,
+            users::eod_faa_date,
+            users::service_computation_date,
+            users::lottery_value,
+            canonical_eligibility::can_bid,
+        ))
+        .filter(users::bid_year_id.eq(bid_year_id))
+        .order(users::initials.asc())
+        .load(conn)?;
+
+    let mut users_list: Vec<User> = Vec::new();
+    for (
+        user_id,
+        initials_str,
+        name,
+        user_type_str,
+        crew_val,
+        cumulative_natca_bu_date,
+        natca_bu_date,
+        eod_faa_date,
+        service_computation_date,
+        lottery_value,
+        _can_bid,
+    ) in rows
+    {
+        let initials: Initials = Initials::new(&initials_str);
+        let user_type: UserType = UserType::parse(&user_type_str)
+            .map_err(|e| PersistenceError::ReconstructionError(e.to_string()))?;
+        let crew: Option<Crew> =
+            crew_val.and_then(|n| u8::try_from(n).ok().and_then(|num| Crew::new(num).ok()));
+        let seniority_data: SeniorityData = SeniorityData::new(
+            cumulative_natca_bu_date,
+            natca_bu_date,
+            eod_faa_date,
+            service_computation_date,
+            lottery_value.and_then(|v| u32::try_from(v).ok()),
+        );
+
+        let user: User = User::with_id(
+            user_id,
+            bid_year.clone(),
+            initials,
+            name,
+            area.clone(),
+            user_type,
+            crew,
+            seniority_data,
+        );
+        users_list.push(user);
+    }
+
+    Ok(users_list)
+}
+}
+
+/// Lists users with lifecycle-aware routing (`SQLite` version).
+///
+/// Phase 25C: Routes to canonical or derived tables based on lifecycle state.
+pub fn list_users_with_routing_sqlite(
+    conn: &mut SqliteConnection,
+    bid_year_id: i64,
+    area_id: i64,
+    bid_year: &BidYear,
+    area: &Area,
+) -> Result<Vec<User>, PersistenceError> {
+    use crate::diesel_schema::bid_years;
+
+    // Get lifecycle state
+    let lifecycle_state: String = bid_years::table
+        .select(bid_years::lifecycle_state)
+        .filter(bid_years::bid_year_id.eq(bid_year_id))
+        .first::<String>(conn)?;
+
+    // Parse lifecycle state to determine routing
+    let requires_canonical: bool = matches!(
+        lifecycle_state.as_str(),
+        "Canonicalized" | "BiddingActive" | "BiddingClosed"
+    );
+
+    if requires_canonical {
+        // Verify canonical data exists
+        if !canonical_rows_exist_sqlite(conn, bid_year_id)? {
+            return Err(PersistenceError::CanonicalDataMissing {
+                bid_year_id,
+                table: String::from("canonical_area_membership"),
+            });
+        }
+        list_users_canonical_sqlite(conn, bid_year_id, area_id, bid_year, area)
+    } else {
+        list_users_sqlite(conn, bid_year_id, area_id, bid_year, area)
+    }
+}
+
+/// Lists users with lifecycle-aware routing (`MySQL` version).
+///
+/// Phase 25C: Routes to canonical or derived tables based on lifecycle state.
+pub fn list_users_with_routing_mysql(
+    conn: &mut MysqlConnection,
+    bid_year_id: i64,
+    area_id: i64,
+    bid_year: &BidYear,
+    area: &Area,
+) -> Result<Vec<User>, PersistenceError> {
+    use crate::diesel_schema::bid_years;
+
+    // Get lifecycle state
+    let lifecycle_state: String = bid_years::table
+        .select(bid_years::lifecycle_state)
+        .filter(bid_years::bid_year_id.eq(bid_year_id))
+        .first::<String>(conn)?;
+
+    // Parse lifecycle state to determine routing
+    let requires_canonical: bool = matches!(
+        lifecycle_state.as_str(),
+        "Canonicalized" | "BiddingActive" | "BiddingClosed"
+    );
+
+    if requires_canonical {
+        // Verify canonical data exists
+        if !canonical_rows_exist_mysql(conn, bid_year_id)? {
+            return Err(PersistenceError::CanonicalDataMissing {
+                bid_year_id,
+                table: String::from("canonical_area_membership"),
+            });
+        }
+        list_users_canonical_mysql(conn, bid_year_id, area_id, bid_year, area)
+    } else {
+        list_users_mysql(conn, bid_year_id, area_id, bid_year, area)
+    }
+}
