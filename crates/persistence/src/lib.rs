@@ -1605,6 +1605,55 @@ impl Persistence {
     // ========================================================================
 
     /// Queries the canonical `bid_year_id` for a given year.
+    /// Get the year value for a given canonical bid year ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID to query
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bid year is not found or the query fails.
+    pub fn get_bid_year_from_id(&mut self, bid_year_id: i64) -> Result<u16, PersistenceError> {
+        use diesel_schema::bid_years;
+
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                let result: Result<i32, diesel::result::Error> = bid_years::table
+                    .select(bid_years::year)
+                    .filter(bid_years::bid_year_id.eq(bid_year_id))
+                    .first::<i32>(conn);
+
+                match result {
+                    Ok(year) => Ok(u16::try_from(year).map_err(|e| {
+                        PersistenceError::Other(format!("Invalid year value: {e}"))
+                    })?),
+                    Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(
+                        format!("Bid year with ID {bid_year_id} does not exist"),
+                    )),
+                    Err(e) => Err(PersistenceError::from(e)),
+                }
+            }
+            BackendConnection::Mysql(conn) => {
+                let result: Result<i32, diesel::result::Error> = bid_years::table
+                    .select(bid_years::year)
+                    .filter(bid_years::bid_year_id.eq(bid_year_id))
+                    .first::<i32>(conn);
+
+                match result {
+                    Ok(year) => Ok(u16::try_from(year).map_err(|e| {
+                        PersistenceError::Other(format!("Invalid year value: {e}"))
+                    })?),
+                    Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(
+                        format!("Bid year with ID {bid_year_id} does not exist"),
+                    )),
+                    Err(e) => Err(PersistenceError::from(e)),
+                }
+            }
+        }
+    }
+
+    /// Get the canonical bid year ID for a given year.
     ///
     /// # Arguments
     ///
@@ -1834,6 +1883,264 @@ impl Persistence {
                 bid_year,
                 area,
             ),
+        }
+    }
+
+    /// Override a user's area assignment after canonicalization.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `user_id` - The canonical user ID
+    /// * `new_area_id` - The new area ID to assign
+    /// * `reason` - The reason for the override
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple of (`previous_area_id`, `was_already_overridden`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the canonical record does not exist or the database operation fails.
+    pub fn override_area_assignment(
+        &mut self,
+        bid_year_id: i64,
+        user_id: i64,
+        new_area_id: i64,
+        reason: &str,
+    ) -> Result<(i64, bool), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::canonical::override_area_assignment_sqlite(
+                    conn,
+                    bid_year_id,
+                    user_id,
+                    new_area_id,
+                    reason,
+                )
+            }
+            BackendConnection::Mysql(conn) => mutations::canonical::override_area_assignment_mysql(
+                conn,
+                bid_year_id,
+                user_id,
+                new_area_id,
+                reason,
+            ),
+        }
+    }
+
+    /// Override a user's eligibility after canonicalization.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `user_id` - The canonical user ID
+    /// * `can_bid` - The new eligibility status
+    /// * `reason` - The reason for the override
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple of (`previous_can_bid`, `was_already_overridden`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the canonical record does not exist or the database operation fails.
+    pub fn override_eligibility(
+        &mut self,
+        bid_year_id: i64,
+        user_id: i64,
+        can_bid: bool,
+        reason: &str,
+    ) -> Result<(bool, bool), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => mutations::canonical::override_eligibility_sqlite(
+                conn,
+                bid_year_id,
+                user_id,
+                can_bid,
+                reason,
+            ),
+            BackendConnection::Mysql(conn) => mutations::canonical::override_eligibility_mysql(
+                conn,
+                bid_year_id,
+                user_id,
+                can_bid,
+                reason,
+            ),
+        }
+    }
+
+    /// Override a user's bid order after canonicalization.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `user_id` - The canonical user ID
+    /// * `bid_order` - The new bid order (or `None` to clear)
+    /// * `reason` - The reason for the override
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple of (`previous_bid_order`, `was_already_overridden`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the canonical record does not exist or the database operation fails.
+    pub fn override_bid_order(
+        &mut self,
+        bid_year_id: i64,
+        user_id: i64,
+        bid_order: Option<i32>,
+        reason: &str,
+    ) -> Result<(Option<i32>, bool), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => mutations::canonical::override_bid_order_sqlite(
+                conn,
+                bid_year_id,
+                user_id,
+                bid_order,
+                reason,
+            ),
+            BackendConnection::Mysql(conn) => mutations::canonical::override_bid_order_mysql(
+                conn,
+                bid_year_id,
+                user_id,
+                bid_order,
+                reason,
+            ),
+        }
+    }
+
+    /// Override a user's bid window after canonicalization.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `user_id` - The canonical user ID
+    /// * `window_start` - The new window start date (or `None` to clear)
+    /// * `window_end` - The new window end date (or `None` to clear)
+    /// * `reason` - The reason for the override
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple of (`previous_window_start`, `previous_window_end`, `was_already_overridden`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the canonical record does not exist or the database operation fails.
+    pub fn override_bid_window(
+        &mut self,
+        bid_year_id: i64,
+        user_id: i64,
+        window_start: Option<&String>,
+        window_end: Option<&String>,
+        reason: &str,
+    ) -> Result<(Option<String>, Option<String>, bool), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => mutations::canonical::override_bid_window_sqlite(
+                conn,
+                bid_year_id,
+                user_id,
+                window_start,
+                window_end,
+                reason,
+            ),
+            BackendConnection::Mysql(conn) => mutations::canonical::override_bid_window_mysql(
+                conn,
+                bid_year_id,
+                user_id,
+                window_start,
+                window_end,
+                reason,
+            ),
+        }
+    }
+
+    /// Get user details for override operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `user_id` - The canonical user ID
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple of (`bid_year_id`, `user_initials`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user does not exist or the database operation fails.
+    pub fn get_user_details(&mut self, user_id: i64) -> Result<(i64, String), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::canonical::get_user_details_for_override_sqlite(conn, user_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::canonical::get_user_details_for_override_mysql(conn, user_id)
+            }
+        }
+    }
+
+    /// Get area details for override operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `area_id` - The canonical area ID
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple of (`area_code`, `area_name`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the area does not exist or the database operation fails.
+    pub fn get_area_details(
+        &mut self,
+        area_id: i64,
+    ) -> Result<(String, Option<String>), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::canonical::get_area_details_for_override_sqlite(conn, area_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::canonical::get_area_details_for_override_mysql(conn, area_id)
+            }
+        }
+    }
+
+    /// Get current canonical area assignment for a user.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `user_id` - The canonical user ID
+    ///
+    /// # Returns
+    ///
+    /// Returns the current `area_id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the canonical record does not exist or the database operation fails.
+    pub fn get_current_area_assignment(
+        &mut self,
+        bid_year_id: i64,
+        user_id: i64,
+    ) -> Result<i64, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::canonical::get_current_area_assignment_for_override_sqlite(
+                    conn,
+                    bid_year_id,
+                    user_id,
+                )
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::canonical::get_current_area_assignment_for_override_mysql(
+                    conn,
+                    bid_year_id,
+                    user_id,
+                )
+            }
         }
     }
 }

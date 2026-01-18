@@ -1136,3 +1136,85 @@ pub struct TransitionToBiddingClosedResponse {
     /// A success message.
     pub message: String,
 }
+
+/// API request to override a user's area assignment.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct OverrideAreaAssignmentRequest {
+    /// The user's canonical identifier.
+    pub user_id: i64,
+    /// The new area ID to assign.
+    pub new_area_id: i64,
+    /// The reason for the override (min 10 characters).
+    pub reason: String,
+}
+
+/// API response for area assignment override.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OverrideAreaAssignmentResponse {
+    /// The audit event ID.
+    pub audit_event_id: i64,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to override a user's eligibility.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct OverrideEligibilityRequest {
+    /// The user's canonical identifier.
+    pub user_id: i64,
+    /// The new eligibility status.
+    pub can_bid: bool,
+    /// The reason for the override (min 10 characters).
+    pub reason: String,
+}
+
+/// API response for eligibility override.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OverrideEligibilityResponse {
+    /// The audit event ID.
+    pub audit_event_id: i64,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to override a user's bid order.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct OverrideBidOrderRequest {
+    /// The user's canonical identifier.
+    pub user_id: i64,
+    /// The new bid order (or null to clear).
+    pub bid_order: Option<i32>,
+    /// The reason for the override (min 10 characters).
+    pub reason: String,
+}
+
+/// API response for bid order override.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OverrideBidOrderResponse {
+    /// The audit event ID.
+    pub audit_event_id: i64,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to override a user's bid window.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct OverrideBidWindowRequest {
+    /// The user's canonical identifier.
+    pub user_id: i64,
+    /// The new window start date (or null to clear).
+    pub window_start: Option<String>,
+    /// The new window end date (or null to clear).
+    pub window_end: Option<String>,
+    /// The reason for the override (min 10 characters).
+    pub reason: String,
+}
+
+/// API response for bid window override.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OverrideBidWindowResponse {
+    /// The audit event ID.
+    pub audit_event_id: i64,
+    /// Success message.
+    pub message: String,
+}

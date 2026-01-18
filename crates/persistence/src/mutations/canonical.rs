@@ -695,3 +695,525 @@ pub fn bulk_insert_canonical_bid_windows_mysql(
     debug!(count = records.len(), "Bulk inserted canonical bid windows");
     Ok(())
 }
+
+/// Override a user's area assignment (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `user_id` - The canonical user ID
+/// * `new_area_id` - The new area ID to assign
+/// * `reason` - The reason for the override
+///
+/// # Returns
+///
+/// Returns the previous `area_id` and whether the record was already overridden.
+///
+/// # Errors
+///
+/// Returns an error if the canonical record does not exist or the database operation fails.
+pub fn override_area_assignment_sqlite(
+    conn: &mut SqliteConnection,
+    bid_year_id: i64,
+    user_id: i64,
+    new_area_id: i64,
+    reason: &str,
+) -> Result<(i64, bool), PersistenceError> {
+    use crate::diesel_schema::canonical_area_membership;
+
+    // First, fetch the current record
+    let (previous_area_id, was_overridden): (i64, i32) = canonical_area_membership::table
+        .filter(canonical_area_membership::bid_year_id.eq(bid_year_id))
+        .filter(canonical_area_membership::user_id.eq(user_id))
+        .select((
+            canonical_area_membership::area_id,
+            canonical_area_membership::is_overridden,
+        ))
+        .first::<(i64, i32)>(conn)
+        .map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "Canonical area membership not found for user_id={user_id}, bid_year_id={bid_year_id}"
+            ))
+        })?;
+
+    // Update the record
+    diesel::update(
+        canonical_area_membership::table
+            .filter(canonical_area_membership::bid_year_id.eq(bid_year_id))
+            .filter(canonical_area_membership::user_id.eq(user_id)),
+    )
+    .set((
+        canonical_area_membership::area_id.eq(new_area_id),
+        canonical_area_membership::is_overridden.eq(1),
+        canonical_area_membership::override_reason.eq(reason),
+    ))
+    .execute(conn)?;
+
+    debug!(
+        bid_year_id,
+        user_id, previous_area_id, new_area_id, "Overrode area assignment"
+    );
+
+    Ok((previous_area_id, was_overridden != 0))
+}
+
+/// Override a user's area assignment (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `user_id` - The canonical user ID
+/// * `new_area_id` - The new area ID to assign
+/// * `reason` - The reason for the override
+///
+/// # Returns
+///
+/// Returns the previous `area_id` and whether the record was already overridden.
+///
+/// # Errors
+///
+/// Returns an error if the canonical record does not exist or the database operation fails.
+pub fn override_area_assignment_mysql(
+    conn: &mut MysqlConnection,
+    bid_year_id: i64,
+    user_id: i64,
+    new_area_id: i64,
+    reason: &str,
+) -> Result<(i64, bool), PersistenceError> {
+    use crate::diesel_schema::canonical_area_membership;
+
+    // First, fetch the current record
+    let (previous_area_id, was_overridden): (i64, i32) = canonical_area_membership::table
+        .filter(canonical_area_membership::bid_year_id.eq(bid_year_id))
+        .filter(canonical_area_membership::user_id.eq(user_id))
+        .select((
+            canonical_area_membership::area_id,
+            canonical_area_membership::is_overridden,
+        ))
+        .first::<(i64, i32)>(conn)
+        .map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "Canonical area membership not found for user_id={user_id}, bid_year_id={bid_year_id}"
+            ))
+        })?;
+
+    // Update the record
+    diesel::update(
+        canonical_area_membership::table
+            .filter(canonical_area_membership::bid_year_id.eq(bid_year_id))
+            .filter(canonical_area_membership::user_id.eq(user_id)),
+    )
+    .set((
+        canonical_area_membership::area_id.eq(new_area_id),
+        canonical_area_membership::is_overridden.eq(1),
+        canonical_area_membership::override_reason.eq(reason),
+    ))
+    .execute(conn)?;
+
+    debug!(
+        bid_year_id,
+        user_id, previous_area_id, new_area_id, "Overrode area assignment"
+    );
+
+    Ok((previous_area_id, was_overridden != 0))
+}
+
+/// Override a user's eligibility (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `user_id` - The canonical user ID
+/// * `can_bid` - The new eligibility status
+/// * `reason` - The reason for the override
+///
+/// # Returns
+///
+/// Returns the previous eligibility and whether the record was already overridden.
+///
+/// # Errors
+///
+/// Returns an error if the canonical record does not exist or the database operation fails.
+pub fn override_eligibility_sqlite(
+    conn: &mut SqliteConnection,
+    bid_year_id: i64,
+    user_id: i64,
+    can_bid: bool,
+    reason: &str,
+) -> Result<(bool, bool), PersistenceError> {
+    use crate::diesel_schema::canonical_eligibility;
+
+    // First, fetch the current record
+    let (previous_can_bid, was_overridden): (i32, i32) = canonical_eligibility::table
+        .filter(canonical_eligibility::bid_year_id.eq(bid_year_id))
+        .filter(canonical_eligibility::user_id.eq(user_id))
+        .select((
+            canonical_eligibility::can_bid,
+            canonical_eligibility::is_overridden,
+        ))
+        .first::<(i32, i32)>(conn)
+        .map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "Canonical eligibility not found for user_id={user_id}, bid_year_id={bid_year_id}"
+            ))
+        })?;
+
+    // Update the record
+    diesel::update(
+        canonical_eligibility::table
+            .filter(canonical_eligibility::bid_year_id.eq(bid_year_id))
+            .filter(canonical_eligibility::user_id.eq(user_id)),
+    )
+    .set((
+        canonical_eligibility::can_bid.eq(i32::from(can_bid)),
+        canonical_eligibility::is_overridden.eq(1),
+        canonical_eligibility::override_reason.eq(reason),
+    ))
+    .execute(conn)?;
+
+    debug!(
+        bid_year_id,
+        user_id, previous_can_bid, can_bid, "Overrode eligibility"
+    );
+
+    Ok((previous_can_bid != 0, was_overridden != 0))
+}
+
+/// Override a user's eligibility (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `user_id` - The canonical user ID
+/// * `can_bid` - The new eligibility status
+/// * `reason` - The reason for the override
+///
+/// # Returns
+///
+/// Returns the previous eligibility and whether the record was already overridden.
+///
+/// # Errors
+///
+/// Returns an error if the canonical record does not exist or the database operation fails.
+pub fn override_eligibility_mysql(
+    conn: &mut MysqlConnection,
+    bid_year_id: i64,
+    user_id: i64,
+    can_bid: bool,
+    reason: &str,
+) -> Result<(bool, bool), PersistenceError> {
+    use crate::diesel_schema::canonical_eligibility;
+
+    // First, fetch the current record
+    let (previous_can_bid, was_overridden): (i32, i32) = canonical_eligibility::table
+        .filter(canonical_eligibility::bid_year_id.eq(bid_year_id))
+        .filter(canonical_eligibility::user_id.eq(user_id))
+        .select((
+            canonical_eligibility::can_bid,
+            canonical_eligibility::is_overridden,
+        ))
+        .first::<(i32, i32)>(conn)
+        .map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "Canonical eligibility not found for user_id={user_id}, bid_year_id={bid_year_id}"
+            ))
+        })?;
+
+    // Update the record
+    diesel::update(
+        canonical_eligibility::table
+            .filter(canonical_eligibility::bid_year_id.eq(bid_year_id))
+            .filter(canonical_eligibility::user_id.eq(user_id)),
+    )
+    .set((
+        canonical_eligibility::can_bid.eq(i32::from(can_bid)),
+        canonical_eligibility::is_overridden.eq(1),
+        canonical_eligibility::override_reason.eq(reason),
+    ))
+    .execute(conn)?;
+
+    debug!(
+        bid_year_id,
+        user_id, previous_can_bid, can_bid, "Overrode eligibility"
+    );
+
+    Ok((previous_can_bid != 0, was_overridden != 0))
+}
+
+/// Override a user's bid order (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `user_id` - The canonical user ID
+/// * `bid_order` - The new bid order (or `None` to clear)
+/// * `reason` - The reason for the override
+///
+/// # Returns
+///
+/// Returns the previous `bid_order` and whether the record was already overridden.
+///
+/// # Errors
+///
+/// Returns an error if the canonical record does not exist or the database operation fails.
+pub fn override_bid_order_sqlite(
+    conn: &mut SqliteConnection,
+    bid_year_id: i64,
+    user_id: i64,
+    bid_order: Option<i32>,
+    reason: &str,
+) -> Result<(Option<i32>, bool), PersistenceError> {
+    use crate::diesel_schema::canonical_bid_order;
+
+    // First, fetch the current record
+    let (previous_bid_order, was_overridden): (Option<i32>, i32) = canonical_bid_order::table
+        .filter(canonical_bid_order::bid_year_id.eq(bid_year_id))
+        .filter(canonical_bid_order::user_id.eq(user_id))
+        .select((
+            canonical_bid_order::bid_order,
+            canonical_bid_order::is_overridden,
+        ))
+        .first::<(Option<i32>, i32)>(conn)
+        .map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "Canonical bid order not found for user_id={user_id}, bid_year_id={bid_year_id}"
+            ))
+        })?;
+
+    // Update the record
+    diesel::update(
+        canonical_bid_order::table
+            .filter(canonical_bid_order::bid_year_id.eq(bid_year_id))
+            .filter(canonical_bid_order::user_id.eq(user_id)),
+    )
+    .set((
+        canonical_bid_order::bid_order.eq(bid_order),
+        canonical_bid_order::is_overridden.eq(1),
+        canonical_bid_order::override_reason.eq(reason),
+    ))
+    .execute(conn)?;
+
+    debug!(
+        bid_year_id,
+        user_id,
+        ?previous_bid_order,
+        ?bid_order,
+        "Overrode bid order"
+    );
+
+    Ok((previous_bid_order, was_overridden != 0))
+}
+
+/// Override a user's bid order (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `user_id` - The canonical user ID
+/// * `bid_order` - The new bid order (or `None` to clear)
+/// * `reason` - The reason for the override
+///
+/// # Returns
+///
+/// Returns the previous `bid_order` and whether the record was already overridden.
+///
+/// # Errors
+///
+/// Returns an error if the canonical record does not exist or the database operation fails.
+pub fn override_bid_order_mysql(
+    conn: &mut MysqlConnection,
+    bid_year_id: i64,
+    user_id: i64,
+    bid_order: Option<i32>,
+    reason: &str,
+) -> Result<(Option<i32>, bool), PersistenceError> {
+    use crate::diesel_schema::canonical_bid_order;
+
+    // First, fetch the current record
+    let (previous_bid_order, was_overridden): (Option<i32>, i32) = canonical_bid_order::table
+        .filter(canonical_bid_order::bid_year_id.eq(bid_year_id))
+        .filter(canonical_bid_order::user_id.eq(user_id))
+        .select((
+            canonical_bid_order::bid_order,
+            canonical_bid_order::is_overridden,
+        ))
+        .first::<(Option<i32>, i32)>(conn)
+        .map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "Canonical bid order not found for user_id={user_id}, bid_year_id={bid_year_id}"
+            ))
+        })?;
+
+    // Update the record
+    diesel::update(
+        canonical_bid_order::table
+            .filter(canonical_bid_order::bid_year_id.eq(bid_year_id))
+            .filter(canonical_bid_order::user_id.eq(user_id)),
+    )
+    .set((
+        canonical_bid_order::bid_order.eq(bid_order),
+        canonical_bid_order::is_overridden.eq(1),
+        canonical_bid_order::override_reason.eq(reason),
+    ))
+    .execute(conn)?;
+
+    debug!(
+        bid_year_id,
+        user_id,
+        ?previous_bid_order,
+        ?bid_order,
+        "Overrode bid order"
+    );
+
+    Ok((previous_bid_order, was_overridden != 0))
+}
+
+/// Override a user's bid window (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `user_id` - The canonical user ID
+/// * `window_start` - The new window start date (or `None` to clear)
+/// * `window_end` - The new window end date (or `None` to clear)
+/// * `reason` - The reason for the override
+///
+/// # Returns
+///
+/// Returns the previous window dates and whether the record was already overridden.
+///
+/// # Errors
+///
+/// Returns an error if the canonical record does not exist or the database operation fails.
+pub fn override_bid_window_sqlite(
+    conn: &mut SqliteConnection,
+    bid_year_id: i64,
+    user_id: i64,
+    window_start: Option<&String>,
+    window_end: Option<&String>,
+    reason: &str,
+) -> Result<(Option<String>, Option<String>, bool), PersistenceError> {
+    use crate::diesel_schema::canonical_bid_windows;
+
+    // First, fetch the current record
+    let (previous_start, previous_end, was_overridden): (Option<String>, Option<String>, i32) =
+        canonical_bid_windows::table
+            .filter(canonical_bid_windows::bid_year_id.eq(bid_year_id))
+            .filter(canonical_bid_windows::user_id.eq(user_id))
+            .select((
+                canonical_bid_windows::window_start_date,
+                canonical_bid_windows::window_end_date,
+                canonical_bid_windows::is_overridden,
+            ))
+            .first::<(Option<String>, Option<String>, i32)>(conn)
+            .map_err(|_| {
+                PersistenceError::ReconstructionError(format!(
+                    "Canonical bid windows not found for user_id={user_id}, bid_year_id={bid_year_id}"
+                ))
+            })?;
+
+    // Update the record
+    diesel::update(
+        canonical_bid_windows::table
+            .filter(canonical_bid_windows::bid_year_id.eq(bid_year_id))
+            .filter(canonical_bid_windows::user_id.eq(user_id)),
+    )
+    .set((
+        canonical_bid_windows::window_start_date.eq(window_start.map(String::as_str)),
+        canonical_bid_windows::window_end_date.eq(window_end.map(String::as_str)),
+        canonical_bid_windows::is_overridden.eq(1),
+        canonical_bid_windows::override_reason.eq(reason),
+    ))
+    .execute(conn)?;
+
+    debug!(
+        bid_year_id,
+        user_id,
+        ?previous_start,
+        ?previous_end,
+        ?window_start,
+        ?window_end,
+        "Overrode bid window"
+    );
+
+    Ok((previous_start, previous_end, was_overridden != 0))
+}
+
+/// Override a user's bid window (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `user_id` - The canonical user ID
+/// * `window_start` - The new window start date (or `None` to clear)
+/// * `window_end` - The new window end date (or `None` to clear)
+/// * `reason` - The reason for the override
+///
+/// # Returns
+///
+/// Returns the previous window dates and whether the record was already overridden.
+///
+/// # Errors
+///
+/// Returns an error if the canonical record does not exist or the database operation fails.
+pub fn override_bid_window_mysql(
+    conn: &mut MysqlConnection,
+    bid_year_id: i64,
+    user_id: i64,
+    window_start: Option<&String>,
+    window_end: Option<&String>,
+    reason: &str,
+) -> Result<(Option<String>, Option<String>, bool), PersistenceError> {
+    use crate::diesel_schema::canonical_bid_windows;
+
+    // First, fetch the current record
+    let (previous_start, previous_end, was_overridden): (Option<String>, Option<String>, i32) =
+        canonical_bid_windows::table
+            .filter(canonical_bid_windows::bid_year_id.eq(bid_year_id))
+            .filter(canonical_bid_windows::user_id.eq(user_id))
+            .select((
+                canonical_bid_windows::window_start_date,
+                canonical_bid_windows::window_end_date,
+                canonical_bid_windows::is_overridden,
+            ))
+            .first::<(Option<String>, Option<String>, i32)>(conn)
+            .map_err(|_| {
+                PersistenceError::ReconstructionError(format!(
+                    "Canonical bid windows not found for user_id={user_id}, bid_year_id={bid_year_id}"
+                ))
+            })?;
+
+    // Update the record
+    diesel::update(
+        canonical_bid_windows::table
+            .filter(canonical_bid_windows::bid_year_id.eq(bid_year_id))
+            .filter(canonical_bid_windows::user_id.eq(user_id)),
+    )
+    .set((
+        canonical_bid_windows::window_start_date.eq(window_start.map(String::as_str)),
+        canonical_bid_windows::window_end_date.eq(window_end.map(String::as_str)),
+        canonical_bid_windows::is_overridden.eq(1),
+        canonical_bid_windows::override_reason.eq(reason),
+    ))
+    .execute(conn)?;
+
+    debug!(
+        bid_year_id,
+        user_id,
+        ?previous_start,
+        ?previous_end,
+        ?window_start,
+        ?window_end,
+        "Overrode bid window"
+    );
+
+    Ok((previous_start, previous_end, was_overridden != 0))
+}

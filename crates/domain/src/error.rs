@@ -179,6 +179,36 @@ pub enum DomainError {
         /// The lifecycle state.
         lifecycle_state: String,
     },
+    /// Cannot perform override before canonicalization.
+    CannotOverrideBeforeCanonicalization {
+        /// The current lifecycle state.
+        current_state: String,
+    },
+    /// Override reason is invalid (empty or too short).
+    InvalidOverrideReason {
+        /// The reason provided.
+        reason: String,
+    },
+    /// Canonical record not found for override operation.
+    CanonicalRecordNotFound {
+        /// Description of which record was not found.
+        description: String,
+    },
+    /// Cannot assign user to system area via override.
+    CannotAssignToSystemArea {
+        /// The system area code.
+        area_code: String,
+    },
+    /// Invalid bid order value.
+    InvalidBidOrder {
+        /// Description of the validation error.
+        reason: String,
+    },
+    /// Invalid bid window dates.
+    InvalidBidWindow {
+        /// Description of the validation error.
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for DomainError {
@@ -343,6 +373,30 @@ impl std::fmt::Display for DomainError {
                     f,
                     "Cannot assign user to No Bid area after canonicalization (bid year {bid_year}, state: {lifecycle_state})"
                 )
+            }
+            Self::CannotOverrideBeforeCanonicalization { current_state } => {
+                write!(
+                    f,
+                    "Cannot perform override before canonicalization (current state: {current_state})"
+                )
+            }
+            Self::InvalidOverrideReason { reason } => {
+                write!(
+                    f,
+                    "Invalid override reason: must be at least 10 characters (got: '{reason}')"
+                )
+            }
+            Self::CanonicalRecordNotFound { description } => {
+                write!(f, "Canonical record not found: {description}")
+            }
+            Self::CannotAssignToSystemArea { area_code } => {
+                write!(f, "Cannot assign user to system area '{area_code}'")
+            }
+            Self::InvalidBidOrder { reason } => {
+                write!(f, "Invalid bid order: {reason}")
+            }
+            Self::InvalidBidWindow { reason } => {
+                write!(f, "Invalid bid window: {reason}")
             }
         }
     }

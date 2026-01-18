@@ -974,3 +974,94 @@ pub fn list_users_with_routing_mysql(
         list_users_mysql(conn, bid_year_id, area_id, bid_year, area)
     }
 }
+
+backend_fn! {
+/// Get user details for override operations.
+///
+/// # Arguments
+///
+/// * `user_id` - The canonical user ID
+///
+/// # Returns
+///
+/// Returns a tuple of (`bid_year_id`, `user_initials`).
+///
+/// # Errors
+///
+/// Returns an error if the user does not exist or the database operation fails.
+pub fn get_user_details_for_override(
+    conn: &mut _,
+    user_id: i64,
+) -> Result<(i64, String), PersistenceError> {
+    users::table
+        .filter(users::user_id.eq(user_id))
+        .select((users::bid_year_id, users::initials))
+        .first::<(i64, String)>(conn)
+        .map_err(|_| {
+            PersistenceError::ReconstructionError(format!("User {user_id} not found"))
+        })
+}
+}
+
+backend_fn! {
+/// Get area details for override operations.
+///
+/// # Arguments
+///
+/// * `area_id` - The canonical area ID
+///
+/// # Returns
+///
+/// Returns a tuple of (`area_code`, `area_name`).
+///
+/// # Errors
+///
+/// Returns an error if the area does not exist or the database operation fails.
+pub fn get_area_details_for_override(
+    conn: &mut _,
+    area_id: i64,
+) -> Result<(String, Option<String>), PersistenceError> {
+    areas::table
+        .filter(areas::area_id.eq(area_id))
+        .select((areas::area_code, areas::area_name))
+        .first::<(String, Option<String>)>(conn)
+        .map_err(|_| {
+            PersistenceError::ReconstructionError(format!("Area {area_id} not found"))
+        })
+}
+}
+
+backend_fn! {
+/// Get current canonical area assignment for a user.
+///
+/// # Arguments
+///
+/// * `bid_year_id` - The canonical bid year ID
+/// * `user_id` - The canonical user ID
+///
+/// # Returns
+///
+/// Returns the current `area_id`.
+///
+/// # Errors
+///
+/// Returns an error if the canonical record does not exist or the database operation fails.
+pub fn get_current_area_assignment_for_override(
+    conn: &mut _,
+    bid_year_id: i64,
+    user_id: i64,
+) -> Result<i64, PersistenceError> {
+    use crate::diesel_schema::canonical_area_membership;
+
+    canonical_area_membership::table
+        .filter(canonical_area_membership::bid_year_id.eq(bid_year_id))
+        .filter(canonical_area_membership::user_id.eq(user_id))
+        .select(canonical_area_membership::area_id)
+        .first::<i64>(conn)
+        .map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "Canonical area membership not found for user_id={user_id}, bid_year_id={bid_year_id}"
+            ))
+        })
+}
+}

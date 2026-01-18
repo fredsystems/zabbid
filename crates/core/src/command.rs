@@ -103,4 +103,42 @@ pub enum Command {
         /// The year to transition.
         year: u16,
     },
+    /// Override a user's area assignment after canonicalization.
+    OverrideAreaAssignment {
+        /// The user's initials.
+        initials: Initials,
+        /// The new area to assign.
+        new_area: Area,
+        /// The reason for the override (must be non-empty, min 10 chars).
+        reason: String,
+    },
+    /// Override a user's eligibility status after canonicalization.
+    OverrideEligibility {
+        /// The user's initials.
+        initials: Initials,
+        /// The new eligibility status.
+        can_bid: bool,
+        /// The reason for the override (must be non-empty, min 10 chars).
+        reason: String,
+    },
+    /// Override a user's bid order after canonicalization.
+    OverrideBidOrder {
+        /// The user's initials.
+        initials: Initials,
+        /// The new bid order (or None to clear).
+        bid_order: Option<i32>,
+        /// The reason for the override (must be non-empty, min 10 chars).
+        reason: String,
+    },
+    /// Override a user's bid window after canonicalization.
+    OverrideBidWindow {
+        /// The user's initials.
+        initials: Initials,
+        /// The new window start date (or None to clear).
+        window_start: Option<Date>,
+        /// The new window end date (or None to clear).
+        window_end: Option<Date>,
+        /// The reason for the override (must be non-empty, min 10 chars).
+        reason: String,
+    },
 }

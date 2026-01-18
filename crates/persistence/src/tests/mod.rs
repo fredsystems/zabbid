@@ -8,6 +8,7 @@ mod bootstrap_tests;
 mod canonical_tests;
 mod initialization_tests;
 mod operator_tests;
+mod override_tests;
 mod state_tests;
 
 use time::Date;
