@@ -780,5 +780,12 @@ pub fn apply(
             // Bootstrap commands should use apply_bootstrap() instead
             unreachable!("apply called with bootstrap command")
         }
+        Command::OverrideAreaAssignment { .. }
+        | Command::OverrideEligibility { .. }
+        | Command::OverrideBidOrder { .. }
+        | Command::OverrideBidWindow { .. } => {
+            // Override commands work directly with persistence, not through apply()
+            unreachable!("apply called with override command")
+        }
     }
 }

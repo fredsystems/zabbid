@@ -31,15 +31,18 @@ use crate::request_response::{
     GetActiveBidYearResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse,
     GlobalCapabilities, ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest,
     ListAreasResponse, ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse,
-    LoginRequest, LoginResponse, OperatorCapabilities, OperatorInfo, PreviewCsvUsersRequest,
-    PreviewCsvUsersResponse, RegisterUserRequest, ResetPasswordRequest, ResetPasswordResponse,
-    SetActiveBidYearRequest, SetActiveBidYearResponse, SetExpectedAreaCountRequest,
-    SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
-    TransitionToBiddingActiveRequest, TransitionToBiddingActiveResponse,
-    TransitionToBiddingClosedRequest, TransitionToBiddingClosedResponse,
-    TransitionToBootstrapCompleteRequest, TransitionToBootstrapCompleteResponse,
-    TransitionToCanonicalizedRequest, TransitionToCanonicalizedResponse, UpdateUserRequest,
-    UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
+    LoginRequest, LoginResponse, OperatorCapabilities, OperatorInfo, OverrideAreaAssignmentRequest,
+    OverrideAreaAssignmentResponse, OverrideBidOrderRequest, OverrideBidOrderResponse,
+    OverrideBidWindowRequest, OverrideBidWindowResponse, OverrideEligibilityRequest,
+    OverrideEligibilityResponse, PreviewCsvUsersRequest, PreviewCsvUsersResponse,
+    RegisterUserRequest, ResetPasswordRequest, ResetPasswordResponse, SetActiveBidYearRequest,
+    SetActiveBidYearResponse, SetExpectedAreaCountRequest, SetExpectedAreaCountResponse,
+    SetExpectedUserCountRequest, SetExpectedUserCountResponse, TransitionToBiddingActiveRequest,
+    TransitionToBiddingActiveResponse, TransitionToBiddingClosedRequest,
+    TransitionToBiddingClosedResponse, TransitionToBootstrapCompleteRequest,
+    TransitionToBootstrapCompleteResponse, TransitionToCanonicalizedRequest,
+    TransitionToCanonicalizedResponse, UpdateUserRequest, UpdateUserResponse, UserCapabilities,
+    UserInfo, WhoAmIResponse,
 };
 use zab_bid_persistence::PersistenceError;
 
@@ -3591,4 +3594,603 @@ pub fn import_csv_users(
     };
 
     Ok(response)
+}
+
+/// Override a user's area assignment after canonicalization.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The override request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data
+///
+/// # Returns
+///
+/// Returns the audit event ID on success.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not an admin
+/// - The lifecycle state is not >= Canonicalized
+/// - The override reason is invalid
+/// - The target area is a system area
+/// - The canonical record does not exist
+#[allow(clippy::too_many_lines)]
+#[allow(dead_code)]
+pub fn override_area_assignment(
+    persistence: &mut SqlitePersistence,
+    request: &OverrideAreaAssignmentRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+) -> Result<OverrideAreaAssignmentResponse, ApiError> {
+    // Enforce authorization - only admins can perform overrides
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("override_area_assignment"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Validate override reason (min 10 chars)
+    let reason = request.reason.trim();
+    if reason.len() < 10 {
+        return Err(translate_domain_error(DomainError::InvalidOverrideReason {
+            reason: request.reason.clone(),
+        }));
+    }
+
+    // Get user details
+    let (bid_year_id, user_initials): (i64, String) = persistence
+        .get_user_details(request.user_id)
+        .map_err(|_| ApiError::ResourceNotFound {
+            resource_type: String::from("User"),
+            message: format!("User with ID {} not found", request.user_id),
+        })?;
+
+    // Check lifecycle state >= Canonicalized
+    let lifecycle_state =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    if !matches!(
+        lifecycle_state.as_str(),
+        "Canonicalized" | "BiddingActive" | "BiddingClosed"
+    ) {
+        return Err(translate_domain_error(
+            DomainError::CannotOverrideBeforeCanonicalization {
+                current_state: lifecycle_state,
+            },
+        ));
+    }
+
+    // Verify target area exists and is not a system area
+    let (area_code, area_name): (String, Option<String>) = persistence
+        .get_area_details(request.new_area_id)
+        .map_err(|_| ApiError::ResourceNotFound {
+            resource_type: String::from("Area"),
+            message: format!("Area with ID {} not found", request.new_area_id),
+        })?;
+
+    // Check if target area is a system area
+    let is_system = persistence
+        .is_system_area(request.new_area_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to check system area: {e}"),
+        })?;
+
+    if is_system {
+        return Err(translate_domain_error(
+            DomainError::CannotAssignToSystemArea { area_code },
+        ));
+    }
+
+    // Get previous area info for audit event
+    let previous_area_id: i64 = persistence
+        .get_current_area_assignment(bid_year_id, request.user_id)
+        .map_err(|_| {
+            translate_domain_error(DomainError::CanonicalRecordNotFound {
+                description: format!(
+                    "Canonical area membership not found for user_id={}",
+                    request.user_id
+                ),
+            })
+        })?;
+
+    let (prev_area_code, prev_area_name): (String, Option<String>) = persistence
+        .get_area_details(previous_area_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to fetch previous area info: {e}"),
+        })?;
+
+    // Perform override
+    let (_, was_already_overridden) = persistence
+        .override_area_assignment(bid_year_id, request.user_id, request.new_area_id, reason)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to override area assignment: {e}"),
+        })?;
+
+    // Create and persist audit event
+    let actor = authenticated_actor.to_audit_actor(operator);
+    let cause = Cause::new(
+        String::from("override_area_assignment"),
+        format!("Override area assignment for user {user_initials}"),
+    );
+
+    let action = Action::new(
+        String::from("UserAreaAssignmentOverridden"),
+        Some(format!(
+            "user_id={}, previous_area={}, new_area={}, reason={}, was_overridden={}",
+            request.user_id,
+            prev_area_name.unwrap_or(prev_area_code),
+            area_name.unwrap_or(area_code),
+            reason,
+            was_already_overridden
+        )),
+    );
+
+    let before = StateSnapshot::new(format!("area_id={previous_area_id}"));
+    let after = StateSnapshot::new(format!("area_id={}", request.new_area_id));
+
+    let year = persistence
+        .get_bid_year_from_id(bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get bid year: {e}"),
+        })?;
+    let bid_year = BidYear::new(year);
+    let area = Area::new("_override");
+
+    let audit_event = AuditEvent::new(actor, cause, action, before, after, bid_year, area);
+
+    let event_id =
+        persistence
+            .persist_audit_event(&audit_event)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to persist audit event: {e}"),
+            })?;
+
+    Ok(OverrideAreaAssignmentResponse {
+        audit_event_id: event_id,
+        message: format!(
+            "Area assignment overridden for user {user_initials} (audit event {event_id})"
+        ),
+    })
+}
+
+/// Override a user's eligibility after canonicalization.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The override request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data
+///
+/// # Returns
+///
+/// Returns the audit event ID on success.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not an admin
+/// - The lifecycle state is not >= Canonicalized
+/// - The override reason is invalid
+/// - The canonical record does not exist
+#[allow(dead_code)]
+pub fn override_eligibility(
+    persistence: &mut SqlitePersistence,
+    request: &OverrideEligibilityRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+) -> Result<OverrideEligibilityResponse, ApiError> {
+    // Enforce authorization - only admins can perform overrides
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("override_eligibility"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Validate override reason (min 10 chars)
+    let reason = request.reason.trim();
+    if reason.len() < 10 {
+        return Err(translate_domain_error(DomainError::InvalidOverrideReason {
+            reason: request.reason.clone(),
+        }));
+    }
+
+    // Get user details
+    let (bid_year_id, user_initials): (i64, String) =
+        persistence.get_user_details(request.user_id).map_err(|_| {
+            let user_id = request.user_id;
+            ApiError::ResourceNotFound {
+                resource_type: String::from("User"),
+                message: format!("User with ID {user_id} not found"),
+            }
+        })?;
+
+    // Check lifecycle state >= Canonicalized
+    let lifecycle_state =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    if !matches!(
+        lifecycle_state.as_str(),
+        "Canonicalized" | "BiddingActive" | "BiddingClosed"
+    ) {
+        return Err(translate_domain_error(
+            DomainError::CannotOverrideBeforeCanonicalization {
+                current_state: lifecycle_state,
+            },
+        ));
+    }
+
+    // Perform override
+    let (previous_eligibility, was_already_overridden) = persistence
+        .override_eligibility(bid_year_id, request.user_id, request.can_bid, reason)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to override eligibility: {e}"),
+        })?;
+
+    // Create and persist audit event
+    let actor = authenticated_actor.to_audit_actor(operator);
+    let cause = Cause::new(
+        String::from("override_eligibility"),
+        format!("Override eligibility for user {user_initials}"),
+    );
+
+    let action = Action::new(
+        String::from("UserEligibilityOverridden"),
+        Some(format!(
+            "user_id={}, previous_eligibility={}, new_eligibility={}, reason={}, was_overridden={}",
+            request.user_id, previous_eligibility, request.can_bid, reason, was_already_overridden
+        )),
+    );
+
+    let before = StateSnapshot::new(format!("can_bid={previous_eligibility}"));
+    let after = StateSnapshot::new(format!("can_bid={}", request.can_bid));
+
+    let year = persistence
+        .get_bid_year_from_id(bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get bid year: {e}"),
+        })?;
+    let bid_year = BidYear::new(year);
+    let area = Area::new("_override");
+
+    let audit_event = AuditEvent::new(actor, cause, action, before, after, bid_year, area);
+
+    let event_id =
+        persistence
+            .persist_audit_event(&audit_event)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to persist audit event: {e}"),
+            })?;
+
+    Ok(OverrideEligibilityResponse {
+        audit_event_id: event_id,
+        message: format!(
+            "Eligibility overridden for user {user_initials} (audit event {event_id})"
+        ),
+    })
+}
+
+/// Override a user's bid order after canonicalization.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The override request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data
+///
+/// # Returns
+///
+/// Returns the audit event ID on success.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not an admin
+/// - The lifecycle state is not >= Canonicalized
+/// - The override reason is invalid
+/// - The bid order is invalid (must be positive if provided)
+/// - The canonical record does not exist
+#[allow(dead_code)]
+pub fn override_bid_order(
+    persistence: &mut SqlitePersistence,
+    request: &OverrideBidOrderRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+) -> Result<OverrideBidOrderResponse, ApiError> {
+    // Enforce authorization - only admins can perform overrides
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("override_bid_order"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Validate override reason (min 10 chars)
+    let reason = request.reason.trim();
+    if reason.len() < 10 {
+        return Err(translate_domain_error(DomainError::InvalidOverrideReason {
+            reason: request.reason.clone(),
+        }));
+    }
+
+    // Validate bid order if provided
+    if let Some(order) = request.bid_order
+        && order <= 0
+    {
+        return Err(translate_domain_error(DomainError::InvalidBidOrder {
+            reason: format!("Bid order must be positive (got: {order})"),
+        }));
+    }
+
+    // Get user details
+    let (bid_year_id, user_initials): (i64, String) =
+        persistence.get_user_details(request.user_id).map_err(|_| {
+            let user_id = request.user_id;
+            ApiError::ResourceNotFound {
+                resource_type: String::from("User"),
+                message: format!("User with ID {user_id} not found"),
+            }
+        })?;
+
+    // Check lifecycle state >= Canonicalized
+    let lifecycle_state =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    if !matches!(
+        lifecycle_state.as_str(),
+        "Canonicalized" | "BiddingActive" | "BiddingClosed"
+    ) {
+        return Err(translate_domain_error(
+            DomainError::CannotOverrideBeforeCanonicalization {
+                current_state: lifecycle_state,
+            },
+        ));
+    }
+
+    // Perform override
+    let (previous_bid_order, was_already_overridden) = persistence
+        .override_bid_order(bid_year_id, request.user_id, request.bid_order, reason)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to override bid order: {e}"),
+        })?;
+
+    // Create and persist audit event
+    let actor = authenticated_actor.to_audit_actor(operator);
+    let cause = Cause::new(
+        String::from("override_bid_order"),
+        format!("Override bid order for user {user_initials}"),
+    );
+
+    let action = Action::new(
+        String::from("UserBidOrderOverridden"),
+        Some(format!(
+            "user_id={}, previous_bid_order={:?}, new_bid_order={:?}, reason={}, was_overridden={}",
+            request.user_id, previous_bid_order, request.bid_order, reason, was_already_overridden
+        )),
+    );
+
+    let before = StateSnapshot::new(format!("bid_order={previous_bid_order:?}"));
+    let after = StateSnapshot::new(format!("bid_order={:?}", request.bid_order));
+
+    let year = persistence
+        .get_bid_year_from_id(bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get bid year: {e}"),
+        })?;
+    let bid_year = BidYear::new(year);
+    let area = Area::new("_override");
+
+    let audit_event = AuditEvent::new(actor, cause, action, before, after, bid_year, area);
+
+    let event_id =
+        persistence
+            .persist_audit_event(&audit_event)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to persist audit event: {e}"),
+            })?;
+
+    Ok(OverrideBidOrderResponse {
+        audit_event_id: event_id,
+        message: format!("Bid order overridden for user {user_initials} (audit event {event_id})"),
+    })
+}
+
+/// Override a user's bid window after canonicalization.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The override request
+/// * `authenticated_actor` - The authenticated actor performing this action
+/// * `operator` - The operator data
+///
+/// # Returns
+///
+/// Returns the audit event ID on success.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not an admin
+/// - The lifecycle state is not >= Canonicalized
+/// - The override reason is invalid
+/// - The bid window dates are invalid (start > end, partial window)
+/// - The canonical record does not exist
+#[allow(clippy::too_many_lines)]
+#[allow(dead_code)]
+pub fn override_bid_window(
+    persistence: &mut SqlitePersistence,
+    request: &OverrideBidWindowRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+) -> Result<OverrideBidWindowResponse, ApiError> {
+    // Enforce authorization - only admins can perform overrides
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("override_bid_window"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Validate override reason (min 10 chars)
+    let reason = request.reason.trim();
+    if reason.len() < 10 {
+        return Err(translate_domain_error(DomainError::InvalidOverrideReason {
+            reason: request.reason.clone(),
+        }));
+    }
+
+    // Validate bid window - both must be present or both must be None
+    match (&request.window_start, &request.window_end) {
+        (Some(start), Some(end)) => {
+            // Parse dates to validate format and ordering
+            let start_date = time::Date::parse(
+                start,
+                time::macros::format_description!("[year]-[month]-[day]"),
+            )
+            .map_err(|e| {
+                translate_domain_error(DomainError::DateParseError {
+                    date_string: start.clone(),
+                    error: e.to_string(),
+                })
+            })?;
+            let end_date = time::Date::parse(
+                end,
+                time::macros::format_description!("[year]-[month]-[day]"),
+            )
+            .map_err(|e| {
+                translate_domain_error(DomainError::DateParseError {
+                    date_string: end.clone(),
+                    error: e.to_string(),
+                })
+            })?;
+
+            if start_date > end_date {
+                return Err(translate_domain_error(DomainError::InvalidBidWindow {
+                    reason: format!("Window start date ({start}) must be <= end date ({end})"),
+                }));
+            }
+        }
+        (None, None) => {
+            // Both None is valid (clears the window)
+        }
+        _ => {
+            return Err(translate_domain_error(DomainError::InvalidBidWindow {
+                reason: String::from(
+                    "Both window_start and window_end must be provided or both must be null",
+                ),
+            }));
+        }
+    }
+
+    // Get user details
+    let (bid_year_id, user_initials): (i64, String) =
+        persistence.get_user_details(request.user_id).map_err(|_| {
+            let user_id = request.user_id;
+            ApiError::ResourceNotFound {
+                resource_type: String::from("User"),
+                message: format!("User with ID {user_id} not found"),
+            }
+        })?;
+
+    // Check lifecycle state >= Canonicalized
+    let lifecycle_state =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    if !matches!(
+        lifecycle_state.as_str(),
+        "Canonicalized" | "BiddingActive" | "BiddingClosed"
+    ) {
+        return Err(translate_domain_error(
+            DomainError::CannotOverrideBeforeCanonicalization {
+                current_state: lifecycle_state,
+            },
+        ));
+    }
+
+    // Perform override
+    let (previous_start, previous_end, was_already_overridden) = persistence
+        .override_bid_window(
+            bid_year_id,
+            request.user_id,
+            request.window_start.as_ref(),
+            request.window_end.as_ref(),
+            reason,
+        )
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to override bid window: {e}"),
+        })?;
+
+    // Create and persist audit event
+    let actor = authenticated_actor.to_audit_actor(operator);
+    let cause = Cause::new(
+        String::from("override_bid_window"),
+        format!("Override bid window for user {user_initials}"),
+    );
+
+    let action = Action::new(
+        String::from("UserBidWindowOverridden"),
+        Some(format!(
+            "user_id={}, previous_start={:?}, previous_end={:?}, new_start={:?}, new_end={:?}, reason={}, was_overridden={}",
+            request.user_id,
+            previous_start,
+            previous_end,
+            request.window_start,
+            request.window_end,
+            reason,
+            was_already_overridden
+        )),
+    );
+
+    let before = StateSnapshot::new(format!(
+        "window_start={previous_start:?}, window_end={previous_end:?}"
+    ));
+    let after = StateSnapshot::new(format!(
+        "window_start={:?}, window_end={:?}",
+        request.window_start, request.window_end
+    ));
+
+    let year = persistence
+        .get_bid_year_from_id(bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get bid year: {e}"),
+        })?;
+    let bid_year = BidYear::new(year);
+    let area = Area::new("_override");
+
+    let audit_event = AuditEvent::new(actor, cause, action, before, after, bid_year, area);
+
+    let event_id =
+        persistence
+            .persist_audit_event(&audit_event)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to persist audit event: {e}"),
+            })?;
+
+    Ok(OverrideBidWindowResponse {
+        audit_event_id: event_id,
+        message: format!("Bid window overridden for user {user_initials} (audit event {event_id})"),
+    })
 }

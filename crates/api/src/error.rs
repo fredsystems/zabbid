@@ -358,6 +358,36 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
                 "Cannot assign user to No Bid area after canonicalization (bid year {bid_year}, state: {lifecycle_state})"
             ),
         },
+        DomainError::CannotOverrideBeforeCanonicalization { current_state } => {
+            ApiError::DomainRuleViolation {
+                rule: String::from("override_requires_canonicalization"),
+                message: format!(
+                    "Cannot perform override before canonicalization (current state: {current_state})"
+                ),
+            }
+        }
+        DomainError::InvalidOverrideReason { reason } => ApiError::InvalidInput {
+            field: String::from("reason"),
+            message: format!(
+                "Invalid override reason: must be at least 10 characters (got: '{reason}')"
+            ),
+        },
+        DomainError::CanonicalRecordNotFound { description } => ApiError::ResourceNotFound {
+            resource_type: String::from("Canonical record"),
+            message: description,
+        },
+        DomainError::CannotAssignToSystemArea { area_code } => ApiError::DomainRuleViolation {
+            rule: String::from("cannot_assign_to_system_area"),
+            message: format!("Cannot assign user to system area '{area_code}'"),
+        },
+        DomainError::InvalidBidOrder { reason } => ApiError::InvalidInput {
+            field: String::from("bid_order"),
+            message: reason,
+        },
+        DomainError::InvalidBidWindow { reason } => ApiError::InvalidInput {
+            field: String::from("bid_window"),
+            message: reason,
+        },
     }
 }
 
