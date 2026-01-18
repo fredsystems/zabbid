@@ -124,6 +124,10 @@ pub struct BidYearInfo {
     pub total_user_count: usize,
     /// The lifecycle state of the bid year.
     pub lifecycle_state: String,
+    /// Optional display label for this bid year.
+    pub label: Option<String>,
+    /// Optional notes for operational context.
+    pub notes: Option<String>,
 }
 
 /// API response for listing bid years.
@@ -1184,6 +1188,32 @@ pub struct TransitionToBiddingClosedResponse {
     pub year: u16,
     /// The new lifecycle state.
     pub lifecycle_state: String,
+    /// A success message.
+    pub message: String,
+}
+
+/// API request to update bid year metadata (label and notes).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct UpdateBidYearMetadataRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// Optional display label (max 100 characters).
+    pub label: Option<String>,
+    /// Optional notes for operational context (max 2000 characters).
+    pub notes: Option<String>,
+}
+
+/// API response for updating bid year metadata.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateBidYearMetadataResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The year value.
+    pub year: u16,
+    /// The updated label.
+    pub label: Option<String>,
+    /// The updated notes.
+    pub notes: Option<String>,
     /// A success message.
     pub message: String,
 }

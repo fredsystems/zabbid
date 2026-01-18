@@ -4,10 +4,6 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-// NOTE: The diesel.toml setting `sqlite_integer_primary_key_is_bigint = true`
-// causes Diesel to map SQLite INTEGER PRIMARY KEY columns to BigInt (i64).
-// This matches SQLite's actual 64-bit storage for these columns.
-
 diesel::table! {
     areas (area_id) {
         area_id -> BigInt,
@@ -47,6 +43,8 @@ diesel::table! {
         is_active -> Integer,
         expected_area_count -> Nullable<Integer>,
         lifecycle_state -> Text,
+        label -> Nullable<Text>,
+        notes -> Nullable<Text>,
     }
 }
 
@@ -156,6 +154,19 @@ diesel::joinable!(areas -> bid_years (bid_year_id));
 diesel::joinable!(audit_events -> areas (area_id));
 diesel::joinable!(audit_events -> bid_years (bid_year_id));
 diesel::joinable!(audit_events -> operators (actor_operator_id));
+diesel::joinable!(canonical_area_membership -> areas (area_id));
+diesel::joinable!(canonical_area_membership -> audit_events (audit_event_id));
+diesel::joinable!(canonical_area_membership -> bid_years (bid_year_id));
+diesel::joinable!(canonical_area_membership -> users (user_id));
+diesel::joinable!(canonical_bid_order -> audit_events (audit_event_id));
+diesel::joinable!(canonical_bid_order -> bid_years (bid_year_id));
+diesel::joinable!(canonical_bid_order -> users (user_id));
+diesel::joinable!(canonical_bid_windows -> audit_events (audit_event_id));
+diesel::joinable!(canonical_bid_windows -> bid_years (bid_year_id));
+diesel::joinable!(canonical_bid_windows -> users (user_id));
+diesel::joinable!(canonical_eligibility -> audit_events (audit_event_id));
+diesel::joinable!(canonical_eligibility -> bid_years (bid_year_id));
+diesel::joinable!(canonical_eligibility -> users (user_id));
 diesel::joinable!(sessions -> operators (operator_id));
 diesel::joinable!(state_snapshots -> areas (area_id));
 diesel::joinable!(state_snapshots -> audit_events (event_id));

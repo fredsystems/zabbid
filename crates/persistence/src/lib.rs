@@ -1606,6 +1606,64 @@ impl Persistence {
         }
     }
 
+    /// Retrieves the metadata (label and notes) for a bid year.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bid year doesn't exist or the database cannot be queried.
+    pub fn get_bid_year_metadata(
+        &mut self,
+        bid_year_id: i64,
+    ) -> Result<(Option<String>, Option<String>), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::canonical::get_bid_year_metadata_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::canonical::get_bid_year_metadata_mysql(conn, bid_year_id)
+            }
+        }
+    }
+
+    /// Updates the metadata fields (label and notes) for a bid year.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `label` - Optional display label (max 100 characters)
+    /// * `notes` - Optional operational notes (max 2000 characters)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be updated or the bid year doesn't exist.
+    pub fn update_bid_year_metadata(
+        &mut self,
+        bid_year_id: i64,
+        label: Option<&str>,
+        notes: Option<&str>,
+    ) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::bootstrap::update_bid_year_metadata_sqlite(
+                    conn,
+                    bid_year_id,
+                    label,
+                    notes,
+                )
+            }
+            BackendConnection::Mysql(conn) => mutations::bootstrap::update_bid_year_metadata_mysql(
+                conn,
+                bid_year_id,
+                label,
+                notes,
+            ),
+        }
+    }
+
     /// Queries whether any bid year is in the `BiddingActive` lifecycle state.
     ///
     /// # Returns
