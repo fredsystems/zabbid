@@ -22,6 +22,7 @@ import type {
   ListBidYearsResponse,
   ListUsersResponse,
   OperatorInfo,
+  OverrideAreaAssignmentResponse,
   PreviewCsvUsersResponse,
   RegisterUserResponse,
   SetActiveBidYearResponse,
@@ -642,6 +643,38 @@ export async function importCsvUsers(
       body: JSON.stringify({
         csv_content: csvContent,
         selected_row_indices: selectedRowIndices,
+      }),
+    },
+  );
+}
+
+/**
+ * Override a user's area assignment after canonicalization.
+ *
+ * @param sessionToken - The session token for authentication
+ * @param userId - The user's canonical identifier
+ * @param newAreaId - The new area ID to assign
+ * @param reason - The reason for the override (min 10 characters)
+ * @returns Promise resolving to the override response
+ */
+export async function overrideAreaAssignment(
+  sessionToken: string,
+  userId: number,
+  newAreaId: number,
+  reason: string,
+): Promise<OverrideAreaAssignmentResponse> {
+  return fetchJson<OverrideAreaAssignmentResponse>(
+    `${API_BASE}/users/override-area`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        new_area_id: newAreaId,
+        reason,
       }),
     },
   );

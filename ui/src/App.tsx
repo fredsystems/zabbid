@@ -29,6 +29,7 @@ import { ConnectionStatus } from "./components/ConnectionStatus";
 import { Navigation } from "./components/Navigation";
 import { OperatorManagement } from "./components/OperatorManagement";
 import { UserDetailView } from "./components/UserDetailView";
+import { UserEditView } from "./components/UserEditView";
 import { UserListView } from "./components/UserListView";
 import type { GlobalCapabilities, LiveEvent } from "./types";
 import { useLiveEvents } from "./useLiveEvents";
@@ -639,6 +640,16 @@ function AuthenticatedAdminApp({
             path="bid-year/:bidYearId/areas/:areaId/users/:userId"
             element={
               <UserDetailView
+                connectionState={connectionState}
+                lastEvent={lastEvent}
+              />
+            }
+          />
+          <Route
+            path="bid-year/:bidYearId/areas/:areaId/users/:userId/edit"
+            element={
+              <UserEditView
+                sessionToken={authState.sessionToken}
                 connectionState={connectionState}
                 lastEvent={lastEvent}
               />

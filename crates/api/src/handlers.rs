@@ -3204,9 +3204,10 @@ pub fn get_bootstrap_completeness(
     }
 
     // Determine if system is ready for bidding
-    let is_ready_for_bidding: bool = active_bid_year.is_some()
-        && bid_years_info.iter().all(|b| b.is_complete)
-        && areas_info.iter().all(|a| a.is_complete);
+    // System is ready only when there are NO blocking reasons at any level
+    let is_ready_for_bidding: bool = top_level_blocking.is_empty()
+        && bid_years_info.iter().all(|b| b.blocking_reasons.is_empty())
+        && areas_info.iter().all(|a| a.blocking_reasons.is_empty());
 
     Ok(GetBootstrapCompletenessResponse {
         active_bid_year_id,

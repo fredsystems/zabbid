@@ -485,6 +485,16 @@ export interface UpdateUserResponse {
 }
 
 /**
+ * Response for overriding a user's area assignment.
+ */
+export interface OverrideAreaAssignmentResponse {
+  /** The audit event ID */
+  audit_event_id: number;
+  /** Success message */
+  message: string;
+}
+
+/**
  * Status of a single CSV row validation.
  */
 export type CsvRowStatus = "valid" | "invalid";

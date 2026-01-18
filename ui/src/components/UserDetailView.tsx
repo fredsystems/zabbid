@@ -248,14 +248,29 @@ export function UserDetailView({
     <div className="user-detail-view">
       <div className="view-header">
         <h2>User Details: {leaveData.initials}</h2>
-        <button
-          type="button"
-          onClick={() =>
-            navigate(`/admin/bid-year/${bidYearIdNum}/areas/${areaIdNum}/users`)
-          }
-        >
-          Back to User List
-        </button>
+        <div className="view-actions">
+          <button
+            type="button"
+            onClick={() =>
+              navigate(
+                `/admin/bid-year/${bidYearIdNum}/areas/${areaIdNum}/users/${userIdNum}/edit`,
+              )
+            }
+            className="btn-action"
+          >
+            Edit User
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              navigate(
+                `/admin/bid-year/${bidYearIdNum}/areas/${areaIdNum}/users`,
+              )
+            }
+          >
+            Back to User List
+          </button>
+        </div>
       </div>
 
       <div className="user-metadata">

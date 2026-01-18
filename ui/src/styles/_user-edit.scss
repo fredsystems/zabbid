@@ -1,0 +1,565 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * User editing styles.
+ *
+ * Styles for:
+ * - UserEditView component
+ * - OverrideAreaModal component
+ * - Lifecycle-aware editing UI
+ */
+
+@use "sass:color";
+@use "variables" as *;
+
+// ============================================================================
+// User Edit View
+// ============================================================================
+
+.user-edit-view {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: $spacing-md;
+
+  .view-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: $spacing-lg;
+    padding-bottom: $spacing-md;
+    border-bottom: 2px solid $color-border;
+    flex-wrap: wrap;
+    gap: $spacing-md;
+
+    h2 {
+      margin: 0;
+    }
+
+    .view-actions {
+      display: flex;
+      gap: $spacing-sm;
+      flex-wrap: wrap;
+    }
+  }
+
+  .lifecycle-context {
+    background: $color-bg-surface-elevated;
+    border: 2px solid $color-accent-primary;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+    margin-bottom: $spacing-lg;
+
+    .lifecycle-badge {
+      display: inline-block;
+      background: $color-accent-primary;
+      color: $color-bg-base;
+      padding: $spacing-xs $spacing-md;
+      border-radius: $radius-sm;
+      font-weight: 600;
+      font-size: 0.9rem;
+      margin-bottom: $spacing-sm;
+    }
+
+    .lifecycle-note {
+      margin: $spacing-sm 0 0 0;
+      font-size: 0.9rem;
+      color: $color-text-secondary;
+    }
+  }
+
+  .user-edit-form {
+    .form-section {
+      background: $color-bg-surface;
+      border: 2px solid $color-border;
+      border-radius: $radius-md;
+      padding: $spacing-lg;
+      margin-bottom: $spacing-lg;
+
+      h3 {
+        margin: 0 0 $spacing-md 0;
+        padding-bottom: $spacing-sm;
+        border-bottom: 1px solid $color-border;
+      }
+
+      .form-note {
+        margin: 0 0 $spacing-md 0;
+        font-size: 0.9rem;
+        color: $color-text-secondary;
+        font-style: italic;
+      }
+
+      .form-row {
+        margin-bottom: $spacing-md;
+
+        &:last-child {
+          margin-bottom: 0;
+        }
+
+        label {
+          display: block;
+          margin-bottom: $spacing-xs;
+          font-weight: 600;
+          color: $color-text-primary;
+        }
+
+        input,
+        select,
+        textarea {
+          width: 100%;
+          background: $color-bg-base;
+          color: $color-text-primary;
+          border: 2px solid $color-border;
+          padding: $spacing-sm $spacing-md;
+          border-radius: $radius-sm;
+          font-size: 1rem;
+
+          &:focus {
+            outline: none;
+            border-color: $color-accent-primary;
+          }
+
+          &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+        }
+
+        input[type="date"] {
+          font-family: inherit;
+        }
+      }
+    }
+
+    .error-message {
+      background: rgba($color-error, 0.1);
+      border: 2px solid $color-error;
+      border-radius: $radius-md;
+      padding: $spacing-md;
+      margin-bottom: $spacing-md;
+
+      p {
+        margin: 0;
+        color: $color-error;
+        font-weight: 600;
+      }
+    }
+
+    .form-actions {
+      display: flex;
+      gap: $spacing-md;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+
+      button {
+        padding: $spacing-sm $spacing-lg;
+        border-radius: $radius-md;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: 2px solid transparent;
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+
+      .btn-save {
+        background: $color-accent-teal;
+        color: $color-bg-base;
+        border-color: $color-accent-teal;
+
+        &:hover:not(:disabled) {
+          background: color.scale($color-accent-teal, $lightness: -10%);
+          box-shadow: 0 2px 8px rgba($color-accent-teal, 0.3);
+        }
+      }
+
+      .btn-cancel {
+        background: transparent;
+        color: $color-text-primary;
+        border-color: $color-border;
+
+        &:hover:not(:disabled) {
+          background: $color-bg-surface;
+          border-color: $color-text-secondary;
+        }
+      }
+    }
+  }
+
+  .admin-actions {
+    background: $color-bg-surface;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-lg;
+    margin-top: $spacing-lg;
+
+    h3 {
+      margin: 0 0 $spacing-md 0;
+      padding-bottom: $spacing-sm;
+      border-bottom: 1px solid $color-border;
+    }
+
+    .action-group {
+      margin-top: $spacing-lg;
+      padding-top: $spacing-lg;
+      border-top: 1px solid $color-border;
+
+      &:first-of-type {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+      }
+
+      h4 {
+        margin: 0 0 $spacing-sm 0;
+        color: $color-text-primary;
+      }
+
+      .action-note {
+        margin: $spacing-sm 0;
+        font-size: 0.9rem;
+        color: $color-text-secondary;
+      }
+
+      .action-disabled {
+        margin: $spacing-sm 0;
+        font-size: 0.9rem;
+        color: $color-text-muted;
+        font-style: italic;
+      }
+
+      button {
+        margin-top: $spacing-sm;
+        padding: $spacing-sm $spacing-md;
+        border-radius: $radius-md;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: 2px solid transparent;
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+
+      .btn-action {
+        background: $color-accent-primary;
+        color: $color-bg-base;
+        border-color: $color-accent-primary;
+
+        &:hover:not(:disabled) {
+          background: color.scale($color-accent-primary, $lightness: -10%);
+          box-shadow: 0 2px 8px rgba($color-accent-primary, 0.3);
+        }
+      }
+
+      .btn-delete {
+        background: $color-error;
+        color: white;
+        border-color: $color-error;
+
+        &:hover:not(:disabled) {
+          background: color.scale($color-error, $lightness: -10%);
+          box-shadow: 0 2px 8px rgba($color-error, 0.3);
+        }
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Override Area Modal
+// ============================================================================
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: $spacing-md;
+}
+
+.modal-content {
+  background: $color-bg-surface;
+  border: 2px solid $color-border;
+  border-radius: $radius-lg;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: $spacing-lg;
+    border-bottom: 2px solid $color-border;
+
+    h3 {
+      margin: 0;
+      color: $color-text-primary;
+    }
+
+    .modal-close {
+      background: transparent;
+      border: none;
+      font-size: 2rem;
+      line-height: 1;
+      cursor: pointer;
+      color: $color-text-secondary;
+      padding: 0;
+      width: 2rem;
+      height: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.2s;
+
+      &:hover:not(:disabled) {
+        color: $color-error;
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+  }
+
+  .modal-body {
+    padding: $spacing-lg;
+
+    .modal-warning {
+      background: rgba($color-warning, 0.1);
+      border: 2px solid $color-warning;
+      border-radius: $radius-md;
+      padding: $spacing-md;
+      margin-bottom: $spacing-lg;
+      color: $color-text-primary;
+
+      strong {
+        color: $color-warning;
+      }
+    }
+
+    form {
+      .form-row {
+        margin-bottom: $spacing-md;
+
+        label {
+          display: block;
+          margin-bottom: $spacing-xs;
+          font-weight: 600;
+          color: $color-text-primary;
+        }
+
+        select,
+        textarea {
+          width: 100%;
+          background: $color-bg-base;
+          color: $color-text-primary;
+          border: 2px solid $color-border;
+          padding: $spacing-sm $spacing-md;
+          border-radius: $radius-sm;
+          font-size: 1rem;
+          font-family: inherit;
+
+          &:focus {
+            outline: none;
+            border-color: $color-accent-primary;
+          }
+
+          &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+        }
+
+        textarea {
+          resize: vertical;
+          min-height: 100px;
+        }
+
+        .character-count {
+          margin-top: $spacing-xs;
+          font-size: 0.85rem;
+          color: $color-text-secondary;
+          text-align: right;
+        }
+      }
+
+      .error-message {
+        background: rgba($color-error, 0.1);
+        border: 2px solid $color-error;
+        border-radius: $radius-md;
+        padding: $spacing-md;
+        margin-bottom: $spacing-md;
+
+        p {
+          margin: 0;
+          color: $color-error;
+          font-weight: 600;
+        }
+      }
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: $spacing-md;
+      justify-content: flex-end;
+      margin-top: $spacing-lg;
+      flex-wrap: wrap;
+
+      button {
+        padding: $spacing-sm $spacing-lg;
+        border-radius: $radius-md;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: 2px solid transparent;
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+
+      .btn-cancel {
+        background: transparent;
+        color: $color-text-primary;
+        border-color: $color-border;
+
+        &:hover:not(:disabled) {
+          background: $color-bg-surface-elevated;
+          border-color: $color-text-secondary;
+        }
+      }
+
+      .btn-save {
+        background: $color-accent-teal;
+        color: $color-bg-base;
+        border-color: $color-accent-teal;
+
+        &:hover:not(:disabled) {
+          background: color.scale($color-accent-teal, $lightness: -10%);
+          box-shadow: 0 2px 8px rgba($color-accent-teal, 0.3);
+        }
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Mobile Responsiveness
+// ============================================================================
+
+@media (max-width: 600px) {
+  .user-edit-view {
+    padding: $spacing-sm;
+
+    .view-header {
+      flex-direction: column;
+      align-items: stretch;
+
+      .view-actions {
+        width: 100%;
+
+        button {
+          flex: 1;
+        }
+      }
+    }
+
+    .user-edit-form {
+      .form-section {
+        padding: $spacing-md;
+      }
+
+      .form-actions {
+        flex-direction: column;
+
+        button {
+          width: 100%;
+        }
+      }
+    }
+
+    .admin-actions {
+      padding: $spacing-md;
+
+      .action-group {
+        button {
+          width: 100%;
+        }
+      }
+    }
+  }
+
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-start;
+  }
+
+  .modal-content {
+    max-height: 100vh;
+    border-radius: 0;
+
+    .modal-header,
+    .modal-body {
+      padding: $spacing-md;
+    }
+
+    .modal-body {
+      .modal-actions {
+        flex-direction: column;
+
+        button {
+          width: 100%;
+        }
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Card Footer Links
+// ============================================================================
+
+.card-footer {
+  display: flex;
+  gap: $spacing-md;
+  flex-wrap: wrap;
+
+  a {
+    color: $color-accent-primary;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s;
+
+    &:hover {
+      color: color.scale($color-accent-primary, $lightness: -15%);
+      text-decoration: underline;
+    }
+  }
+
+  .link-edit {
+    color: $color-accent-teal;
+
+    &:hover {
+      color: color.scale($color-accent-teal, $lightness: -15%);
+    }
+  }
+}
