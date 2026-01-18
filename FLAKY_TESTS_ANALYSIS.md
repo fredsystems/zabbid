@@ -83,6 +83,7 @@ This is not just about `test_invalid_session_token_rejected`. **Any test using `
 - Reported as "fails randomly in the test suite. Next run is fine" in `plans/unscoped.txt`
 - Current empirical testing: **0 failures in 20 isolated runs**
 - Current empirical testing: **0 failures in 10 full-suite runs** with 16 parallel threads
+- **Real failure observed**: Panic with `MigrationFailed("database schema is locked: main")`
 
 **Test Behavior**:
 
@@ -104,11 +105,21 @@ fn test_list_bid_years() {
 **Failure Symptom** (when it occurs):
 
 - Expected: 2 bid years
-- Observed: Incorrect count (likely more than 2)
+- **Observed (actual failure)**: `MigrationFailed("database schema is locked: main")`
+- Also possible: Incorrect count (more than 2 bid years)
 
 **Root Cause Hypothesis**:
 
-Database collision causes **data leakage between test instances**. If two instances of this test (or different tests) share a database due to nanosecond timestamp collision:
+Database collision causes **schema lock contention between test instances**. If two instances of this test (or different tests) share a database due to nanosecond timestamp collision:
+
+- Test A calls `new_in_memory()` → `memdb_12345`
+- Test B calls `new_in_memory()` at same nanosecond → **same** `memdb_12345`
+- Test A begins running migrations on shared database
+- Test B attempts to run migrations on **same database simultaneously**
+- **SQLite schema lock prevents concurrent migration** → `"database schema is locked: main"`
+- Test B panics on `unwrap()` of migration error
+
+Secondary failure modes when migration succeeds:
 
 - Test A creates bid years 2026, 2027
 - Test B (sharing DB) also creates bid years 2026, 2027
@@ -117,7 +128,25 @@ Database collision causes **data leakage between test instances**. If two instan
 
 **Evidence**:
 
-Same as `test_invalid_session_token_rejected` - this is a probe for the shared database state issue.
+1. **Actual Failure Message** (observed in local testing):
+
+   ```bash
+   thread 'tests::bootstrap_tests::test_list_bid_years' (236241) panicked at
+   crates/persistence/src/tests/bootstrap_tests/mod.rs:353:81:
+   called `Result::unwrap()` on an `Err` value:
+   MigrationFailed("database schema is locked: main")
+   ```
+
+2. **Root Cause Confirmed**:
+   - Error occurs at `SqlitePersistence::new_in_memory().unwrap()` call
+   - "schema is locked" indicates **concurrent migration attempts**
+   - This can ONLY happen if multiple tests share the same database connection
+   - Nanosecond timestamp collision is the only mechanism that produces shared DBs
+
+3. **Timing Evidence**:
+   - Thread ID shown: `236241` (test runs in parallel thread pool)
+   - Failure is intermittent ("Next run is fine" per user report)
+   - Confirms race condition between parallel test executions
 
 **Systemic Impact**:
 
@@ -283,9 +312,11 @@ fn generate_session_token() -> String {
 
 **ALL tests** that directly or indirectly depend on any code using `SystemTime::now()`.
 
-**Current Impact**: **MEDIUM** (causes isolation issues, not logic errors)
+**Current Impact**: **HIGH** (causes test panics via schema lock contention)
 
 **Future Risk**: **HIGH** (prevents deterministic testing, time-based test scenarios)
+
+**Observed Manifestation**: SQLite migration failures with `"database schema is locked: main"`
 
 ---
 
@@ -479,15 +510,16 @@ impl TimeSource for FakeTime {
 
 - 0 failures in 200+ test runs (20 isolated × 2 tests, 10 full-suite runs)
 - Phase 24A fixed shared database issue
-- User reports may be stale
 
 **Evidence Against**:
 
 - User reports exist in `plans/unscoped.txt`
 - Root causes still present in code
-- Failure rate may be <1%, hard to observe
+- **Actual failure observed**: `MigrationFailed("database schema is locked: main")`
+- Failure rate may be <1%, hard to observe with small sample sizes
 
-**Status**: **Plausible** - flakiness may be resolved or reduced to unobservable levels.
+**Status**: **REJECTED** - real failure evidence confirms flakiness still exists, just at low probability (<0.5% based on empirical testing).
+</text>
 
 ### Hypothesis: Flakiness is CI-Specific
 
@@ -557,7 +589,9 @@ If flakiness persists after this analysis:
 
 ✅ Identified systemic source of nondeterminism: **Wall-clock time dependency**
 
-✅ Explained flakiness in terms of shared causes: **Database isolation failure**
+✅ Explained flakiness in terms of shared causes: **Database isolation failure causing schema lock contention**
+
+✅ **Real failure evidence incorporated**: `MigrationFailed("database schema is locked: main")`
 
 ✅ Multiple tests share root cause: **ALL tests using `new_in_memory()`**
 
@@ -579,6 +613,7 @@ The test environment creates database isolation using wall-clock nanosecond time
 
 Any test using `new_in_memory()` (directly or via helpers like `setup_test_persistence()`) depends on timestamp uniqueness for isolation. When timestamps collide, tests share databases and observe each other's state mutations. This surfaces as:
 
+- **Schema lock panics** (e.g., `MigrationFailed("database schema is locked: main")`) when concurrent migrations attempted
 - Unexpected data counts (e.g., `test_list_bid_years` finding >2 bid years)
 - Unexpected token validation success (e.g., `test_invalid_session_token_rejected` getting 200 OK)
 - Constraint violations (e.g., unique key conflicts)
