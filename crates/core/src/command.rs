@@ -9,6 +9,26 @@ use zab_bid_domain::{Area, Crew, Initials, SeniorityData, UserType};
 /// A command represents user or system intent as data only.
 ///
 /// Commands are the only way to request state changes.
+///
+/// # Identity and Canonical IDs
+///
+/// Commands use domain vocabulary (e.g., `Initials`, `Area`) rather than
+/// persistence identifiers (e.g., `user_id`, `area_id`). This keeps the core
+/// layer UI-agnostic and focused on domain semantics.
+///
+/// The API layer is responsible for translating between:
+/// - External canonical identifiers (`user_id`, `area_id`, `bid_year_id`)
+/// - Domain vocabulary used in commands (`Initials`, `Area`, `BidYear`)
+///
+/// The persistence layer enforces canonical identity:
+/// - `user_id` is the sole authoritative identifier for users
+/// - `initials` are mutable display metadata, not identifiers
+/// - All mutations and foreign keys use canonical IDs
+///
+/// This architectural separation allows:
+/// - Domain rules to be expressed in business terms
+/// - Display fields (like initials) to change without breaking references
+/// - Persistence layer to enforce referential integrity via canonical IDs
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     /// Create a new bid year with canonical metadata.
@@ -69,8 +89,12 @@ pub enum Command {
         expected_count: u32,
     },
     /// Update an existing user's information in the active bid year.
+    ///
+    /// Note: The API layer identifies users by `user_id` (canonical identifier).
+    /// This command uses `initials` as domain vocabulary for the update operation.
+    /// Initials are mutable and may be changed via this command.
     UpdateUser {
-        /// The user's initials (identifier, cannot be changed).
+        /// The user's initials (may be updated).
         initials: Initials,
         /// The user's name.
         name: String,
@@ -104,8 +128,11 @@ pub enum Command {
         year: u16,
     },
     /// Override a user's area assignment after canonicalization.
+    ///
+    /// Note: The API layer resolves `user_id` before constructing this command.
+    /// Initials are used here as domain vocabulary, not as the persistence key.
     OverrideAreaAssignment {
-        /// The user's initials.
+        /// The user's initials (domain reference, resolved via `user_id` at API boundary).
         initials: Initials,
         /// The new area to assign.
         new_area: Area,
@@ -113,8 +140,11 @@ pub enum Command {
         reason: String,
     },
     /// Override a user's eligibility status after canonicalization.
+    ///
+    /// Note: The API layer resolves `user_id` before constructing this command.
+    /// Initials are used here as domain vocabulary, not as the persistence key.
     OverrideEligibility {
-        /// The user's initials.
+        /// The user's initials (domain reference, resolved via `user_id` at API boundary).
         initials: Initials,
         /// The new eligibility status.
         can_bid: bool,
@@ -122,8 +152,11 @@ pub enum Command {
         reason: String,
     },
     /// Override a user's bid order after canonicalization.
+    ///
+    /// Note: The API layer resolves `user_id` before constructing this command.
+    /// Initials are used here as domain vocabulary, not as the persistence key.
     OverrideBidOrder {
-        /// The user's initials.
+        /// The user's initials (domain reference, resolved via `user_id` at API boundary).
         initials: Initials,
         /// The new bid order (or None to clear).
         bid_order: Option<i32>,
@@ -131,8 +164,11 @@ pub enum Command {
         reason: String,
     },
     /// Override a user's bid window after canonicalization.
+    ///
+    /// Note: The API layer resolves `user_id` before constructing this command.
+    /// Initials are used here as domain vocabulary, not as the persistence key.
     OverrideBidWindow {
-        /// The user's initials.
+        /// The user's initials (domain reference, resolved via `user_id` at API boundary).
         initials: Initials,
         /// The new window start date (or None to clear).
         window_start: Option<Date>,
