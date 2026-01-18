@@ -203,7 +203,7 @@ export function UserEditView({
         user.user_id,
         user.initials,
         name,
-        areaIdNum.toString(),
+        areaIdNum,
         userType,
         crewNum,
         cumulativeNatcaBuDate,

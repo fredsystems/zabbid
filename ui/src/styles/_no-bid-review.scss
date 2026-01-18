@@ -1,0 +1,338 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * No Bid Review styles.
+ * Mobile-first design for reviewing and assigning users in No Bid area.
+ * Phase 26D implementation.
+ */
+
+@use "variables" as *;
+
+.no-bid-review {
+  padding: $spacing-md;
+  max-width: 1200px;
+  margin: 0 auto;
+
+  @media (min-width: 768px) {
+    padding: $spacing-xl;
+  }
+
+  h2 {
+    font-size: $font-size-2xl;
+    margin-bottom: $spacing-lg;
+    color: $color-text-primary;
+  }
+
+  // ============================================================================
+  // Header Section
+  // ============================================================================
+
+  .no-bid-header {
+    background: $color-bg-surface;
+    border: 2px solid $color-warning;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+    margin-bottom: $spacing-lg;
+
+    @media (min-width: 768px) {
+      padding: $spacing-lg;
+    }
+
+    .lifecycle-badge {
+      margin-bottom: $spacing-sm;
+
+      .badge {
+        display: inline-block;
+        padding: $spacing-xs $spacing-md;
+        border-radius: $radius-sm;
+        font-size: $font-size-sm;
+        font-weight: 600;
+        text-transform: uppercase;
+
+        &.lifecycle-draft {
+          background: $color-info;
+          color: $color-bg-base;
+        }
+
+        &.lifecycle-bootstrapcomplete {
+          background: $color-success;
+          color: $color-bg-base;
+        }
+
+        &.lifecycle-canonicalized,
+        &.lifecycle-biddingactive,
+        &.lifecycle-biddingclosed {
+          background: $color-accent-primary;
+          color: $color-bg-base;
+        }
+      }
+    }
+
+    .review-description {
+      margin: $spacing-sm 0 0 0;
+      color: $color-text-primary;
+      line-height: 1.5;
+
+      strong {
+        color: $color-warning;
+      }
+    }
+  }
+
+  // ============================================================================
+  // Success Panel (Empty State)
+  // ============================================================================
+
+  .success-panel {
+    background: linear-gradient(
+      135deg,
+      $color-bg-surface 0%,
+      rgba($color-success, 0.1) 100%
+    );
+    border: 2px solid $color-success;
+    border-radius: $radius-md;
+    padding: $spacing-xl;
+    text-align: center;
+
+    h3 {
+      margin: 0 0 $spacing-md 0;
+      color: $color-success;
+      font-size: $font-size-xl;
+    }
+
+    p {
+      margin: 0;
+      color: $color-text-primary;
+      font-size: $font-size-base;
+      line-height: 1.5;
+    }
+  }
+
+  // ============================================================================
+  // User Assignment Cards
+  // ============================================================================
+
+  .no-bid-users-list {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-md;
+    margin-bottom: $spacing-lg;
+  }
+
+  .user-assignment-card {
+    background: $color-bg-surface;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+    transition: border-color $transition-base;
+
+    @media (min-width: 768px) {
+      padding: $spacing-lg;
+    }
+
+    &:hover {
+      border-color: $color-accent-primary;
+    }
+
+    .user-info {
+      margin-bottom: $spacing-md;
+      padding-bottom: $spacing-md;
+      border-bottom: 1px solid $color-border;
+
+      h4 {
+        margin: 0 0 $spacing-sm 0;
+        color: $color-text-primary;
+        font-size: $font-size-lg;
+      }
+
+      .user-meta {
+        display: flex;
+        gap: $spacing-sm;
+        flex-wrap: wrap;
+
+        .user-type-badge,
+        .user-crew-badge {
+          display: inline-block;
+          padding: $spacing-xs $spacing-sm;
+          background: $color-bg-surface-overlay;
+          border-radius: $radius-sm;
+          font-size: $font-size-xs;
+          color: $color-text-secondary;
+        }
+      }
+    }
+
+    .assignment-controls {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-sm;
+
+      @media (min-width: 600px) {
+        flex-direction: row;
+        align-items: flex-end;
+      }
+
+      label {
+        font-weight: 600;
+        color: $color-text-primary;
+        font-size: $font-size-base;
+        margin-bottom: 0;
+
+        @media (min-width: 600px) {
+          min-width: 120px;
+          flex-shrink: 0;
+          align-self: center;
+        }
+      }
+
+      select {
+        flex: 1;
+        box-sizing: border-box;
+        padding: $spacing-sm $spacing-md;
+        border: 2px solid $color-border;
+        border-radius: $radius-sm;
+        background: $color-bg-base;
+        color: $color-text-primary;
+        font-size: $font-size-base;
+        font-family: $font-family-base;
+        transition: border-color $transition-base;
+        min-height: 44px;
+
+        &:focus {
+          outline: none;
+          border-color: $color-accent-primary;
+        }
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+
+      .btn-assign {
+        width: 100%;
+        padding: $spacing-sm $spacing-lg;
+        background: $color-accent-primary;
+        color: $color-bg-base;
+        border: none;
+        border-radius: $radius-sm;
+        font-size: $font-size-base;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background $transition-base;
+        box-shadow: $shadow-sm;
+        min-height: 44px;
+
+        @media (min-width: 600px) {
+          width: auto;
+          flex-shrink: 0;
+        }
+
+        &:hover:not(:disabled) {
+          background: $color-accent-secondary;
+          box-shadow: $shadow-md;
+        }
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // Loading & Error States
+  // ============================================================================
+
+  .loading {
+    text-align: center;
+    padding: $spacing-xl;
+    color: $color-text-muted;
+    font-size: $font-size-lg;
+  }
+
+  .error-panel {
+    text-align: center;
+    padding: $spacing-xl;
+    background: rgba($color-error, 0.1);
+    border: 2px solid $color-error;
+    border-radius: $radius-md;
+
+    h2 {
+      color: $color-error;
+      margin-top: 0;
+    }
+
+    p {
+      color: $color-text-primary;
+    }
+  }
+
+  // ============================================================================
+  // Error Banner
+  // ============================================================================
+
+  .error-banner {
+    position: fixed;
+    bottom: $spacing-lg;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 90%;
+    padding: $spacing-md $spacing-lg;
+    background: $color-error;
+    color: $color-bg-base;
+    border-radius: $radius-md;
+    box-shadow: $shadow-lg;
+    font-size: $font-size-base;
+    z-index: 1000;
+
+    @media (min-width: 768px) {
+      max-width: 600px;
+    }
+
+    strong {
+      font-weight: 700;
+    }
+  }
+}
+
+// ============================================================================
+// Bootstrap Blocker Panel Enhancement (Phase 26D)
+// ============================================================================
+
+.bootstrap-blocker-panel {
+  .btn-review-no-bid {
+    display: inline-block;
+    margin-top: $spacing-md;
+    padding: $spacing-sm $spacing-lg;
+    background: $color-accent-primary;
+    color: $color-bg-base;
+    text-decoration: none;
+    border-radius: $radius-sm;
+    font-weight: 700;
+    transition: all $transition-base;
+    box-shadow: $shadow-sm;
+    min-height: 44px;
+    line-height: 1.5;
+    text-align: center;
+
+    &:visited {
+      color: $color-bg-base;
+    }
+
+    &:hover {
+      background: $color-accent-secondary;
+      color: $color-bg-base;
+      box-shadow: $shadow-md;
+    }
+
+    &:active,
+    &:focus {
+      color: $color-bg-base;
+    }
+  }
+}

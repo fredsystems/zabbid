@@ -2250,18 +2250,39 @@ async fn handle_update_user(
     let mut persistence = app_state.persistence.lock().await;
     let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
 
-    // Resolve area_id to Area and BidYear from metadata
-    let (bid_year_ref, area_ref) = metadata
+    // Get the user's current area from the database (not the target area)
+    let current_area_id: i64 =
+        persistence
+            .get_user_area_id(req.user_id)
+            .map_err(|e| HttpError {
+                status: StatusCode::NOT_FOUND,
+                message: format!("User not found: {e}"),
+            })?;
+
+    // Resolve the user's current area from metadata to get bid_year and area
+    let (bid_year_ref, current_area_ref) = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(current_area_id))
+        .map(|(by, a)| (by.clone(), a.clone()))
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("User's current area (ID {current_area_id}) not found in metadata"),
+        })?;
+
+    // Load state from the user's CURRENT area (where they are now)
+    let state: State = persistence.get_current_state(&bid_year_ref, &current_area_ref)?;
+
+    // Also resolve the target area (where the user is moving to) for validation
+    let target_area_ref = metadata
         .areas
         .iter()
         .find(|(_, a)| a.area_id() == Some(req.area_id))
-        .map(|(by, a)| (by.clone(), a.clone()))
+        .map(|(_, a)| a.clone())
         .ok_or_else(|| HttpError {
             status: StatusCode::NOT_FOUND,
-            message: format!("Area with ID {} not found", req.area_id),
+            message: format!("Target area with ID {} not found", req.area_id),
         })?;
-
-    let state: State = persistence.get_current_state(&bid_year_ref, &area_ref)?;
 
     // Build API request (bid_year no longer needed in request)
     let update_request: UpdateUserRequest = UpdateUserRequest {
@@ -2304,7 +2325,7 @@ async fn handle_update_user(
             .as_ref()
             .expect("UpdateUser event must have bid year")
             .year(),
-        area: area_ref.area_code().to_string(),
+        area: target_area_ref.area_code().to_string(),
         initials: req.initials.clone(),
     });
 

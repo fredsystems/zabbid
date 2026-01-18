@@ -27,6 +27,7 @@ import { BootstrapCompleteness } from "./components/BootstrapCompleteness";
 import { BootstrapOverview } from "./components/BootstrapOverview";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 import { Navigation } from "./components/Navigation";
+import { NoBidReview } from "./components/NoBidReview";
 import { OperatorManagement } from "./components/OperatorManagement";
 import { UserDetailView } from "./components/UserDetailView";
 import { UserEditView } from "./components/UserEditView";
@@ -87,7 +88,9 @@ function AppRoutes() {
         if (storedToken && storedLoginName && storedDisplayName && storedRole) {
           // Verify session is still valid and fetch capabilities
           try {
+            console.log("[App] Calling whoami with stored token");
             const whoamiResponse = await api.whoami(storedToken);
+            console.log("[App] Whoami response:", whoamiResponse);
             setAuthState({
               isAuthenticated: true,
               sessionToken: storedToken,
@@ -96,8 +99,13 @@ function AppRoutes() {
               role: storedRole,
               capabilities: whoamiResponse.capabilities,
             });
-          } catch {
+            console.log(
+              "[App] Auth state set with capabilities:",
+              whoamiResponse.capabilities,
+            );
+          } catch (err) {
             // Session invalid, clear storage
+            console.error("[App] Whoami failed:", err);
             localStorage.removeItem("session_token");
             localStorage.removeItem("login_name");
             localStorage.removeItem("display_name");
@@ -612,6 +620,16 @@ function AuthenticatedAdminApp({
               <BootstrapCompleteness
                 sessionToken={authState.sessionToken}
                 capabilities={authState.capabilities}
+                connectionState={connectionState}
+                lastEvent={lastEvent}
+              />
+            }
+          />
+          <Route
+            path="bid-year/:bidYearId/no-bid-review"
+            element={
+              <NoBidReview
+                sessionToken={authState.sessionToken}
                 connectionState={connectionState}
                 lastEvent={lastEvent}
               />

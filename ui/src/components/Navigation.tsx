@@ -22,6 +22,9 @@ export function Navigation({ capabilities }: NavigationProps) {
   const location = useLocation();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Debug logging
+  console.log("[Navigation] Capabilities:", capabilities);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
