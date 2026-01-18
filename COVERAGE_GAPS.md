@@ -40,7 +40,10 @@ This analysis identifies critical untested paths in the Zabbid codebase, priorit
 
 These gaps represent security, correctness, or auditability risks and must be tested.
 
-### Gap 1: Handler Authorization Failures (Bidder Rejection)
+### Gap 1: Handler Authorization Failures (Bidder Rejection) — ✅ DONE
+
+**Status**: REMEDIATED in Phase 27H
+**Tests**: `crates/api/src/tests/authorization_tests.rs` (13 tests)
 
 **Location**: `crates/api/src/handlers.rs` (multiple functions)
 
@@ -77,25 +80,30 @@ For each handler:
 5. Assert no state mutation occurred
 6. Assert no audit event emitted
 
-**Example**:
+**Tests Implemented**:
 
-```rust
-#[test]
-fn test_update_user_requires_admin() {
-    let mut persistence = test_persistence();
-    let bidder = test_bidder_actor();
-    let request = UpdateUserRequest { /* ... */ };
+- `test_update_user_rejects_bidder`
+- `test_update_area_rejects_bidder`
+- `test_update_bid_year_metadata_rejects_bidder`
+- `test_set_active_bid_year_rejects_bidder`
+- `test_transition_to_bootstrap_complete_rejects_bidder`
+- `test_transition_to_canonicalized_rejects_bidder`
+- `test_transition_to_bidding_active_rejects_bidder`
+- `test_transition_to_bidding_closed_rejects_bidder`
+- `test_checkpoint_rejects_bidder`
+- `test_finalize_rejects_bidder`
+- `test_rollback_rejects_bidder`
+- `test_create_bid_year_rejects_bidder`
+- `test_create_area_rejects_bidder`
 
-    let result = update_user(&bidder, request, &mut persistence);
-
-    assert!(matches!(result, Err(ApiError::Unauthorized { .. })));
-    // Verify no state change
-}
-```
+All tests verify bidder access is rejected with `Unauthorized` error containing correct action and required_role.
 
 ---
 
-### Gap 2: Persistence Mutation Error Handling
+### Gap 2: Persistence Mutation Error Handling — ✅ DONE
+
+**Status**: REMEDIATED in Phase 27H
+**Tests**: `crates/persistence/src/tests/mutation_error_tests.rs` (12 tests)
 
 **Location**: `crates/persistence/src/mutations/canonical.rs` (lines vary)
 
@@ -123,23 +131,21 @@ Persistence errors must be handled correctly to maintain data integrity. Unteste
 4. Assert correct error types returned
 5. Verify no partial state mutations
 
-**Example**:
+**Tests Implemented**:
+- `test_update_user_with_nonexistent_user_id_returns_not_found`
+- `test_update_user_with_nonexistent_area_id_returns_database_error`
+- `test_update_user_with_area_missing_canonical_id_returns_error`
+- `test_update_area_name_with_nonexistent_area_id_returns_not_found`
+- `test_override_area_assignment_with_nonexistent_user_returns_reconstruction_error`
+- `test_override_area_assignment_with_nonexistent_area_returns_reconstruction_error`
+- `test_override_eligibility_with_nonexistent_user_returns_reconstruction_error`
+- `test_override_bid_order_with_nonexistent_user_returns_reconstruction_error`
+- `test_override_bid_window_with_nonexistent_user_returns_reconstruction_error`
+- `test_lookup_bid_year_id_with_nonexistent_year_returns_not_found`
+- `test_lookup_area_id_with_nonexistent_area_code_returns_not_found`
+- `test_lookup_area_id_with_nonexistent_bid_year_returns_not_found`
 
-```rust
-#[test]
-fn test_update_user_handles_foreign_key_violation() {
-    let mut persistence = test_persistence();
-    // Create user without creating referenced area
-    let request = UpdateUserRequest {
-        area_id: 999999, // non-existent
-        // ...
-    };
-
-    let result = persistence.update_user(/* ... */);
-
-    assert!(matches!(result, Err(PersistenceError::ConstraintViolation(_))));
-}
-```
+All tests verify correct error types (DatabaseError, NotFound, ReconstructionError) and error messages contain relevant context.
 
 ---
 
