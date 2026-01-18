@@ -2,7 +2,7 @@
 
 ## Phase Objective
 
-Phase 27 is a **system-wide correctness and hygiene pass**.  
+Phase 27 is a **system-wide correctness and hygiene pass**.
 No new domain features are introduced.
 
 The goal is to:
