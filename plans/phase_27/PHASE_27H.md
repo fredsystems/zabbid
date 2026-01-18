@@ -158,8 +158,7 @@ Stop after critical and high priority gaps are covered. Medium and low priority 
 - All high priority gaps from 27G have tests
 - New tests pass reliably (verified via 100+ runs for critical tests)
 - No existing tests broken by new additions
-- Coverage for authorization paths >90%
-- Coverage for validation error paths >80%
+- close all Critical + High gaps from COVERAGE_GAPS.md and re-run llvm-cov to confirm the specific uncovered branches are now hit.
 - Git commit focused on test additions only
 - Commit message references Phase 27G gap numbers or descriptions
 
