@@ -5,40 +5,22 @@ categorized by reason and with actionable recommendations for each.
 
 ## Summary
 
-| Category           | Count  |
-| ------------------ | ------ |
-| Obsolete           | 2      |
-| Integration        | 9      |
-| Hermetic-Candidate | 0      |
-| Justified          | 0      |
-| **Total**          | **11** |
+| Category           | Count |
+| ------------------ | ----- |
+| Obsolete           | 0     |
+| Integration        | 9     |
+| Hermetic-Candidate | 0     |
+| Justified          | 0     |
+| **Total**          | **9** |
 
 ## Obsolete Tests
 
-These tests validate functionality that no longer exists or has been superseded
-by architectural changes.
+**Phase 27F Update**: All obsolete tests have been removed. This section is now empty.
 
-### Test: `test_duplicate_initials_in_different_bid_years_allowed`
+Previously removed tests:
 
-- **Location**: `crates/api/src/tests/api_tests.rs:697`
-- **Category**: Obsolete
-- **Reason**: "Phase 19: Multiple bid years are no longer supported - all operations target the active bid year"
-- **Recommendation**: Remove
-- **Notes**: This test validates that duplicate initials are allowed across different bid years.
-  Since Phase 19 eliminated support for multiple simultaneous bid years (system now operates
-  on a single active bid year), this test validates behavior that is architecturally impossible.
-  The test should be removed as it cannot be made relevant under the current architecture.
-
-### Test: `test_list_areas_isolated_by_bid_year`
-
-- **Location**: `crates/persistence/src/tests/bootstrap_tests/mod.rs:464`
-- **Category**: Obsolete
-- **Reason**: "Phase 19: Multiple bid years are no longer supported - all operations target the active bid year"
-- **Recommendation**: Remove
-- **Notes**: This test validates that areas are properly isolated between different bid years
-  (creating areas in 2026 vs 2027 and verifying they don't overlap). Since the system now
-  enforces exactly one active bid year at a time, this isolation test is no longer relevant.
-  The test should be removed.
+- `test_duplicate_initials_in_different_bid_years_allowed` (removed in Phase 27F)
+- `test_list_areas_isolated_by_bid_year` (removed in Phase 27F)
 
 ## Integration Tests
 
@@ -130,17 +112,19 @@ They are correctly ignored and should remain so.
 
 ## Completeness Check
 
-- Total `#[ignore]` occurrences found: **11**
-- Total catalog entries: **11**
+- Total `#[ignore]` occurrences found: **9**
+- Total catalog entries: **9**
 - Unaccounted ignores: **0**
 
 All ignored tests have been cataloged and categorized.
 
+**Phase 27F Update**: Reduced from 11 to 9 ignored tests by removing 2 obsolete tests.
+
 ## Recommended Actions
 
-### Immediate (Phase 27F)
+### Completed in Phase 27F
 
-1. Remove 2 obsolete tests that validate removed functionality:
+1. ✓ Removed 2 obsolete tests that validated removed functionality:
    - `test_duplicate_initials_in_different_bid_years_allowed`
    - `test_list_areas_isolated_by_bid_year`
 

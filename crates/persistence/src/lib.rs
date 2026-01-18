@@ -83,9 +83,16 @@
 use diesel::prelude::*;
 use diesel::{MysqlConnection, SqliteConnection};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_audit::AuditEvent;
 use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials, User};
+
+/// Atomic counter for generating unique in-memory database names.
+///
+/// This ensures deterministic test isolation by eliminating time-based collisions.
+/// Each call to `new_in_memory()` receives a unique sequential ID.
+static DB_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Macro to generate monomorphic backend-specific query/mutation functions.
 ///
@@ -190,18 +197,17 @@ impl Persistence {
     ///
     /// Uses a shared in-memory database via `Diesel`.
     ///
+    /// Each call receives a unique database instance via atomic counter,
+    /// ensuring deterministic test isolation without time-based collisions.
+    ///
     /// # Errors
     ///
     /// Returns an error if the database cannot be initialized.
     pub fn new_in_memory() -> Result<Self, PersistenceError> {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
         // Create a unique shared in-memory database name per call so tests are isolated.
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|e| PersistenceError::InitializationError(e.to_string()))?
-            .as_nanos();
-        let db_name = format!("memdb_{nanos}");
+        // Use atomic counter instead of timestamp to eliminate race conditions.
+        let db_id = DB_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let db_name = format!("memdb_test_{db_id}");
         let shared_memory_url = format!("file:{db_name}?mode=memory&cache=shared");
 
         // Initialize database with Diesel migrations

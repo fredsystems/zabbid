@@ -694,68 +694,6 @@ fn test_invalid_crew_number_returns_api_error() {
 }
 
 #[test]
-#[ignore = "Phase 19: Multiple bid years are no longer supported - all operations target the active bid year"]
-fn test_duplicate_initials_in_different_bid_years_allowed() {
-    let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
-    // Need to create metadata with both bid years and areas
-    let mut metadata: BootstrapMetadata = BootstrapMetadata::new();
-    metadata.bid_years.push(BidYear::new(2026));
-    metadata.bid_years.push(BidYear::new(2027));
-    metadata
-        .areas
-        .push((BidYear::new(2026), Area::new("North")));
-    metadata
-        .areas
-        .push((BidYear::new(2027), Area::new("South")));
-
-    let state1: State = State::new(BidYear::new(2026), Area::new("North"));
-    let state2: State = State::new(BidYear::new(2027), Area::new("South"));
-    let admin: AuthenticatedActor = create_test_admin();
-    let cause: Cause = create_test_cause();
-
-    // Register user in 2026
-    let request1: RegisterUserRequest = create_valid_request();
-    let result1: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
-        &mut persistence,
-        &metadata,
-        &state1,
-        request1,
-        &admin,
-        &create_test_admin_operator(),
-        cause.clone(),
-    );
-    assert!(result1.is_ok());
-
-    // Same initials in 2027 (different bid year)
-    let request2: RegisterUserRequest = RegisterUserRequest {
-        initials: String::from("AB"), // Same initials
-        name: String::from("Jane Smith"),
-        area: String::from("South"),
-        user_type: String::from("CPC"),
-        crew: Some(2),
-        cumulative_natca_bu_date: String::from("2019-01-15"),
-        natca_bu_date: String::from("2019-06-01"),
-        eod_faa_date: String::from("2020-01-15"),
-        service_computation_date: String::from("2020-01-15"),
-        lottery_value: Some(43),
-    };
-
-    let result2: Result<ApiResult<RegisterUserResult>, ApiError> = register_user(
-        &mut persistence,
-        &metadata,
-        &state2,
-        request2,
-        &admin,
-        &create_test_admin_operator(),
-        cause,
-    );
-
-    assert!(result2.is_ok());
-    let api_result: ApiResult<RegisterUserResult> = result2.unwrap();
-    assert_eq!(api_result.new_state.users.len(), 1);
-}
-
-#[test]
 fn test_successful_api_call_updates_state() {
     let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
     let metadata: BootstrapMetadata = create_test_metadata();
