@@ -42,7 +42,8 @@ use crate::request_response::{
     TransitionToBiddingActiveResponse, TransitionToBiddingClosedRequest,
     TransitionToBiddingClosedResponse, TransitionToBootstrapCompleteRequest,
     TransitionToBootstrapCompleteResponse, TransitionToCanonicalizedRequest,
-    TransitionToCanonicalizedResponse, UpdateAreaRequest, UpdateAreaResponse, UpdateUserRequest,
+    TransitionToCanonicalizedResponse, UpdateAreaRequest, UpdateAreaResponse,
+    UpdateBidYearMetadataRequest, UpdateBidYearMetadataResponse, UpdateUserRequest,
     UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
 };
 use zab_bid_persistence::PersistenceError;
@@ -531,6 +532,11 @@ pub fn list_bid_years(
                 .get_lifecycle_state(bid_year_id)
                 .unwrap_or_else(|_| String::from("Draft"));
 
+            // Fetch metadata (label and notes) from persistence
+            let (label, notes) = persistence
+                .get_bid_year_metadata(bid_year_id)
+                .unwrap_or((None, None));
+
             Ok(BidYearInfo {
                 bid_year_id,
                 year: c.year(),
@@ -540,6 +546,8 @@ pub fn list_bid_years(
                 area_count: 0,       // Will be populated by server layer
                 total_user_count: 0, // Will be populated by server layer
                 lifecycle_state,
+                label,
+                notes,
             })
         })
         .collect();
@@ -2833,6 +2841,160 @@ pub fn transition_to_bidding_closed(
         year,
         lifecycle_state: target_state.as_str().to_string(),
         message: format!("Bid year {year} transitioned to {}", target_state.as_str()),
+    })
+}
+
+/// Updates the metadata (label and notes) for a bid year.
+///
+/// This is an admin-only operation that can be performed in any lifecycle state.
+/// Metadata changes are audited.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+/// * `request` - The update metadata request
+/// * `authenticated_actor` - The authenticated actor
+/// * `operator` - The operator data
+/// * `cause` - The cause of the action
+///
+/// # Returns
+///
+/// * `Ok(UpdateBidYearMetadataResponse)` if successful
+/// * `Err(ApiError)` if unauthorized, validation fails, or persistence fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not an admin
+/// - The bid year does not exist
+/// - Label exceeds 100 characters
+/// - Notes exceed 2000 characters
+/// - Database operations fail
+pub fn update_bid_year_metadata(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    request: &UpdateBidYearMetadataRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<UpdateBidYearMetadataResponse, ApiError> {
+    // Enforce authorization - only admins can update bid year metadata
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("update bid year metadata"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Validate label length
+    if let Some(ref label) = request.label
+        && label.len() > 100
+    {
+        return Err(ApiError::InvalidInput {
+            field: String::from("label"),
+            message: String::from("Label must not exceed 100 characters"),
+        });
+    }
+
+    // Validate notes length
+    if let Some(ref notes) = request.notes
+        && notes.len() > 2000
+    {
+        return Err(ApiError::InvalidInput {
+            field: String::from("notes"),
+            message: String::from("Notes must not exceed 2000 characters"),
+        });
+    }
+
+    // Retrieve the bid year to get the year value
+    let bid_year: &zab_bid_domain::BidYear = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.bid_year_id() == Some(request.bid_year_id))
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("BidYear"),
+            message: format!("Bid year with ID {} not found", request.bid_year_id),
+        })?;
+
+    let year: u16 = bid_year.year();
+
+    // Retrieve current metadata for audit before/after
+    let (old_label, old_notes) = persistence
+        .get_bid_year_metadata(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to retrieve current metadata: {e}"),
+        })?;
+
+    // Update the metadata in the database
+    persistence
+        .update_bid_year_metadata(
+            request.bid_year_id,
+            request.label.as_deref(),
+            request.notes.as_deref(),
+        )
+        .map_err(|e| match e {
+            PersistenceError::NotFound(_) => ApiError::ResourceNotFound {
+                resource_type: String::from("BidYear"),
+                message: format!("Bid year with ID {} not found", request.bid_year_id),
+            },
+            _ => ApiError::Internal {
+                message: format!("Failed to update bid year metadata: {e}"),
+            },
+        })?;
+
+    // Create audit event
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
+    let action: Action = Action {
+        name: String::from("UpdateBidYearMetadata"),
+        details: Some(format!(
+            "Updated metadata for bid year {}: label: {:?} -> {:?}, notes: {:?} -> {:?}",
+            year, old_label, request.label, old_notes, request.notes
+        )),
+    };
+
+    let before_snapshot: String = format!(
+        r#"{{"label":{},"notes":{}}}"#,
+        old_label.as_ref().map_or_else(
+            || "null".to_string(),
+            |s| format!("\"{}\"", s.replace('"', "\\\""))
+        ),
+        old_notes.as_ref().map_or_else(
+            || "null".to_string(),
+            |s| format!("\"{}\"", s.replace('"', "\\\""))
+        )
+    );
+
+    let after_snapshot: String = format!(
+        r#"{{"label":{},"notes":{}}}"#,
+        request.label.as_ref().map_or_else(
+            || "null".to_string(),
+            |s| format!("\"{}\"", s.replace('"', "\\\""))
+        ),
+        request.notes.as_ref().map_or_else(
+            || "null".to_string(),
+            |s| format!("\"{}\"", s.replace('"', "\\\""))
+        )
+    );
+
+    let before: StateSnapshot = StateSnapshot::new(before_snapshot);
+    let after: StateSnapshot = StateSnapshot::new(after_snapshot);
+
+    let audit_event: AuditEvent = AuditEvent::new_global(actor, cause, action, before, after);
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    Ok(UpdateBidYearMetadataResponse {
+        bid_year_id: request.bid_year_id,
+        year,
+        label: request.label.clone(),
+        notes: request.notes.clone(),
+        message: format!("Metadata updated for bid year {year}"),
     })
 }
 

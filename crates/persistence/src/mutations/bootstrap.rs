@@ -571,6 +571,44 @@ pub fn set_expected_user_count(
 }
 }
 
+backend_fn! {
+/// Updates the metadata fields (label and notes) for a bid year.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `label` - Optional display label (max 100 characters)
+/// * `notes` - Optional operational notes (max 2000 characters)
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be updated or the bid year doesn't exist.
+pub fn update_bid_year_metadata(
+    conn: &mut _,
+    bid_year_id: i64,
+    label: Option<&str>,
+    notes: Option<&str>,
+) -> Result<(), PersistenceError> {
+    let rows_affected: usize = diesel::update(diesel_schema::bid_years::table)
+        .filter(diesel_schema::bid_years::bid_year_id.eq(bid_year_id))
+        .set((
+            diesel_schema::bid_years::label.eq(label),
+            diesel_schema::bid_years::notes.eq(notes),
+        ))
+        .execute(conn)?;
+
+    if rows_affected == 0 {
+        return Err(PersistenceError::NotFound(format!(
+            "Bid year with ID {bid_year_id} not found"
+        )));
+    }
+
+    debug!(bid_year_id, "Updated bid year metadata");
+    Ok(())
+}
+}
+
 /// Canonicalize a bid year by populating canonical data tables (`SQLite` version).
 ///
 /// This function:

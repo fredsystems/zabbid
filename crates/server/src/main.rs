@@ -43,14 +43,15 @@ use zab_bid_api::{
     TransitionToBiddingActiveResponse, TransitionToBiddingClosedRequest,
     TransitionToBiddingClosedResponse, TransitionToBootstrapCompleteRequest,
     TransitionToBootstrapCompleteResponse, TransitionToCanonicalizedRequest,
-    TransitionToCanonicalizedResponse, UpdateAreaRequest, UpdateAreaResponse, UpdateUserRequest,
+    TransitionToCanonicalizedResponse, UpdateAreaRequest, UpdateAreaResponse,
+    UpdateBidYearMetadataRequest, UpdateBidYearMetadataResponse, UpdateUserRequest,
     UpdateUserResponse, checkpoint, create_area, create_bid_year, finalize, get_active_bid_year,
     get_bootstrap_completeness, get_bootstrap_status, get_current_state, get_historical_state,
     get_leave_availability, import_csv_users, list_areas, list_bid_years, list_users,
     override_area_assignment, preview_csv_users, register_user, rollback, set_active_bid_year,
     set_expected_area_count, set_expected_user_count, transition_to_bidding_active,
     transition_to_bidding_closed, transition_to_bootstrap_complete, transition_to_canonicalized,
-    update_area, update_user,
+    update_area, update_bid_year_metadata, update_user,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, BidYearLifecycle, CanonicalBidYear, Initials};
@@ -515,6 +516,21 @@ struct TransitionToBiddingClosedApiRequest {
     cause_description: String,
     /// The canonical bid year identifier.
     bid_year_id: i64,
+}
+
+/// API request wrapper for updating bid year metadata.
+#[derive(Debug, serde::Deserialize)]
+struct UpdateBidYearMetadataApiRequest {
+    /// The cause ID for this action.
+    cause_id: String,
+    /// The cause description.
+    cause_description: String,
+    /// The canonical bid year identifier.
+    bid_year_id: i64,
+    /// Optional display label (max 100 characters).
+    label: Option<String>,
+    /// Optional operational notes (max 2000 characters).
+    notes: Option<String>,
 }
 
 /// Handler for POST `/bid_years` endpoint.
@@ -2079,6 +2095,51 @@ async fn handle_transition_to_bidding_closed(
     Ok(Json(response))
 }
 
+/// Handler for POST `/bid-years/metadata` endpoint.
+///
+/// Updates the metadata (label and notes) for a bid year. Admin only.
+async fn handle_update_bid_year_metadata(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<UpdateBidYearMetadataApiRequest>,
+) -> Result<Json<UpdateBidYearMetadataResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year_id = req.bid_year_id,
+        "Handling update_bid_year_metadata request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    // Get current bootstrap metadata
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    let request: UpdateBidYearMetadataRequest = UpdateBidYearMetadataRequest {
+        bid_year_id: req.bid_year_id,
+        label: req.label,
+        notes: req.notes,
+    };
+
+    let response: UpdateBidYearMetadataResponse = update_bid_year_metadata(
+        &mut persistence,
+        &metadata,
+        &request,
+        &actor,
+        &operator,
+        cause,
+    )?;
+    drop(persistence);
+
+    info!(
+        year = response.year,
+        "Successfully updated bid year metadata"
+    );
+
+    Ok(Json(response))
+}
+
 /// Handler for GET `/bootstrap/bid-years/active` endpoint.
 ///
 /// Gets the currently active bid year.
@@ -2604,6 +2665,7 @@ fn build_router(state: AppState) -> Router {
             "/lifecycle/bidding-closed",
             post(handle_transition_to_bidding_closed),
         )
+        .route("/bid-years/metadata", post(handle_update_bid_year_metadata))
         .route("/users/update", post(handle_update_user))
         .route(
             "/users/override-area",

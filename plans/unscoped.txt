@@ -3,3 +3,8 @@ test: remove ignored tests if we don't need them
 test: audit all tests against code paths and ensure coverage
 initials fix
 agents.md fix
+UI refinements
+    - The user bid edit is still imprecise....it's set a min-width that feels very.....ham fisted
+tests::test_invalid_session_token_rejected fails randomly in the test suite. Next run is fine
+remove api_cli.py requirements
+Phase 26F — Override Visibility & Polish

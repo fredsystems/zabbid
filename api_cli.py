@@ -168,6 +168,7 @@ ENDPOINTS: Sequence[Endpoint] = (
     Endpoint("27", "Bootstrap Completeness", "GET", "/api/bootstrap/completeness"),
     Endpoint("28", "Preview CSV Users", "POST", "/api/bootstrap/users/csv/preview"),
     Endpoint("29", "Import CSV Users", "POST", "/api/bootstrap/users/csv/import"),
+    Endpoint("30", "Update Bid Year Metadata", "POST", "/api/bid-years/metadata"),
 )
 
 
@@ -458,6 +459,19 @@ def build_post_payload(path: str) -> JSONObject:
         SESSION["bid_year"] = bid_year
         SESSION["area"] = area
         return cast(JSONObject, req_set_user_count)
+
+    if path == "/api/bid-years/metadata":
+        env: ActorEnvelope = prompt_actor_envelope()
+        bid_year_id: int = prompt_int("Bid year ID")
+        label: Optional[str] = prompt_str("Label (max 100 chars)", optional=True)
+        notes: Optional[str] = prompt_str("Notes (max 2000 chars)", optional=True)
+        req_metadata: JSONObject = {
+            **env,
+            "bid_year_id": bid_year_id,
+            "label": label if label else None,
+            "notes": notes if notes else None,
+        }
+        return req_metadata
 
     if path == "/api/users/update":
         env: ActorEnvelope = prompt_actor_envelope()

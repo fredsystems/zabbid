@@ -531,6 +531,42 @@ pub fn update_lifecycle_state(
 }
 
 backend_fn! {
+/// Retrieves the metadata (label and notes) for a bid year.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+///
+/// # Returns
+///
+/// A tuple of `(Option<String>, Option<String>)` for `(label, notes)`.
+///
+/// # Errors
+///
+/// Returns an error if the bid year doesn't exist or the database cannot be queried.
+pub fn get_bid_year_metadata(
+    conn: &mut _,
+    bid_year_id: i64,
+) -> Result<(Option<String>, Option<String>), PersistenceError> {
+    use diesel::prelude::*;
+
+    let result: Result<(Option<String>, Option<String>), _> = bid_years::table
+        .select((bid_years::label, bid_years::notes))
+        .filter(bid_years::bid_year_id.eq(bid_year_id))
+        .first::<(Option<String>, Option<String>)>(conn);
+
+    match result {
+        Ok(metadata) => Ok(metadata),
+        Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
+            "Bid year with ID {bid_year_id} not found"
+        ))),
+        Err(e) => Err(PersistenceError::from(e)),
+    }
+}
+}
+
+backend_fn! {
 /// Queries whether any bid year is in the `BiddingActive` lifecycle state.
 ///
 /// # Arguments
