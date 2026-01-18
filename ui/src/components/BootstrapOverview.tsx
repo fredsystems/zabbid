@@ -185,10 +185,22 @@ export function BootstrapOverview({
               >
                 <div className="card-header">
                   <h3>Bid Year {year.year}</h3>
-                  {isActive && <span className="badge active">Active</span>}
-                  {!isActive && (
-                    <span className="badge inactive">Inactive</span>
-                  )}
+                  <div className="badges">
+                    {isActive && <span className="badge active">Active</span>}
+                    {!isActive && (
+                      <span className="badge inactive">Inactive</span>
+                    )}
+                    <span
+                      className={`badge lifecycle-${year.lifecycle_state.toLowerCase()}`}
+                      title={`Lifecycle: ${year.lifecycle_state}`}
+                    >
+                      {year.lifecycle_state}
+                      {(year.lifecycle_state === "Canonicalized" ||
+                        year.lifecycle_state === "BiddingActive" ||
+                        year.lifecycle_state === "BiddingClosed") &&
+                        " 🔒"}
+                    </span>
+                  </div>
                 </div>
                 <div className="card-body">
                   <dl>
@@ -198,6 +210,20 @@ export function BootstrapOverview({
                     <dd>{year.end_date}</dd>
                     <dt>Pay Periods:</dt>
                     <dd>{year.num_pay_periods}</dd>
+                    <dt>Lifecycle:</dt>
+                    <dd>
+                      {year.lifecycle_state}
+                      {year.lifecycle_state === "Draft" &&
+                        " — Setup in progress"}
+                      {year.lifecycle_state === "BootstrapComplete" &&
+                        " — Ready for canonicalization"}
+                      {year.lifecycle_state === "Canonicalized" &&
+                        " — Structure locked"}
+                      {year.lifecycle_state === "BiddingActive" &&
+                        " — Bidding in progress"}
+                      {year.lifecycle_state === "BiddingClosed" &&
+                        " — Bidding complete"}
+                    </dd>
                     <dt>Areas:</dt>
                     <dd>{year.area_count}</dd>
                     <dt>Total Users:</dt>

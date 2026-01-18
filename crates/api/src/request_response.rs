@@ -151,6 +151,8 @@ pub struct AreaInfo {
     pub area_name: Option<String>,
     /// The number of users in this area.
     pub user_count: usize,
+    /// Whether this is a system-managed area (e.g., "No Bid").
+    pub is_system_area: bool,
 }
 
 /// API response for listing areas.
@@ -694,6 +696,17 @@ pub enum BlockingReason {
         /// Actual count.
         actual: usize,
     },
+    /// Users remain in No Bid area, blocking bootstrap completion.
+    UsersInNoBidArea {
+        /// The canonical bid year identifier.
+        bid_year_id: i64,
+        /// The bid year (display value).
+        bid_year: u16,
+        /// Count of users still in No Bid area.
+        user_count: usize,
+        /// Sample of user initials (first 5).
+        sample_initials: Vec<String>,
+    },
 }
 
 /// Completeness status for a bid year.
@@ -713,6 +726,8 @@ pub struct BidYearCompletenessInfo {
     pub is_complete: bool,
     /// Blocking reasons preventing completeness.
     pub blocking_reasons: Vec<BlockingReason>,
+    /// The lifecycle state of the bid year.
+    pub lifecycle_state: String,
 }
 
 /// Completeness status for an area.

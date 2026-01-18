@@ -178,6 +178,53 @@ export function BootstrapCompleteness({
             </ul>
           </div>
         )}
+        {/* Phase 25E: Prominent display for users in No Bid */}
+        {completeness.blocking_reasons.some(
+          (r) => typeof r === "object" && "UsersInNoBidArea" in r,
+        ) && (
+          <div className="bootstrap-blocker-panel">
+            <div className="blocker-title">Bootstrap Blocked</div>
+            <div className="blocker-message">
+              Users remain in the "No Bid" area. These users must be reviewed
+              and assigned to an operational area before bootstrap can be
+              completed.
+            </div>
+            {completeness.blocking_reasons
+              .filter((r) => typeof r === "object" && "UsersInNoBidArea" in r)
+              .map((reason) => {
+                if (
+                  typeof reason === "object" &&
+                  "UsersInNoBidArea" in reason
+                ) {
+                  const { bid_year, user_count, sample_initials } =
+                    reason.UsersInNoBidArea;
+                  return (
+                    <div key={bid_year} className="no-bid-users-list">
+                      <strong>
+                        Bid Year {bid_year}: {user_count} user
+                        {user_count !== 1 ? "s" : ""}
+                      </strong>
+                      {sample_initials.length > 0 && (
+                        <div>
+                          {sample_initials.map((initials) => (
+                            <span key={initials} className="user-initials">
+                              {initials}
+                            </span>
+                          ))}
+                          {user_count > sample_initials.length && (
+                            <span className="user-initials">
+                              +{user_count - sample_initials.length} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                return null;
+              })}
+          </div>
+        )}
       </div>
 
       {/* Bid Years Section */}
@@ -247,6 +294,11 @@ export function BootstrapCompleteness({
           <CreateAreaForm
             sessionToken={sessionToken}
             activeBidYear={completeness.active_bid_year}
+            lifecycleState={
+              completeness.bid_years.find(
+                (by) => by.year === completeness.active_bid_year,
+              )?.lifecycle_state ?? "Draft"
+            }
             onRefresh={loadCompleteness}
             onError={setError}
           />
@@ -399,6 +451,16 @@ function BidYearItem({
             ) : (
               <span className="badge incomplete">⚠ Incomplete</span>
             )}
+            <span
+              className={`badge lifecycle-${bidYear.lifecycle_state.toLowerCase()}`}
+              title={`Lifecycle: ${bidYear.lifecycle_state}`}
+            >
+              {bidYear.lifecycle_state}
+              {(bidYear.lifecycle_state === "Canonicalized" ||
+                bidYear.lifecycle_state === "BiddingActive" ||
+                bidYear.lifecycle_state === "BiddingClosed") &&
+                " 🔒"}
+            </span>
           </div>
         </div>
         {isAdmin && !isActive && (
@@ -417,6 +479,19 @@ function BidYearItem({
         {!isEditing ? (
           <div className="item-details">
             <dl>
+              <dt>Lifecycle:</dt>
+              <dd>
+                {bidYear.lifecycle_state}
+                {bidYear.lifecycle_state === "Draft" && " — Setup in progress"}
+                {bidYear.lifecycle_state === "BootstrapComplete" &&
+                  " — Ready for canonicalization"}
+                {bidYear.lifecycle_state === "Canonicalized" &&
+                  " — Structure locked"}
+                {bidYear.lifecycle_state === "BiddingActive" &&
+                  " — Bidding in progress"}
+                {bidYear.lifecycle_state === "BiddingClosed" &&
+                  " — Bidding complete"}
+              </dd>
               <dt>Expected Areas:</dt>
               <dd>{bidYear.expected_area_count ?? "Not Set"}</dd>
               <dt>Actual Areas:</dt>
@@ -838,6 +913,7 @@ function AreaItem({
 interface CreateAreaFormProps {
   sessionToken: string | null;
   activeBidYear: number;
+  lifecycleState: string;
   onRefresh: () => Promise<void>;
   onError: (error: string) => void;
 }
@@ -845,6 +921,7 @@ interface CreateAreaFormProps {
 function CreateAreaForm({
   sessionToken,
   activeBidYear,
+  lifecycleState,
   onRefresh,
   onError,
 }: CreateAreaFormProps) {
@@ -852,6 +929,12 @@ function CreateAreaForm({
   const [areaId, setAreaId] = useState("");
   const [expectedUserCount, setExpectedUserCount] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // Phase 25E: Disable area creation after canonicalization
+  const isCanonicalizedOrLater =
+    lifecycleState === "Canonicalized" ||
+    lifecycleState === "BiddingActive" ||
+    lifecycleState === "BiddingClosed";
 
   const handleCreate = async () => {
     if (!sessionToken || !areaId) return;
@@ -897,6 +980,12 @@ function CreateAreaForm({
         type="button"
         onClick={() => setIsOpen(true)}
         className="btn-create"
+        disabled={isCanonicalizedOrLater}
+        title={
+          isCanonicalizedOrLater
+            ? `Cannot create areas after canonicalization (current state: ${lifecycleState})`
+            : "Create a new area for this bid year"
+        }
       >
         + Create New Area
       </button>
@@ -906,6 +995,16 @@ function CreateAreaForm({
   return (
     <div className="create-form">
       <h4>Create New Area (Year {activeBidYear})</h4>
+      {isCanonicalizedOrLater && (
+        <div className="warning-message" style={{ marginBottom: "1rem" }}>
+          <strong>Area creation is disabled.</strong>
+          <p>
+            The bid year is in {lifecycleState} state. Areas cannot be created
+            after canonicalization. Use an override if structural changes are
+            required.
+          </p>
+        </div>
+      )}
       <div className="form-row">
         <label htmlFor="new-area-id">Area ID:</label>
         <input
@@ -913,7 +1012,7 @@ function CreateAreaForm({
           type="text"
           value={areaId}
           onChange={(e) => setAreaId(e.target.value)}
-          disabled={creating}
+          disabled={creating || isCanonicalizedOrLater}
           placeholder="e.g., ZAB"
           autoFocus
         />
@@ -928,7 +1027,7 @@ function CreateAreaForm({
           min="0"
           value={expectedUserCount}
           onChange={(e) => setExpectedUserCount(e.target.value)}
-          disabled={creating}
+          disabled={creating || isCanonicalizedOrLater}
           placeholder="e.g., 50"
         />
       </div>
@@ -936,7 +1035,7 @@ function CreateAreaForm({
         <button
           type="button"
           onClick={handleCreate}
-          disabled={!areaId || creating}
+          disabled={!areaId || creating || isCanonicalizedOrLater}
           className="btn-save"
         >
           {creating ? "Creating..." : "Create"}
@@ -1533,6 +1632,14 @@ function renderBlockingReason(reason: BlockingReason): string {
       const { bid_year, area_code, expected, actual } =
         reason.UserCountMismatch;
       return `User count mismatch for area ${area_code} in bid year ${bid_year}: expected ${expected}, got ${actual}`;
+    }
+    if ("UsersInNoBidArea" in reason) {
+      const { bid_year, user_count, sample_initials } = reason.UsersInNoBidArea;
+      const userList =
+        sample_initials.length > 0
+          ? ` (${sample_initials.join(", ")}${user_count > sample_initials.length ? ", ..." : ""})`
+          : "";
+      return `${user_count} user${user_count !== 1 ? "s" : ""} remain in No Bid area for bid year ${bid_year}${userList}`;
     }
   }
   return "Unknown blocking reason";

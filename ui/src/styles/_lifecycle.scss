@@ -1,0 +1,262 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Lifecycle and system area styles.
+ * Phase 25E: Visual indicators for bid year lifecycle states and system areas.
+ */
+
+@use "variables" as *;
+
+// ============================================================================
+// Lifecycle Badges
+// ============================================================================
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-xs;
+  padding: $spacing-xs $spacing-sm;
+  border-radius: $radius-sm;
+  font-size: $font-size-xs;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+
+  &.active {
+    background: rgba($color-success, 0.2);
+    color: $color-success;
+    border: 1px solid $color-success;
+  }
+
+  &.inactive {
+    background: rgba($color-text-muted, 0.1);
+    color: $color-text-muted;
+    border: 1px solid $color-border;
+  }
+
+  &.complete {
+    background: rgba($color-success, 0.2);
+    color: $color-success;
+    border: 1px solid $color-success;
+  }
+
+  &.incomplete {
+    background: rgba($color-warning, 0.2);
+    color: $color-warning;
+    border: 1px solid $color-warning;
+  }
+
+  // Lifecycle state badges
+  &.lifecycle-draft {
+    background: rgba($color-info, 0.15);
+    color: $color-info;
+    border: 1px solid $color-info;
+  }
+
+  &.lifecycle-bootstrapcomplete {
+    background: rgba($color-accent-teal, 0.15);
+    color: $color-accent-teal;
+    border: 1px solid $color-accent-teal;
+  }
+
+  &.lifecycle-canonicalized {
+    background: rgba($color-warning, 0.15);
+    color: $color-warning;
+    border: 1px solid $color-warning;
+  }
+
+  &.lifecycle-biddingactive {
+    background: rgba($color-accent-primary, 0.15);
+    color: $color-accent-primary;
+    border: 1px solid $color-accent-primary;
+  }
+
+  &.lifecycle-biddingclosed {
+    background: rgba($color-text-muted, 0.15);
+    color: $color-text-secondary;
+    border: 1px solid $color-border;
+  }
+
+  // System area badge
+  &.system-area-badge {
+    background: rgba($color-warning, 0.15);
+    color: $color-warning;
+    border: 1px solid $color-warning;
+    text-transform: none;
+    letter-spacing: normal;
+  }
+
+  // Status badges
+  &.success {
+    background: rgba($color-success, 0.2);
+    color: $color-success;
+    border: 1px solid $color-success;
+  }
+
+  &.warning {
+    background: rgba($color-warning, 0.2);
+    color: $color-warning;
+    border: 1px solid $color-warning;
+  }
+
+  &.error {
+    background: rgba($color-error, 0.2);
+    color: $color-error;
+    border: 1px solid $color-error;
+  }
+}
+
+// Badge containers
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+  align-items: center;
+}
+
+// ============================================================================
+// System Area Indicators
+// ============================================================================
+
+.system-area {
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: $color-warning;
+    border-radius: $radius-sm 0 0 $radius-sm;
+  }
+
+  .card-title {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+    flex-wrap: wrap;
+  }
+}
+
+// ============================================================================
+// Lifecycle State Descriptions
+// ============================================================================
+
+.lifecycle-description {
+  margin-top: $spacing-xs;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  font-style: italic;
+}
+
+// ============================================================================
+// Disabled Action Tooltips
+// ============================================================================
+
+.action-disabled {
+  position: relative;
+  cursor: not-allowed;
+  opacity: 0.6;
+
+  &::after {
+    content: attr(data-disabled-reason);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px);
+    background: $color-bg-surface-elevated;
+    color: $color-text-primary;
+    padding: $spacing-sm $spacing-md;
+    border-radius: $radius-sm;
+    font-size: $font-size-xs;
+    white-space: nowrap;
+    box-shadow: $shadow-lg;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity $transition-base;
+    z-index: 1000;
+  }
+
+  &:hover::after {
+    opacity: 1;
+  }
+}
+
+// ============================================================================
+// Bootstrap Blocker Panel
+// ============================================================================
+
+.bootstrap-blocker-panel {
+  background: rgba($color-warning, 0.1);
+  border: 2px solid $color-warning;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  margin: $spacing-md 0;
+
+  .blocker-title {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+    font-size: $font-size-lg;
+    font-weight: 700;
+    color: $color-warning;
+    margin-bottom: $spacing-md;
+
+    &::before {
+      content: "⚠️";
+      font-size: $font-size-xl;
+    }
+  }
+
+  .blocker-message {
+    color: $color-text-primary;
+    margin-bottom: $spacing-md;
+    line-height: 1.6;
+  }
+
+  .blocker-actions {
+    display: flex;
+    gap: $spacing-sm;
+    margin-top: $spacing-md;
+  }
+
+  ul {
+    margin: $spacing-sm 0;
+    padding-left: $spacing-lg;
+    color: $color-text-primary;
+
+    li {
+      margin-bottom: $spacing-xs;
+    }
+  }
+}
+
+// ============================================================================
+// No Bid User List
+// ============================================================================
+
+.no-bid-users-list {
+  background: $color-bg-surface;
+  border: 1px solid $color-border;
+  border-radius: $radius-sm;
+  padding: $spacing-md;
+  margin-top: $spacing-sm;
+
+  .user-initials {
+    display: inline-block;
+    padding: $spacing-xs $spacing-sm;
+    margin: $spacing-xs;
+    background: rgba($color-warning, 0.1);
+    border: 1px solid $color-warning;
+    border-radius: $radius-sm;
+    font-family: monospace;
+    font-size: $font-size-sm;
+    color: $color-text-primary;
+  }
+}

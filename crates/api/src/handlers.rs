@@ -598,6 +598,7 @@ pub fn list_areas(
                 area_code: area.area_code().to_string(),
                 area_name: area.area_name().map(String::from),
                 user_count: 0, // Will be populated by server layer with actual counts
+                is_system_area: area.is_system_area(),
             })
         })
         .collect::<Result<Vec<_>, ApiError>>()?;
@@ -3024,6 +3025,32 @@ pub fn get_bootstrap_completeness(
         top_level_blocking.push(BlockingReason::NoActiveBidYear);
     }
 
+    // Phase 25E: Check for users in No Bid area across all bid years
+    for bid_year in &metadata.bid_years {
+        let year: u16 = bid_year.year();
+        let bid_year_id: i64 = match bid_year.bid_year_id() {
+            Some(id) => id,
+            None => continue, // Skip bid years without IDs
+        };
+
+        let users_in_no_bid: usize = persistence
+            .count_users_in_system_area(bid_year_id)
+            .unwrap_or(0);
+
+        if users_in_no_bid > 0 {
+            let sample_initials: Vec<String> = persistence
+                .list_users_in_system_area(bid_year_id, 5)
+                .unwrap_or_default();
+
+            top_level_blocking.push(BlockingReason::UsersInNoBidArea {
+                bid_year_id,
+                bid_year: year,
+                user_count: users_in_no_bid,
+                sample_initials,
+            });
+        }
+    }
+
     // Check each bid year
     for bid_year in &metadata.bid_years {
         let year: u16 = bid_year.year();
@@ -3073,6 +3100,14 @@ pub fn get_bootstrap_completeness(
 
         let is_complete: bool = blocking_reasons.is_empty() && expected_area_count.is_some();
 
+        // Fetch lifecycle state
+        let lifecycle_state: String =
+            persistence
+                .get_lifecycle_state(bid_year_id)
+                .map_err(|e| ApiError::Internal {
+                    message: format!("Failed to get lifecycle state: {e}"),
+                })?;
+
         bid_years_info.push(BidYearCompletenessInfo {
             bid_year_id,
             year,
@@ -3081,6 +3116,7 @@ pub fn get_bootstrap_completeness(
             actual_area_count,
             is_complete,
             blocking_reasons,
+            lifecycle_state,
         });
     }
 
