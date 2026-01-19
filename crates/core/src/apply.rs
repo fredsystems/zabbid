@@ -676,6 +676,7 @@ pub fn apply(
             })
         }
         Command::UpdateUser {
+            user_id,
             initials,
             name,
             area,
@@ -701,11 +702,11 @@ pub fn apply(
                 }));
             }
 
-            // Find the user to update
+            // Find the user to update by canonical user_id
             let user_index: Option<usize> = state
                 .users
                 .iter()
-                .position(|u| u.initials == initials && &u.bid_year == bid_year);
+                .position(|u| u.user_id == Some(user_id) && &u.bid_year == bid_year);
 
             let user_index: usize = user_index.ok_or_else(|| {
                 CoreError::DomainViolation(DomainError::UserNotFound {
@@ -748,7 +749,8 @@ pub fn apply(
             let action: Action = Action::new(
                 String::from("UpdateUser"),
                 Some(format!(
-                    "Updated user with initials '{}' for bid year {}",
+                    "Updated user_id={} (initials '{}') for bid year {}",
+                    user_id,
                     initials.value(),
                     bid_year.year()
                 )),

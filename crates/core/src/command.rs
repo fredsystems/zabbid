@@ -12,23 +12,29 @@ use zab_bid_domain::{Area, Crew, Initials, SeniorityData, UserType};
 ///
 /// # Identity and Canonical IDs
 ///
-/// Commands use domain vocabulary (e.g., `Initials`, `Area`) rather than
-/// persistence identifiers (e.g., `user_id`, `area_id`). This keeps the core
-/// layer UI-agnostic and focused on domain semantics.
+/// Commands that target specific users MUST carry `user_id` explicitly.
+/// This enforces the architectural invariant that canonical identity is
+/// explicit and non-negotiable.
 ///
-/// The API layer is responsible for translating between:
-/// - External canonical identifiers (`user_id`, `area_id`, `bid_year_id`)
-/// - Domain vocabulary used in commands (`Initials`, `Area`, `BidYear`)
+/// User-targeting commands include both canonical identity (`user_id`) and
+/// domain vocabulary (`Initials`, `Area`) to support:
+/// - Explicit, authoritative identity (`user_id` for state lookups)
+/// - Mutable metadata updates (`initials` may be changed)
+/// - Audit trail clarity (denormalized display values)
+///
+/// The API layer is responsible for:
+/// - Resolving display metadata to canonical IDs before constructing commands
+/// - Passing `user_id` explicitly into all user-targeting commands
+///
+/// The core layer MUST:
+/// - Use `user_id` for all state lookups and mutations
+/// - Never search state by `initials` or other display metadata
+/// - Treat `initials` as mutable metadata only, never as identity
 ///
 /// The persistence layer enforces canonical identity:
 /// - `user_id` is the sole authoritative identifier for users
 /// - `initials` are mutable display metadata, not identifiers
 /// - All mutations and foreign keys use canonical IDs
-///
-/// This architectural separation allows:
-/// - Domain rules to be expressed in business terms
-/// - Display fields (like initials) to change without breaking references
-/// - Persistence layer to enforce referential integrity via canonical IDs
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     /// Create a new bid year with canonical metadata.
@@ -90,11 +96,12 @@ pub enum Command {
     },
     /// Update an existing user's information in the active bid year.
     ///
-    /// Note: The API layer identifies users by `user_id` (canonical identifier).
-    /// This command uses `initials` as domain vocabulary for the update operation.
-    /// Initials are mutable and may be changed via this command.
+    /// The user is identified by `user_id` (canonical, immutable).
+    /// Initials are mutable metadata and may be changed via this command.
     UpdateUser {
-        /// The user's initials (may be updated).
+        /// The user's canonical identifier (immutable, authoritative).
+        user_id: i64,
+        /// The user's initials (mutable metadata, may be updated).
         initials: Initials,
         /// The user's name.
         name: String,
@@ -129,10 +136,12 @@ pub enum Command {
     },
     /// Override a user's area assignment after canonicalization.
     ///
-    /// Note: The API layer resolves `user_id` before constructing this command.
-    /// Initials are used here as domain vocabulary, not as the persistence key.
+    /// The user is identified by `user_id` (canonical, immutable).
+    /// Initials are included for audit trail clarity only.
     OverrideAreaAssignment {
-        /// The user's initials (domain reference, resolved via `user_id` at API boundary).
+        /// The user's canonical identifier (immutable, authoritative).
+        user_id: i64,
+        /// The user's initials (metadata for audit trail only).
         initials: Initials,
         /// The new area to assign.
         new_area: Area,
@@ -141,10 +150,12 @@ pub enum Command {
     },
     /// Override a user's eligibility status after canonicalization.
     ///
-    /// Note: The API layer resolves `user_id` before constructing this command.
-    /// Initials are used here as domain vocabulary, not as the persistence key.
+    /// The user is identified by `user_id` (canonical, immutable).
+    /// Initials are included for audit trail clarity only.
     OverrideEligibility {
-        /// The user's initials (domain reference, resolved via `user_id` at API boundary).
+        /// The user's canonical identifier (immutable, authoritative).
+        user_id: i64,
+        /// The user's initials (metadata for audit trail only).
         initials: Initials,
         /// The new eligibility status.
         can_bid: bool,
@@ -153,10 +164,12 @@ pub enum Command {
     },
     /// Override a user's bid order after canonicalization.
     ///
-    /// Note: The API layer resolves `user_id` before constructing this command.
-    /// Initials are used here as domain vocabulary, not as the persistence key.
+    /// The user is identified by `user_id` (canonical, immutable).
+    /// Initials are included for audit trail clarity only.
     OverrideBidOrder {
-        /// The user's initials (domain reference, resolved via `user_id` at API boundary).
+        /// The user's canonical identifier (immutable, authoritative).
+        user_id: i64,
+        /// The user's initials (metadata for audit trail only).
         initials: Initials,
         /// The new bid order (or None to clear).
         bid_order: Option<i32>,
@@ -165,10 +178,12 @@ pub enum Command {
     },
     /// Override a user's bid window after canonicalization.
     ///
-    /// Note: The API layer resolves `user_id` before constructing this command.
-    /// Initials are used here as domain vocabulary, not as the persistence key.
+    /// The user is identified by `user_id` (canonical, immutable).
+    /// Initials are included for audit trail clarity only.
     OverrideBidWindow {
-        /// The user's initials (domain reference, resolved via `user_id` at API boundary).
+        /// The user's canonical identifier (immutable, authoritative).
+        user_id: i64,
+        /// The user's initials (metadata for audit trail only).
         initials: Initials,
         /// The new window start date (or None to clear).
         window_start: Option<Date>,
