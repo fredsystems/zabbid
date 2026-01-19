@@ -169,7 +169,7 @@ export function BootstrapCompleteness({
           </p>
         )}
         {completeness.active_bid_year === null && (
-          <div className="error-banner" style={{ marginTop: "1rem" }}>
+          <div className="error-banner error-banner-spaced">
             <strong>No Active Bid Year</strong>
             <p>
               All mutations require an active bid year. Create a bid year below
@@ -933,23 +933,19 @@ function AreaItem({
           <div className="item-details">
             <dl>
               <dt>Area Code (immutable):</dt>
-              <dd style={{ fontFamily: "monospace" }}>{area.area_code}</dd>
+              <dd className="monospace-value">{area.area_code}</dd>
               <dt>Display Name:</dt>
               <dd>
                 {areaDetails?.area_name ? (
                   areaDetails.area_name
                 ) : (
-                  <span style={{ fontStyle: "italic", color: "#888" }}>
-                    Not set
-                  </span>
+                  <span className="placeholder-text">Not set</span>
                 )}
               </dd>
               <dt>Expected Users:</dt>
               <dd>
                 {isSystemArea ? (
-                  <span style={{ fontStyle: "italic", color: "#888" }}>
-                    N/A (System Area)
-                  </span>
+                  <span className="placeholder-text">N/A (System Area)</span>
                 ) : (
                   (area.expected_user_count ?? "Not Set")
                 )}
@@ -958,9 +954,7 @@ function AreaItem({
               <dd>{area.actual_user_count}</dd>
             </dl>
             {isAdmin && !isSystemArea && (
-              <div
-                style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}
-              >
+              <div className="action-buttons">
                 <button
                   type="button"
                   onClick={() => setIsEditingName(true)}
@@ -1006,13 +1000,7 @@ function AreaItem({
               />
             </div>
             {isCanonicalizedOrLater && (
-              <p
-                style={{
-                  fontSize: "0.9rem",
-                  color: "#666",
-                  marginTop: "0.5rem",
-                }}
-              >
+              <p className="locked-message">
                 🔒 Area metadata is locked after canonicalization
               </p>
             )}
@@ -1056,13 +1044,7 @@ function AreaItem({
               />
             </div>
             {isCanonicalizedOrLater && (
-              <p
-                style={{
-                  fontSize: "0.9rem",
-                  color: "#666",
-                  marginTop: "0.5rem",
-                }}
-              >
+              <p className="locked-message">
                 🔒 Area metadata is locked after canonicalization
               </p>
             )}
@@ -1199,7 +1181,7 @@ function CreateAreaForm({
     <div className="create-form">
       <h4>Create New Area (Year {activeBidYear})</h4>
       {isCanonicalizedOrLater && (
-        <div className="warning-message" style={{ marginBottom: "1rem" }}>
+        <div className="warning-message warning-message-spaced">
           <strong>Area creation is disabled.</strong>
           <p>
             The bid year is in {lifecycleState} state. Areas cannot be created

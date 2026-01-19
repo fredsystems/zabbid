@@ -201,7 +201,7 @@ export function UserListView({
         <h2>Unable to Load Users</h2>
         <p>{error}</p>
         {error.includes("unavailable") && (
-          <p style={{ marginTop: "1rem", fontSize: "0.9rem", color: "#666" }}>
+          <p className="connection-hint">
             Check the connection status indicator in the header. The UI will
             automatically refresh when the backend becomes available.
           </p>
