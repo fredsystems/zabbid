@@ -181,34 +181,40 @@ fn parse_csv_row(
         return Err(errors);
     }
 
-    // Build domain objects
+    // Build domain objects - collect all errors before returning
     let initials: Initials = Initials::new(&initials_str);
     let area: Area = Area::new(&area_id_str);
 
-    let user_type: UserType = match user_type_str.as_str() {
-        "CPC" => UserType::CPC,
-        "CPC-IT" => UserType::CpcIt,
-        "Dev-R" => UserType::DevR,
-        "Dev-D" => UserType::DevD,
+    // Parse user_type - collect error but continue validation
+    let user_type_opt: Option<UserType> = match user_type_str.as_str() {
+        "CPC" => Some(UserType::CPC),
+        "CPC-IT" => Some(UserType::CpcIt),
+        "Dev-R" => Some(UserType::DevR),
+        "Dev-D" => Some(UserType::DevD),
         _ => {
             errors.push(format!(
                 "user_type: invalid value '{user_type_str}' (must be CPC, CPC-IT, Dev-R, or Dev-D)"
             ));
-            return Err(errors);
+            None
         }
     };
 
-    let crew: Option<Crew> = if let Some(num) = crew_opt {
-        match Crew::new(num) {
-            Ok(c) => Some(c),
-            Err(e) => {
-                errors.push(format!("crew: {e}"));
-                return Err(errors);
-            }
+    // Parse crew - collect error but continue validation
+    let crew: Option<Crew> = crew_opt.and_then(|num| match Crew::new(num) {
+        Ok(c) => Some(c),
+        Err(e) => {
+            errors.push(format!("crew: {e}"));
+            None
         }
-    } else {
-        None
-    };
+    });
+
+    // If we accumulated any errors during parsing, return them all
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+
+    // All validations passed - build the user
+    let user_type: UserType = user_type_opt.expect("user_type validated above");
 
     let seniority_data: SeniorityData = SeniorityData::new(
         cumulative_natca_bu_date,
@@ -383,7 +389,7 @@ pub fn preview_csv_users(
                     errors: validation_errors,
                 });
             }
-            Err(parse_errors) => {
+            Err(mut parse_errors) => {
                 // Parsing failed - extract what we can for display
                 let initials_opt: Option<String> = header_map
                     .get("initials")
@@ -412,6 +418,34 @@ pub fn preview_csv_users(
                 let crew_opt: Option<u8> = header_map
                     .get("crew")
                     .and_then(|&idx| record.get(idx).and_then(|s| s.trim().parse::<u8>().ok()));
+
+                // Even though parsing failed, we can still run some validation checks
+                // to provide more complete error feedback
+
+                // Check initials length (domain rule)
+                if let Some(ref initials) = initials_opt
+                    && initials.len() != 2
+                {
+                    parse_errors.push(
+                        "validation: Invalid initials: Initials must be exactly 2 characters"
+                            .to_string(),
+                    );
+                }
+
+                // Check if area exists in metadata
+                if let Some(ref area_code) = area_id_opt {
+                    let area_exists: bool = metadata
+                        .areas
+                        .iter()
+                        .any(|(by, a)| by == bid_year && a.id() == area_code);
+
+                    if !area_exists {
+                        parse_errors.push(format!(
+                            "area_id: area '{area_code}' does not exist in bid year {}",
+                            bid_year.year()
+                        ));
+                    }
+                }
 
                 results.push(CsvRowResult {
                     row_number,
@@ -764,5 +798,426 @@ mod tests {
         assert_eq!(result.invalid_count, 1);
         let row: &CsvRowResult = &result.rows[0];
         assert!(row.errors.iter().any(|e| e.contains("name")));
+    }
+
+    // Gap 5: Multiple errors on a single CSV row
+    #[test]
+    fn test_multiple_errors_on_single_row() {
+        let csv: &str = "initials,name,area_id,crew,user_type,service_computation_date,eod_faa_date\n\
+                         A,Alice Brown,NONEXISTENT,8,INVALID,2020-01-01,2020-01-01\n";
+
+        let bid_year: BidYear = create_test_bid_year();
+        let mut persistence: SqlitePersistence = create_test_persistence();
+        bootstrap_test_persistence(&mut persistence);
+        let metadata: BootstrapMetadata = persistence
+            .get_bootstrap_metadata()
+            .expect("Failed to get metadata");
+
+        let result: CsvPreviewResult =
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
+
+        assert_eq!(result.total_rows, 1);
+        assert_eq!(result.invalid_count, 1);
+
+        let row: &CsvRowResult = &result.rows[0];
+        assert_eq!(row.status, CsvRowStatus::Invalid);
+        assert_eq!(row.row_number, 1);
+
+        // Verify all three errors are reported (not short-circuited)
+        assert!(
+            row.errors.len() >= 3,
+            "Expected at least 3 errors, got {}: {:?}",
+            row.errors.len(),
+            row.errors
+        );
+
+        // Check for invalid initials error
+        assert!(
+            row.errors
+                .iter()
+                .any(|e| e.contains("initials") || e.contains("Initials")),
+            "Missing initials error. Errors: {:?}",
+            row.errors
+        );
+
+        // Check for nonexistent area error
+        assert!(
+            row.errors
+                .iter()
+                .any(|e| e.contains("area") && e.contains("does not exist")),
+            "Missing area does not exist error. Errors: {:?}",
+            row.errors
+        );
+
+        // Check for invalid crew error
+        assert!(
+            row.errors.iter().any(|e| e.contains("crew")),
+            "Missing crew error. Errors: {:?}",
+            row.errors
+        );
+    }
+
+    // Gap 5: Multiple rows with independent failures
+    #[test]
+    fn test_multiple_rows_with_independent_failures() {
+        let csv: &str = "initials,name,area_id,crew,user_type,service_computation_date,eod_faa_date\n\
+                         A,Alice,ZAB,1,CPC,2020-01-01,2020-01-01\n\
+                         BC,Bob,NONEXISTENT,2,CPC,2020-01-01,2020-01-01\n\
+                         CD,Charlie,ZAB,9,CPC,2020-01-01,2020-01-01\n\
+                         EF,Eve,ZAB,3,BADTYPE,2020-01-01,2020-01-01\n";
+
+        let bid_year: BidYear = create_test_bid_year();
+        let mut persistence: SqlitePersistence = create_test_persistence();
+        bootstrap_test_persistence(&mut persistence);
+        let metadata: BootstrapMetadata = persistence
+            .get_bootstrap_metadata()
+            .expect("Failed to get metadata");
+
+        let result: CsvPreviewResult =
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
+
+        assert_eq!(result.total_rows, 4);
+        assert_eq!(result.invalid_count, 4);
+
+        // Row 1: invalid initials (too short)
+        let row1: &CsvRowResult = &result.rows[0];
+        assert_eq!(row1.row_number, 1);
+        assert_eq!(row1.status, CsvRowStatus::Invalid);
+        assert!(
+            row1.errors
+                .iter()
+                .any(|e| e.contains("initials") || e.contains("Initials"))
+        );
+
+        // Row 2: nonexistent area
+        let row2: &CsvRowResult = &result.rows[1];
+        assert_eq!(row2.row_number, 2);
+        assert_eq!(row2.status, CsvRowStatus::Invalid);
+        assert!(
+            row2.errors
+                .iter()
+                .any(|e| e.contains("area") && e.contains("does not exist"))
+        );
+
+        // Row 3: invalid crew (9 is out of range)
+        let row3: &CsvRowResult = &result.rows[2];
+        assert_eq!(row3.row_number, 3);
+        assert_eq!(row3.status, CsvRowStatus::Invalid);
+        assert!(row3.errors.iter().any(|e| e.contains("crew")));
+
+        // Row 4: invalid user type
+        let row4: &CsvRowResult = &result.rows[3];
+        assert_eq!(row4.row_number, 4);
+        assert_eq!(row4.status, CsvRowStatus::Invalid);
+        assert!(row4.errors.iter().any(|e| e.contains("user_type")));
+
+        // Verify each row's errors are independent
+        // Row 1 should only have initials error, not area or crew errors
+        assert!(
+            !row1.errors.iter().any(|e| e.contains("does not exist")),
+            "Row 1 should not have area error"
+        );
+        assert!(
+            !row2
+                .errors
+                .iter()
+                .any(|e| e.contains("initials") || e.contains("Initials")),
+            "Row 2 should not have initials error"
+        );
+    }
+
+    // Gap 5: Error messages reference correct row numbers
+    #[test]
+    fn test_error_messages_have_correct_row_numbers() {
+        let csv: &str = "initials,name,area_id,crew,user_type,service_computation_date,eod_faa_date\n\
+                         AB,Alice,ZAB,1,CPC,2020-01-01,2020-01-01\n\
+                         CD,Charlie,ZAB,2,CPC,2020-01-01,2020-01-01\n\
+                         E,Invalid,ZAB,3,CPC,2020-01-01,2020-01-01\n\
+                         FG,Frank,ZAB,4,CPC,2020-01-01,2020-01-01\n";
+
+        let bid_year: BidYear = create_test_bid_year();
+        let mut persistence: SqlitePersistence = create_test_persistence();
+        bootstrap_test_persistence(&mut persistence);
+        let metadata: BootstrapMetadata = persistence
+            .get_bootstrap_metadata()
+            .expect("Failed to get metadata");
+
+        let result: CsvPreviewResult =
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
+
+        assert_eq!(result.total_rows, 4);
+        assert_eq!(result.valid_count, 3);
+        assert_eq!(result.invalid_count, 1);
+
+        // Row 3 (row_number = 3) should be invalid
+        let row3: &CsvRowResult = &result.rows[2];
+        assert_eq!(row3.row_number, 3, "Row number should be 3 (1-based)");
+        assert_eq!(row3.status, CsvRowStatus::Invalid);
+
+        // Valid rows should have correct row numbers
+        assert_eq!(result.rows[0].row_number, 1);
+        assert_eq!(result.rows[1].row_number, 2);
+        assert_eq!(result.rows[3].row_number, 4);
+    }
+
+    // Gap 5: Mixed valid and invalid rows - valid rows not rejected
+    #[test]
+    fn test_mixed_valid_invalid_rows_preserves_valid() {
+        let csv: &str = "initials,name,area_id,crew,user_type,service_computation_date,eod_faa_date\n\
+                         AB,Alice,ZAB,1,CPC,2020-01-01,2020-01-01\n\
+                         X,Invalid,ZAB,2,CPC,2020-01-01,2020-01-01\n\
+                         CD,Charlie,ZAB,3,CPC,2020-01-01,2020-01-01\n\
+                         EF,Eve,BADAREA,4,CPC,2020-01-01,2020-01-01\n\
+                         GH,George,ZAB,5,CPC,2020-01-01,2020-01-01\n";
+
+        let bid_year: BidYear = create_test_bid_year();
+        let mut persistence: SqlitePersistence = create_test_persistence();
+        bootstrap_test_persistence(&mut persistence);
+        let metadata: BootstrapMetadata = persistence
+            .get_bootstrap_metadata()
+            .expect("Failed to get metadata");
+
+        let result: CsvPreviewResult =
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence).expect("valid CSV");
+
+        assert_eq!(result.total_rows, 5);
+        assert_eq!(result.valid_count, 3);
+        assert_eq!(result.invalid_count, 2);
+
+        // Verify valid rows are actually valid
+        assert_eq!(result.rows[0].status, CsvRowStatus::Valid);
+        assert!(result.rows[0].errors.is_empty());
+        assert_eq!(result.rows[0].initials, Some(String::from("AB")));
+
+        assert_eq!(result.rows[2].status, CsvRowStatus::Valid);
+        assert!(result.rows[2].errors.is_empty());
+        assert_eq!(result.rows[2].initials, Some(String::from("CD")));
+
+        assert_eq!(result.rows[4].status, CsvRowStatus::Valid);
+        assert!(result.rows[4].errors.is_empty());
+        assert_eq!(result.rows[4].initials, Some(String::from("GH")));
+
+        // Verify invalid rows have errors
+        assert_eq!(result.rows[1].status, CsvRowStatus::Invalid);
+        assert!(!result.rows[1].errors.is_empty());
+
+        assert_eq!(result.rows[3].status, CsvRowStatus::Invalid);
+        assert!(!result.rows[3].errors.is_empty());
+    }
+
+    // Gap 5: Empty file (no headers, no data)
+    #[test]
+    fn test_empty_csv_file() {
+        let csv: &str = "";
+
+        let bid_year: BidYear = create_test_bid_year();
+        let mut persistence: SqlitePersistence = create_test_persistence();
+        bootstrap_test_persistence(&mut persistence);
+        let metadata: BootstrapMetadata = persistence
+            .get_bootstrap_metadata()
+            .expect("Failed to get metadata");
+
+        let result: Result<CsvPreviewResult, ApiError> =
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence);
+
+        assert!(result.is_err(), "Empty CSV should fail");
+        match result {
+            Err(ApiError::InvalidCsvFormat { reason }) => {
+                assert!(
+                    reason.contains("Failed to read CSV headers")
+                        || reason.contains("Missing required headers"),
+                    "Expected header-related error, got: {reason}"
+                );
+            }
+            _ => panic!("Expected InvalidCsvFormat error for empty CSV"),
+        }
+    }
+
+    // Gap 5: Header-only file (no data rows)
+    #[test]
+    fn test_header_only_csv_file() {
+        let csv: &str =
+            "initials,name,area_id,crew,user_type,service_computation_date,eod_faa_date\n";
+
+        let bid_year: BidYear = create_test_bid_year();
+        let mut persistence: SqlitePersistence = create_test_persistence();
+        bootstrap_test_persistence(&mut persistence);
+        let metadata: BootstrapMetadata = persistence
+            .get_bootstrap_metadata()
+            .expect("Failed to get metadata");
+
+        let result: CsvPreviewResult =
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence)
+                .expect("header-only CSV should succeed");
+
+        assert_eq!(result.total_rows, 0, "Should have no data rows");
+        assert_eq!(result.valid_count, 0);
+        assert_eq!(result.invalid_count, 0);
+        assert!(result.rows.is_empty());
+    }
+
+    // Gap 5: Duplicate headers
+    #[test]
+    fn test_duplicate_headers() {
+        let csv: &str = "initials,name,initials,area_id,crew,user_type,service_computation_date,eod_faa_date\n\
+                         AB,Alice,AB,ZAB,1,CPC,2020-01-01,2020-01-01\n";
+
+        let bid_year: BidYear = create_test_bid_year();
+        let mut persistence: SqlitePersistence = create_test_persistence();
+        bootstrap_test_persistence(&mut persistence);
+        let metadata: BootstrapMetadata = persistence
+            .get_bootstrap_metadata()
+            .expect("Failed to get metadata");
+
+        // CSV with duplicate headers should parse (last occurrence wins in HashMap)
+        // This is technically allowed by csv crate, so we just verify it doesn't crash
+        let result: Result<CsvPreviewResult, ApiError> =
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence);
+
+        // Either it succeeds (using last occurrence) or fails with format error
+        // Both behaviors are acceptable - the key is not crashing
+        match result {
+            Ok(preview) => {
+                // If it succeeds, verify basic structure
+                assert_eq!(preview.total_rows, 1);
+            }
+            Err(ApiError::InvalidCsvFormat { .. }) => {
+                // Also acceptable - some CSV parsers reject duplicates
+            }
+            Err(e) => panic!("Unexpected error type: {e:?}"),
+        }
+    }
+
+    // Gap 5: Error message determinism - verify stable ordering
+    #[test]
+    fn test_error_message_determinism() {
+        let csv: &str = "initials,name,area_id,crew,user_type,service_computation_date,eod_faa_date\n\
+                         A,Bob,NONEXISTENT,9,INVALID,2020-01-01,2020-01-01\n";
+
+        let bid_year: BidYear = create_test_bid_year();
+        let mut persistence: SqlitePersistence = create_test_persistence();
+        bootstrap_test_persistence(&mut persistence);
+        let metadata: BootstrapMetadata = persistence
+            .get_bootstrap_metadata()
+            .expect("Failed to get metadata");
+
+        // Run the same CSV multiple times and verify error messages are identical
+        let mut error_sets: Vec<Vec<String>> = Vec::new();
+
+        for _ in 0..5 {
+            let result: CsvPreviewResult =
+                preview_csv_users(csv, &bid_year, &metadata, &mut persistence)
+                    .expect("CSV should parse");
+
+            assert_eq!(result.invalid_count, 1);
+            let row: &CsvRowResult = &result.rows[0];
+            error_sets.push(row.errors.clone());
+        }
+
+        // All error sets should be identical
+        let first_errors: &Vec<String> = &error_sets[0];
+        for errors in &error_sets[1..] {
+            assert_eq!(
+                errors, first_errors,
+                "Error messages should be deterministic across runs"
+            );
+        }
+
+        // Verify we have multiple errors
+        assert!(first_errors.len() >= 3, "Should have at least 3 errors");
+    }
+
+    // Gap 5: Error messages reference correct column names
+    #[test]
+    fn test_error_messages_reference_column_names() {
+        let csv: &str = "initials,name,area_id,crew,user_type,service_computation_date,eod_faa_date\n\
+                         A,Alice,BADAREA,99,BADTYPE,2020-01-01,2020-01-01\n";
+
+        let bid_year: BidYear = create_test_bid_year();
+        let mut persistence: SqlitePersistence = create_test_persistence();
+        bootstrap_test_persistence(&mut persistence);
+        let metadata: BootstrapMetadata = persistence
+            .get_bootstrap_metadata()
+            .expect("Failed to get metadata");
+
+        let result: CsvPreviewResult =
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence)
+                .expect("CSV should parse");
+
+        assert_eq!(result.invalid_count, 1);
+        let row: &CsvRowResult = &result.rows[0];
+
+        // Verify error messages contain the relevant field names
+        let errors_text: String = row.errors.join(" ");
+
+        // Should mention initials or validation (for the 1-char initials)
+        assert!(
+            errors_text.contains("initials")
+                || errors_text.contains("Initials")
+                || errors_text.contains("validation"),
+            "Should mention initials field. Errors: {:?}",
+            row.errors
+        );
+
+        // Should mention area
+        assert!(
+            errors_text.contains("area"),
+            "Should mention area field. Errors: {:?}",
+            row.errors
+        );
+
+        // Should mention crew
+        assert!(
+            errors_text.contains("crew"),
+            "Should mention crew field. Errors: {:?}",
+            row.errors
+        );
+
+        // Should mention user_type
+        assert!(
+            errors_text.contains("user_type"),
+            "Should mention user_type field. Errors: {:?}",
+            row.errors
+        );
+    }
+
+    // Gap 5: Multiple missing required fields
+    #[test]
+    fn test_multiple_missing_required_fields() {
+        let csv: &str = "initials,name,area_id,crew,user_type,service_computation_date,eod_faa_date\n\
+                         AB,,,1,CPC,2020-01-01,\n";
+
+        let bid_year: BidYear = create_test_bid_year();
+        let mut persistence: SqlitePersistence = create_test_persistence();
+        bootstrap_test_persistence(&mut persistence);
+        let metadata: BootstrapMetadata = persistence
+            .get_bootstrap_metadata()
+            .expect("Failed to get metadata");
+
+        let result: CsvPreviewResult =
+            preview_csv_users(csv, &bid_year, &metadata, &mut persistence)
+                .expect("CSV should parse");
+
+        assert_eq!(result.invalid_count, 1);
+        let row: &CsvRowResult = &result.rows[0];
+        assert_eq!(row.status, CsvRowStatus::Invalid);
+
+        // Should have errors for both missing fields
+        assert!(
+            row.errors.len() >= 2,
+            "Should have at least 2 errors for missing fields"
+        );
+
+        let errors_text: String = row.errors.join(" ");
+        assert!(
+            errors_text.contains("name"),
+            "Should mention missing name field. Errors: {:?}",
+            row.errors
+        );
+        assert!(
+            errors_text.contains("area_id"),
+            "Should mention missing area_id field. Errors: {:?}",
+            row.errors
+        );
     }
 }
