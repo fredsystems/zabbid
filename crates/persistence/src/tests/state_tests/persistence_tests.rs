@@ -83,7 +83,7 @@ fn test_persist_and_retrieve_audit_event() {
     )
     .unwrap();
 
-    let event_id: i64 = persistence.persist_transition(&result).unwrap();
+    let event_id: i64 = persistence.persist_transition(&result).unwrap().event_id;
 
     let retrieved: AuditEvent = persistence.get_audit_event(event_id).unwrap();
     assert_eq!(retrieved.event_id, Some(event_id));
@@ -106,7 +106,7 @@ fn test_persist_with_snapshot() {
     )
     .unwrap();
 
-    let event_id: i64 = persistence.persist_transition(&result).unwrap();
+    let event_id: i64 = persistence.persist_transition(&result).unwrap().event_id;
 
     let (snapshot, snapshot_event_id): (State, i64) = persistence
         .get_latest_snapshot(&BidYear::new(2026), &Area::new("North"))
@@ -133,7 +133,7 @@ fn test_get_events_after() {
         create_test_cause(),
     )
     .unwrap();
-    let event_id1: i64 = persistence.persist_transition(&result1).unwrap();
+    let event_id1: i64 = persistence.persist_transition(&result1).unwrap().event_id;
 
     // Create second event
     let command2: Command = Command::Finalize;
@@ -146,7 +146,7 @@ fn test_get_events_after() {
         create_test_cause(),
     )
     .unwrap();
-    let _event_id2: i64 = persistence.persist_transition(&result2).unwrap();
+    let _event_id2: i64 = persistence.persist_transition(&result2).unwrap().event_id;
 
     // Retrieve events after first
     let events: Vec<AuditEvent> = persistence

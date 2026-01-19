@@ -38,6 +38,18 @@ use crate::mutations::canonical::{
 };
 use crate::queries::canonical::{lookup_bid_year_id_mysql, lookup_bid_year_id_sqlite};
 
+/// Result of persisting a transition.
+///
+/// Contains the event ID assigned to the audit event, and optionally the
+/// `user_id` if the transition was a `RegisterUser` action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PersistTransitionResult {
+    /// The event ID assigned to the persisted audit event.
+    pub event_id: i64,
+    /// The user ID assigned to the newly registered user, if this was a `RegisterUser` transition.
+    pub user_id: Option<i64>,
+}
+
 /// Persists a transition result (audit event and optionally a full snapshot) - `SQLite` version.
 ///
 /// # Arguments
@@ -57,21 +69,23 @@ pub fn persist_transition_sqlite(
     conn: &mut SqliteConnection,
     result: &TransitionResult,
     should_snapshot: bool,
-) -> Result<i64, PersistenceError> {
+) -> Result<PersistTransitionResult, PersistenceError> {
     // Persist the audit event
     let event_id: i64 = persist_audit_event_sqlite(conn, &result.audit_event)?;
     debug!(event_id, "Persisted audit event");
 
     // Update canonical state based on action type
     // RegisterUser is incremental (insert one user), others are full state replacement
-    if result.audit_event.action.name.as_str() == "RegisterUser" {
-        // Insert just the new user incrementally
-        insert_new_user_sqlite(conn, &result.new_state)?;
+    let user_id: Option<i64> = if result.audit_event.action.name.as_str() == "RegisterUser" {
+        // Insert just the new user incrementally and capture the user_id
+        let new_user_id: i64 = insert_new_user_sqlite(conn, &result.new_state)?;
         debug!(
             bid_year = result.new_state.bid_year.year(),
             area = result.new_state.area.id(),
+            user_id = new_user_id,
             "Inserted new user"
         );
+        Some(new_user_id)
     } else {
         // For all other operations, do full state sync
         sync_canonical_users_sqlite(conn, &result.new_state)?;
@@ -81,7 +95,8 @@ pub fn persist_transition_sqlite(
             user_count = result.new_state.users.len(),
             "Synced canonical users table"
         );
-    }
+        None
+    };
 
     // Persist full snapshot if required
     if should_snapshot {
@@ -91,7 +106,7 @@ pub fn persist_transition_sqlite(
 
     info!(event_id, should_snapshot, "Persisted transition");
 
-    Ok(event_id)
+    Ok(PersistTransitionResult { event_id, user_id })
 }
 
 /// Persists a transition result (audit event and optionally a full snapshot) - `MySQL` version.
@@ -113,21 +128,23 @@ pub fn persist_transition_mysql(
     conn: &mut MysqlConnection,
     result: &TransitionResult,
     should_snapshot: bool,
-) -> Result<i64, PersistenceError> {
+) -> Result<PersistTransitionResult, PersistenceError> {
     // Persist the audit event
     let event_id: i64 = persist_audit_event_mysql(conn, &result.audit_event)?;
     debug!(event_id, "Persisted audit event");
 
     // Update canonical state based on action type
     // RegisterUser is incremental (insert one user), others are full state replacement
-    if result.audit_event.action.name.as_str() == "RegisterUser" {
-        // Insert just the new user incrementally
-        insert_new_user_mysql(conn, &result.new_state)?;
+    let user_id: Option<i64> = if result.audit_event.action.name.as_str() == "RegisterUser" {
+        // Insert just the new user incrementally and capture the user_id
+        let new_user_id: i64 = insert_new_user_mysql(conn, &result.new_state)?;
         debug!(
             bid_year = result.new_state.bid_year.year(),
             area = result.new_state.area.id(),
+            user_id = new_user_id,
             "Inserted new user"
         );
+        Some(new_user_id)
     } else {
         // For all other operations, do full state sync
         sync_canonical_users_mysql(conn, &result.new_state)?;
@@ -137,7 +154,8 @@ pub fn persist_transition_mysql(
             user_count = result.new_state.users.len(),
             "Synced canonical users table"
         );
-    }
+        None
+    };
 
     // Persist full snapshot if required
     if should_snapshot {
@@ -147,7 +165,7 @@ pub fn persist_transition_mysql(
 
     info!(event_id, should_snapshot, "Persisted transition");
 
-    Ok(event_id)
+    Ok(PersistTransitionResult { event_id, user_id })
 }
 
 /// Persists a bootstrap result (audit event for bid year/area creation) - `SQLite` version.

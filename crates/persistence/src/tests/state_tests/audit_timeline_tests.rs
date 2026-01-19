@@ -104,7 +104,7 @@ fn test_get_audit_timeline_includes_rollback_events() {
         create_test_cause(),
     )
     .unwrap();
-    let event_id1: i64 = persistence.persist_transition(&result1).unwrap();
+    let event_id1: i64 = persistence.persist_transition(&result1).unwrap().event_id;
 
     // Create rollback
     let command2: Command = Command::RollbackToEventId {

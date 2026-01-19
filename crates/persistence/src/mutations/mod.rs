@@ -29,10 +29,10 @@ pub mod operators;
 // Re-export backend-specific mutation functions used by lib.rs
 pub use audit::{persist_audit_event_mysql, persist_audit_event_sqlite};
 pub use bootstrap::{
-    persist_bootstrap_mysql, persist_bootstrap_sqlite, persist_transition_mysql,
-    persist_transition_sqlite, set_active_bid_year_mysql, set_active_bid_year_sqlite,
-    set_expected_area_count_mysql, set_expected_area_count_sqlite, set_expected_user_count_mysql,
-    set_expected_user_count_sqlite,
+    PersistTransitionResult, persist_bootstrap_mysql, persist_bootstrap_sqlite,
+    persist_transition_mysql, persist_transition_sqlite, set_active_bid_year_mysql,
+    set_active_bid_year_sqlite, set_expected_area_count_mysql, set_expected_area_count_sqlite,
+    set_expected_user_count_mysql, set_expected_user_count_sqlite,
 };
 pub use canonical::{
     create_system_area_mysql, create_system_area_sqlite, update_area_name_mysql,

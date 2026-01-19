@@ -927,28 +927,6 @@ async fn handle_get_leave_availability(
     Ok(Json(response))
 }
 
-/// Extract `user_id` from reloaded state after user registration.
-///
-/// # Errors
-///
-/// Returns an error if the user is not found or has no `user_id`.
-fn extract_user_id_from_state(state: &State, initials: &str) -> Result<i64, HttpError> {
-    let initials_search = Initials::new(initials);
-    let persisted_user = state
-        .users
-        .iter()
-        .find(|u| u.initials == initials_search)
-        .ok_or_else(|| HttpError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            message: format!("User '{initials}' was registered but not found in reloaded state",),
-        })?;
-
-    persisted_user.user_id.ok_or_else(|| HttpError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        message: format!("User '{initials}' was persisted but has no user_id",),
-    })
-}
-
 /// Handler for POST `/register_user` endpoint.
 ///
 /// Authenticates the actor, authorizes the action, and registers a new user.
@@ -1016,7 +994,8 @@ async fn handle_register_user(
         audit_event: result.audit_event.clone(),
         new_state: result.new_state.clone(),
     };
-    let event_id: i64 = persistence.persist_transition(&transition_result)?;
+    let persist_result = persistence.persist_transition(&transition_result)?;
+    let event_id: i64 = persist_result.event_id;
 
     // Extract bid_year_id from metadata
     let bid_year_id: i64 = metadata
@@ -1032,16 +1011,11 @@ async fn handle_register_user(
             ),
         })?;
 
-    // Reload the state to get the persisted user_id
-    let reloaded_state: State = persistence
-        .get_current_state(&bid_year, &area)
-        .map_err(|e| HttpError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            message: format!("Failed to reload state after persistence: {e}"),
-        })?;
-
-    // Extract user_id from reloaded state
-    let user_id: i64 = extract_user_id_from_state(&reloaded_state, &result.response.initials)?;
+    // Get user_id from persist result (guaranteed to be present for RegisterUser)
+    let user_id: i64 = persist_result.user_id.ok_or_else(|| HttpError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: "RegisterUser transition did not return user_id".to_string(),
+    })?;
 
     drop(persistence);
 
@@ -1119,7 +1093,8 @@ async fn handle_checkpoint(
     )?;
 
     // Persist the transition
-    let event_id: i64 = persistence.persist_transition(&result)?;
+    let persist_result = persistence.persist_transition(&result)?;
+    let event_id: i64 = persist_result.event_id;
     drop(persistence);
 
     info!(event_id = event_id, "Successfully created checkpoint");
@@ -1186,7 +1161,8 @@ async fn handle_finalize(
     )?;
 
     // Persist the transition
-    let event_id: i64 = persistence.persist_transition(&result)?;
+    let persist_result = persistence.persist_transition(&result)?;
+    let event_id: i64 = persist_result.event_id;
     drop(persistence);
 
     info!(event_id = event_id, "Successfully finalized round");
@@ -1258,7 +1234,8 @@ async fn handle_rollback(
     )?;
 
     // Persist the transition
-    let event_id: i64 = persistence.persist_transition(&result)?;
+    let persist_result = persistence.persist_transition(&result)?;
+    let event_id: i64 = persist_result.event_id;
     drop(persistence);
 
     info!(

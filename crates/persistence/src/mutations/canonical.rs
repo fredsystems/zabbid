@@ -43,7 +43,7 @@ use crate::queries::canonical::{
 pub fn insert_new_user_sqlite(
     conn: &mut SqliteConnection,
     state: &State,
-) -> Result<(), PersistenceError> {
+) -> Result<i64, PersistenceError> {
     let user = state
         .users
         .last()
@@ -87,14 +87,21 @@ pub fn insert_new_user_sqlite(
         ))
         .execute(conn)?;
 
+    // Retrieve the newly assigned user_id
+    let user_id: i64 = diesel::select(diesel::dsl::sql::<diesel::sql_types::BigInt>(
+        "last_insert_rowid()",
+    ))
+    .get_result(conn)?;
+
     debug!(
         bid_year_id,
         area_id,
+        user_id,
         initials = user.initials.value(),
         "Inserted new user"
     );
 
-    Ok(())
+    Ok(user_id)
 }
 
 /// Inserts a new user from the last user in the state (`MySQL` version).
@@ -113,7 +120,7 @@ pub fn insert_new_user_sqlite(
 pub fn insert_new_user_mysql(
     conn: &mut MysqlConnection,
     state: &State,
-) -> Result<(), PersistenceError> {
+) -> Result<i64, PersistenceError> {
     let user = state
         .users
         .last()
@@ -157,14 +164,21 @@ pub fn insert_new_user_mysql(
         ))
         .execute(conn)?;
 
+    // Retrieve the newly assigned user_id
+    let user_id: i64 = diesel::select(diesel::dsl::sql::<diesel::sql_types::BigInt>(
+        "LAST_INSERT_ID()",
+    ))
+    .get_result(conn)?;
+
     debug!(
         bid_year_id,
         area_id,
+        user_id,
         initials = user.initials.value(),
         "Inserted new user"
     );
 
-    Ok(())
+    Ok(user_id)
 }
 
 /// Syncs the canonical users table to match the given state (`SQLite` version).
