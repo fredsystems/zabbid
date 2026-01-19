@@ -8,7 +8,7 @@ use crate::tests::helpers::{
 };
 use crate::{BootstrapMetadata, Command, CoreError, State, TransitionResult, apply};
 use zab_bid_audit::{Actor, Cause};
-use zab_bid_domain::{Area, BidYear, Crew, DomainError, Initials, UserType};
+use zab_bid_domain::{Area, BidYear, Crew, DomainError, Initials, User, UserType};
 
 #[test]
 fn test_valid_command_returns_new_state() {
@@ -477,5 +477,227 @@ fn test_register_user_without_area_fails() {
     assert!(matches!(
         result.unwrap_err(),
         CoreError::DomainViolation(DomainError::AreaNotFound { .. })
+    ));
+}
+
+// ============================================================================
+// Gap 9: State Transition Edge Cases
+// ============================================================================
+
+/// `PHASE_27H.9`: Test checkpoint operation on empty state (no users)
+#[test]
+fn test_checkpoint_on_empty_state() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
+    let command: Command = Command::Checkpoint;
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<TransitionResult, CoreError> =
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
+
+    assert!(result.is_ok());
+    let transition: TransitionResult = result.unwrap();
+
+    // State should be unchanged
+    assert_eq!(transition.new_state.users.len(), 0);
+
+    // Audit event should be created
+    assert_eq!(transition.audit_event.action.name, "Checkpoint");
+}
+
+/// `PHASE_27H.9`: Test finalize operation on empty state (no users)
+#[test]
+fn test_finalize_on_empty_state() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
+    let command: Command = Command::Finalize;
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<TransitionResult, CoreError> =
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
+
+    assert!(result.is_ok());
+    let transition: TransitionResult = result.unwrap();
+
+    // State should be unchanged
+    assert_eq!(transition.new_state.users.len(), 0);
+
+    // Audit event should be created
+    assert_eq!(transition.audit_event.action.name, "Finalize");
+}
+
+/// `PHASE_27H.9`: Test rollback operation creates audit event with target ID
+#[test]
+fn test_rollback_creates_audit_event() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
+    let target_event_id: i64 = 42;
+    let command: Command = Command::RollbackToEventId { target_event_id };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<TransitionResult, CoreError> =
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
+
+    assert!(result.is_ok());
+    let transition: TransitionResult = result.unwrap();
+
+    // State should be unchanged (actual rollback happens at persistence layer)
+    assert_eq!(transition.new_state.users.len(), 0);
+
+    // Audit event should reference the target event ID
+    assert_eq!(transition.audit_event.action.name, "Rollback");
+    assert!(
+        transition
+            .audit_event
+            .action
+            .details
+            .as_ref()
+            .unwrap()
+            .contains("42")
+    );
+}
+
+/// `PHASE_27H.9`: Test checkpoint operation on state with many users
+#[test]
+fn test_checkpoint_on_state_with_multiple_users() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let mut state: State = State::new(BidYear::new(2026), Area::new("North"));
+
+    // Add multiple users to state
+    for i in 1..=10 {
+        let initials_str = format!("U{i:02}");
+        state.users.push(User::new(
+            BidYear::new(2026),
+            Initials::new(&initials_str),
+            format!("User {i}"),
+            Area::new("North"),
+            UserType::CPC,
+            Some(Crew::new(1).unwrap()),
+            create_test_seniority_data(),
+        ));
+    }
+
+    let active_bid_year: BidYear = BidYear::new(2026);
+    let command: Command = Command::Checkpoint;
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<TransitionResult, CoreError> =
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
+
+    assert!(result.is_ok());
+    let transition: TransitionResult = result.unwrap();
+
+    // State should be unchanged - all users preserved
+    assert_eq!(transition.new_state.users.len(), 10);
+    assert_eq!(transition.new_state.users, state.users);
+
+    // Audit event should be created
+    assert_eq!(transition.audit_event.action.name, "Checkpoint");
+}
+
+/// `PHASE_27H.9`: Test finalize operation preserves state
+#[test]
+fn test_finalize_preserves_existing_state() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let mut state: State = State::new(BidYear::new(2026), Area::new("North"));
+
+    // Add a user to state
+    state.users.push(User::new(
+        BidYear::new(2026),
+        Initials::new("AB"),
+        String::from("Alice Blue"),
+        Area::new("North"),
+        UserType::CPC,
+        Some(Crew::new(1).unwrap()),
+        create_test_seniority_data(),
+    ));
+
+    let active_bid_year: BidYear = BidYear::new(2026);
+    let command: Command = Command::Finalize;
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<TransitionResult, CoreError> =
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
+
+    assert!(result.is_ok());
+    let transition: TransitionResult = result.unwrap();
+
+    // State should be unchanged
+    assert_eq!(transition.new_state.users.len(), 1);
+    assert_eq!(transition.new_state.users[0].initials.value(), "AB");
+
+    // Audit event should be created
+    assert_eq!(transition.audit_event.action.name, "Finalize");
+}
+
+/// `PHASE_27H.9`: Test rollback to current event is valid (no-op rollback)
+#[test]
+fn test_rollback_to_same_event_is_valid() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
+
+    // Rollback to the "current" event (simulating no-op rollback)
+    let current_event_id: i64 = 100;
+    let command: Command = Command::RollbackToEventId {
+        target_event_id: current_event_id,
+    };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<TransitionResult, CoreError> =
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
+
+    assert!(result.is_ok());
+    let transition: TransitionResult = result.unwrap();
+
+    // State should be unchanged
+    assert_eq!(transition.new_state.users.len(), 0);
+
+    // Audit event should be created with correct target
+    assert_eq!(transition.audit_event.action.name, "Rollback");
+    assert!(
+        transition
+            .audit_event
+            .action
+            .details
+            .as_ref()
+            .unwrap()
+            .contains("100")
+    );
+}
+
+/// `PHASE_27H.9`: Test update user on empty state fails
+#[test]
+fn test_update_user_on_empty_state_fails() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
+    let command: Command = Command::UpdateUser {
+        initials: Initials::new("AB"),
+        name: String::from("Alice Blue"),
+        area: Area::new("North"),
+        user_type: UserType::CPC,
+        crew: Some(Crew::new(1).unwrap()),
+        seniority_data: create_test_seniority_data(),
+    };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<TransitionResult, CoreError> =
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        CoreError::DomainViolation(DomainError::UserNotFound { .. })
     ));
 }
