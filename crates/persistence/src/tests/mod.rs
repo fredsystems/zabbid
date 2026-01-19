@@ -6,6 +6,7 @@
 mod backend_validation_tests;
 mod bootstrap_tests;
 mod canonical_tests;
+mod completeness_tests;
 mod initialization_tests;
 mod mutation_error_tests;
 mod operator_tests;
