@@ -11,7 +11,8 @@
 use crate::SqlitePersistence;
 use crate::tests::{
     create_test_actor, create_test_bid_year_and_area, create_test_cause, create_test_metadata,
-    create_test_operator, create_test_seniority_data,
+    create_test_operator, create_test_pay_periods, create_test_seniority_data,
+    create_test_start_date_for_year,
 };
 use zab_bid::{BootstrapMetadata, Command, State, apply, apply_bootstrap};
 use zab_bid_domain::{Area, BidYear, Crew};
@@ -614,5 +615,87 @@ fn test_count_conversion_handles_zero() {
         user_counts.len(),
         0,
         "Should have no entries when no users exist"
+    );
+}
+
+/// Phase 28C: Test that system areas are excluded from actual area count
+#[test]
+fn test_actual_area_count_excludes_system_areas() {
+    use crate::diesel_schema::areas;
+    use diesel::prelude::*;
+
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+    create_test_operator(&mut persistence);
+
+    // Create bid year first
+    let metadata = BootstrapMetadata::new();
+    let create_bid_year_cmd = Command::CreateBidYear {
+        year: 2026,
+        start_date: create_test_start_date_for_year(2026),
+        num_pay_periods: create_test_pay_periods(),
+    };
+    let bid_year_result = apply_bootstrap(
+        &metadata,
+        &BidYear::new(2026),
+        create_bid_year_cmd,
+        create_test_actor(),
+        create_test_cause(),
+    )
+    .unwrap();
+    persistence.persist_bootstrap(&bid_year_result).unwrap();
+
+    let bid_year_id = persistence.get_bid_year_id(2026).unwrap();
+
+    // Create two regular areas (is_system_area = 0)
+    let mut metadata = BootstrapMetadata::new();
+    metadata.bid_years.push(BidYear::new(2026));
+
+    let create_north_cmd = Command::CreateArea {
+        area_id: String::from("NORTH"),
+    };
+    let north_result = apply_bootstrap(
+        &metadata,
+        &BidYear::new(2026),
+        create_north_cmd,
+        create_test_actor(),
+        create_test_cause(),
+    )
+    .unwrap();
+    persistence.persist_bootstrap(&north_result).unwrap();
+
+    let create_south_cmd = Command::CreateArea {
+        area_id: String::from("SOUTH"),
+    };
+    let south_result = apply_bootstrap(
+        &metadata,
+        &BidYear::new(2026),
+        create_south_cmd,
+        create_test_actor(),
+        create_test_cause(),
+    )
+    .unwrap();
+    persistence.persist_bootstrap(&south_result).unwrap();
+
+    // Manually create a system area by inserting directly with is_system_area = 1
+    let crate::BackendConnection::Sqlite(conn) = &mut persistence.conn else {
+        panic!("Expected SQLite connection")
+    };
+
+    diesel::insert_into(areas::table)
+        .values((
+            areas::bid_year_id.eq(bid_year_id),
+            areas::area_code.eq("NO BID"),
+            areas::is_system_area.eq(1),
+        ))
+        .execute(conn)
+        .unwrap();
+
+    // Get actual area count - should exclude system area
+    let bid_year = BidYear::with_id(bid_year_id, 2026);
+    let count = persistence.get_actual_area_count(&bid_year).unwrap();
+
+    assert_eq!(
+        count, 2,
+        "System area (NO BID) must not be counted in actual area count"
     );
 }
