@@ -6,3 +6,4 @@
 //! Tests for canonical data operations.
 
 mod canonicalization;
+mod lookup_failures;
