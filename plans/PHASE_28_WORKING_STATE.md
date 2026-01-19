@@ -9,16 +9,17 @@
 
 - Status: In Progress
 - Last Updated: 2026-01-20
-- Reason: Phase 28A complete, starting Phase 28B — Make Commands Carry Canonical user_id
+- Reason: Phase 28A and 28B complete, ready for Phase 28C — No-Bid Area Exclusion
 
 ## Active Sub-Phase
 
-- Sub-Phase: 28B — Make Commands Carry Canonical user_id
+- Sub-Phase: 28C — No-Bid Area Exclusion
 - State: Not Started
 
 ## Completed Sub-Phases
 
 - [x] Phase 28A — Remove Identity Reconstruction Helpers & Patterns
+- [x] Phase 28B — Make Commands Carry Canonical user_id
 
 ## Work Completed
 
@@ -45,9 +46,25 @@
 - ✅ Registration flow returns `user_id` without intermediate lookup
 - ✅ No fallback resolution logic exists
 
+### Phase 28B (Complete)
+
+- Added `user_id: i64` field to `Command::UpdateUser`
+- Added `user_id: i64` field to `Command::OverrideAreaAssignment`
+- Added `user_id: i64` field to `Command::OverrideEligibility`
+- Added `user_id: i64` field to `Command::OverrideBidOrder`
+- Added `user_id: i64` field to `Command::OverrideBidWindow`
+- Updated `core/apply.rs` to use `user_id` for state lookup instead of searching by initials
+- Updated API `update_user()` handler to pass `request.user_id` into command
+- Updated command documentation to reflect explicit identity requirement
+- Updated audit event to reference `user_id` as primary identifier with initials as metadata only
+- Updated test to include `user_id` in `UpdateUser` command construction
+- All tests passing
+- `cargo xtask ci` passing
+- `pre-commit run --all-files` passing
+- Committed as: "Phase 28B — Make commands carry canonical user_id"
+
 ## Outstanding Work
 
-- Execute Phase 28B (make commands carry canonical user_id)
 - Execute Phase 28C (fix No-Bid area exclusion in completeness logic)
 - Execute Phase 28D (test hardening & validation)
 
@@ -61,14 +78,10 @@ None.
 
 ## Resume Instructions
 
-1. Read PHASE_28B_COMMAND_IDENTITY.md
-2. Update `Command::UpdateUser` to include `user_id`
-3. Update `Command::OverrideAreaAssignment` to include `user_id`
-4. Update `Command::OverrideEligibility` to include `user_id`
-5. Update `Command::OverrideBidOrder` to include `user_id`
-6. Update `Command::OverrideBidWindow` to include `user_id`
-7. Update `core/apply.rs` to use `user_id` from commands
-8. Update API handlers to pass `user_id` into commands
-9. Ensure audit events reference users by `user_id` only
-10. Run tests after each change
-11. Update this document before pausing or completing Phase 28B
+1. Read PHASE_28C_NOBID_EXCLUSION.md
+2. Review bootstrap completeness logic
+3. Identify where No-Bid area is incorrectly counted
+4. Fix completeness logic to exclude No-Bid area from counts
+5. Update tests to verify No-Bid exclusion
+6. Run tests and CI
+7. Update this document before pausing or completing Phase 28C
