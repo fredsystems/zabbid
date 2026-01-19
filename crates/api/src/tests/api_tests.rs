@@ -2908,3 +2908,180 @@ fn test_user_updates_preserve_canonical_id() {
     assert_eq!(updated_user.lottery_value, Some(42));
     assert_eq!(updated_user.initials, original_initials);
 }
+
+// ============================================================================
+// Phase 28D: Identity Enforcement & System Area Tests
+// ============================================================================
+
+/// Phase 28D: Verify registration flow creates user with `user_id`
+#[test]
+fn test_register_user_creates_user_with_user_id() {
+    let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
+    let metadata = persistence.get_bootstrap_metadata().unwrap();
+    let actor = create_test_admin();
+    let operator = create_test_admin_operator();
+    let cause = create_test_cause();
+
+    let bid_year = BidYear::new(2026);
+    let area = Area::new("North");
+    let state = State::new(bid_year.clone(), area.clone());
+
+    let register_request = create_valid_request();
+
+    let register_result = register_user(
+        &mut persistence,
+        &metadata,
+        &state,
+        register_request,
+        &actor,
+        &operator,
+        cause,
+    );
+
+    assert!(
+        register_result.is_ok(),
+        "Registration should succeed: {:?}",
+        register_result.err()
+    );
+
+    let api_result = register_result.unwrap();
+
+    // Persist and reload to verify user_id is populated
+    let transition = TransitionResult {
+        audit_event: api_result.audit_event,
+        new_state: api_result.new_state,
+    };
+    persistence.persist_transition(&transition).unwrap();
+
+    let reloaded_state = persistence.get_current_state(&bid_year, &area).unwrap();
+    let canonical_bid_years = persistence.list_bid_years().unwrap();
+    let users_response = list_users(
+        &metadata,
+        &canonical_bid_years,
+        &bid_year,
+        &area,
+        &reloaded_state,
+        &actor,
+        &operator,
+        zab_bid_domain::BidYearLifecycle::Draft,
+    )
+    .unwrap();
+
+    assert_eq!(users_response.users.len(), 1);
+    let user = &users_response.users[0];
+
+    // User MUST have user_id populated
+    assert!(user.user_id > 0, "User must have valid user_id");
+    assert_eq!(user.initials, "AB");
+}
+
+/// Phase 28D: Verify `UpdateUser` uses `user_id` from request
+#[test]
+fn test_update_user_uses_user_id_from_request() {
+    let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
+    let metadata = persistence.get_bootstrap_metadata().unwrap();
+    let actor = create_test_admin();
+    let operator = create_test_admin_operator();
+    let cause = create_test_cause();
+
+    let bid_year = BidYear::new(2026);
+    let area = Area::new("North");
+    let state = State::new(bid_year.clone(), area.clone());
+
+    // Register user
+    let register_request = create_valid_request();
+    let register_result = register_user(
+        &mut persistence,
+        &metadata,
+        &state,
+        register_request,
+        &actor,
+        &operator,
+        cause.clone(),
+    )
+    .unwrap();
+
+    // Persist and get user_id from state
+    let transition = TransitionResult {
+        audit_event: register_result.audit_event,
+        new_state: register_result.new_state,
+    };
+    persistence.persist_transition(&transition).unwrap();
+
+    let reloaded_state = persistence.get_current_state(&bid_year, &area).unwrap();
+    let canonical_bid_years = persistence.list_bid_years().unwrap();
+    let users_list = list_users(
+        &metadata,
+        &canonical_bid_years,
+        &bid_year,
+        &area,
+        &reloaded_state,
+        &actor,
+        &operator,
+        zab_bid_domain::BidYearLifecycle::Draft,
+    )
+    .unwrap();
+
+    let user_id = users_list.users[0].user_id;
+    let area_id = users_list.users[0].area_id;
+
+    let state_for_update = persistence.get_current_state(&bid_year, &area).unwrap();
+
+    // Update using user_id
+    let update_request = UpdateUserRequest {
+        user_id,
+        initials: String::from("XY"),
+        name: String::from("Updated Name"),
+        area_id,
+        user_type: String::from("CPC"),
+        crew: Some(2),
+        cumulative_natca_bu_date: String::from("2020-01-01"),
+        natca_bu_date: String::from("2020-01-01"),
+        eod_faa_date: String::from("2020-01-01"),
+        service_computation_date: String::from("2020-01-01"),
+        lottery_value: None,
+    };
+
+    let update_result = update_user(
+        &mut persistence,
+        &metadata,
+        &state_for_update,
+        &update_request,
+        &actor,
+        &operator,
+        cause,
+    );
+
+    assert!(
+        update_result.is_ok(),
+        "Update with valid user_id should succeed"
+    );
+
+    let update_api_result = update_result.unwrap();
+    let update_transition = TransitionResult {
+        audit_event: update_api_result.audit_event,
+        new_state: update_api_result.new_state,
+    };
+    persistence.persist_transition(&update_transition).unwrap();
+
+    // Verify update targeted correct user
+    let final_state = persistence.get_current_state(&bid_year, &area).unwrap();
+    let canonical_bid_years_final = persistence.list_bid_years().unwrap();
+    let users_after = list_users(
+        &metadata,
+        &canonical_bid_years_final,
+        &bid_year,
+        &area,
+        &final_state,
+        &actor,
+        &operator,
+        zab_bid_domain::BidYearLifecycle::Draft,
+    )
+    .unwrap();
+
+    assert_eq!(users_after.users.len(), 1);
+    let updated_user = &users_after.users[0];
+
+    assert_eq!(updated_user.initials, "XY");
+    assert_eq!(updated_user.name, "Updated Name");
+}

@@ -168,6 +168,7 @@ mod tests;
 
 pub use data_models::{OperatorData, SessionData};
 pub use error::PersistenceError;
+pub use mutations::PersistTransitionResult;
 
 use backend::PersistenceBackend;
 
@@ -297,7 +298,8 @@ impl Persistence {
     ///
     /// # Returns
     ///
-    /// The event ID assigned to the persisted audit event.
+    /// A `PersistTransitionResult` containing the event ID and optionally the user ID
+    /// (for `RegisterUser` transitions).
     ///
     /// # Errors
     ///
@@ -305,7 +307,7 @@ impl Persistence {
     pub fn persist_transition(
         &mut self,
         result: &TransitionResult,
-    ) -> Result<i64, PersistenceError> {
+    ) -> Result<mutations::PersistTransitionResult, PersistenceError> {
         let should_snapshot = queries::state::should_snapshot(&result.audit_event.action.name);
         match &mut self.conn {
             BackendConnection::Sqlite(conn) => {
@@ -1834,63 +1836,6 @@ impl Persistence {
                     Ok(id) => Ok(id),
                     Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(
                         format!("Area {area_code} does not exist"),
-                    )),
-                    Err(e) => Err(PersistenceError::from(e)),
-                }
-            }
-        }
-    }
-
-    /// Queries the canonical `user_id` for a given bid year, area, and initials.
-    ///
-    /// # Arguments
-    ///
-    /// * `bid_year_id` - The canonical bid year identifier
-    /// * `area_id` - The canonical area identifier
-    /// * `initials` - The user initials
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the user is not found or the query fails.
-    pub fn get_user_id(
-        &mut self,
-        bid_year_id: i64,
-        area_id: i64,
-        initials: &Initials,
-    ) -> Result<i64, PersistenceError> {
-        use diesel_schema::users;
-
-        let normalized_initials: String = initials.value().to_uppercase();
-
-        match &mut self.conn {
-            BackendConnection::Sqlite(conn) => {
-                let result: Result<i64, diesel::result::Error> = users::table
-                    .select(users::user_id)
-                    .filter(users::bid_year_id.eq(bid_year_id))
-                    .filter(users::area_id.eq(area_id))
-                    .filter(users::initials.eq(&normalized_initials))
-                    .first::<i64>(conn);
-
-                match result {
-                    Ok(id) => Ok(id),
-                    Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(
-                        format!("User {} does not exist", initials.value()),
-                    )),
-                    Err(e) => Err(PersistenceError::from(e)),
-                }
-            }
-            BackendConnection::Mysql(conn) => {
-                let result: Result<i64, diesel::result::Error> = users::table
-                    .select(users::user_id)
-                    .filter(users::bid_year_id.eq(bid_year_id))
-                    .filter(users::area_id.eq(area_id))
-                    .filter(users::initials.eq(&normalized_initials))
-                    .first::<i64>(conn);
-
-                match result {
-                    Ok(id) => Ok(id),
-                    Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(
-                        format!("User {} does not exist", initials.value()),
                     )),
                     Err(e) => Err(PersistenceError::from(e)),
                 }

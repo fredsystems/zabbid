@@ -3339,6 +3339,7 @@ pub fn update_user(
 
     // Create command
     let command = Command::UpdateUser {
+        user_id: request.user_id,
         initials: initials.clone(),
         name: request.name.clone(),
         area: area.clone(),

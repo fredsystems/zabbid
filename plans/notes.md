@@ -1,261 +1,74 @@
-# Phase 25 — Canonicalization, Locking, and Override Semantics
-
-## Objective
-
-Introduce a clear, auditable transition from a **computed / bootstrap world** to an **authoritative / operational world**, while preserving the ability for administrators to apply human judgment and corrective action without breaking the system.
-
-This phase establishes **when data stops being derived**, **what becomes canonical**, and **how controlled exceptions are handled**.
-
-This phase **does not implement bidding logic**. It prepares the ground so bidding can be implemented safely and flexibly later.
-
----
-
-## Core Principle
-
-> Everything is computed until it is locked.
-> Once locked, the system operates only on canonical data — but canonical data is allowed to be edited, with audit and intent.
-
-This principle exists to prevent rigidity without sacrificing determinism.
-
----
-
-## Current State (Post Phase 24)
-
-- Persistence layer is backend-agnostic and stable
-- Canonical IDs exist for users, areas, and bid years
-- Bootstrap completeness is enforced
-- Editing rules are informal and implicit
-- Bid-year lifecycle is not explicitly modeled
-
----
-
-## Goals
-
-1. Make bid-year lifecycle state explicit and enforced
-2. Clearly separate **derived data** from **canonical data**
-3. Define when and how canonical data is materialized
-4. Allow post-lock edits without breaking domain rules
-5. Preserve full auditability for all overrides
-6. Avoid encoding bidding rules prematurely
-
----
-
-## Non-Goals
-
-This phase explicitly does **not** include:
-
-- Bid execution
-- Round slot enforcement
-- Proxy bid processing
-- Websocket live bidding
-- UI workflows for bidding
-- Performance optimization
-
----
-
-## Phase Structure
-
-### 1. Bid-Year Lifecycle State Machine
-
-Introduce an explicit bid-year state enum, persisted in the database:
-
-- `Draft`
-- `BootstrapComplete`
-- `Canonicalized`
-- `BiddingActive`
-- `BiddingClosed`
-
-Rules:
-
-- Transitions are explicit domain actions
-- Invalid transitions are rejected
-- State is consulted by domain logic, not UI hints
-
-This replaces implicit assumptions with enforceable truth.
-
----
-
-### 2. Derived vs Canonical Data Definition
-
-Formally define which data is derived and which is canonical.
-
-#### Derived (pre-canonicalization)
-
-- Bid order (computed from seniority)
-- Bid windows
-- Eligibility
-- Area membership defaults
-- Round structure (future phase)
-
-#### Canonical (post-canonicalization)
-
-- Canonical bid order
-- Canonical bid windows
-- Canonical user eligibility flags
-- Canonical area membership
-- Canonical round definitions (future)
-
-This distinction must be reflected in:
-
-- Table naming
-- API boundaries
-- Domain logic
-
----
-
-### 3. Canonicalization Action
-
-Introduce a **single, explicit domain action**:
-
-#### Canonicalize Bid Year
-
-This action:
-
-- Requires `BootstrapComplete`
-- Computes all required derived data
-- Writes canonical tables
-- Locks further derivation
-- Transitions bid year to `Canonicalized`
-
-After this point:
-
-- Derived computations are no longer used
-- All reads come from canonical tables
-
-This is the most important domain action in the system.
-
----
-
-### 4. Editing & Locking Semantics
-
-Define editing rules based on bid-year state:
-
-| State             | Editing Allowed       |
-| ----------------- | --------------------- |
-| Draft             | Full editing          |
-| BootstrapComplete | Full editing          |
-| Canonicalized     | Canonical edits only  |
-| BiddingActive     | Restricted edits only |
-| BiddingClosed     | Read-only             |
-
-Examples:
-
-- User name and initials are always editable
-- Area deletion is prohibited post-canonicalization
-- User reassignment requires canonical override
-- Expected user count auto-adjusts pre-lock only
-
----
-
-### 5. Override Semantics (Critical)
-
-Introduce **override-aware canonical fields**, not special-case logic.
-
-Pattern:
-
-- Canonical value
-- Optional override value
-- Override reason
-- Audit event
-
-Rules:
-
-- Overrides are explicit, never implicit
-- Overrides never recompute derived data automatically
-- Overrides become the source of truth once applied
-
-This preserves flexibility without undermining determinism.
-
----
-
-### 6. “No Bid” Area Formalization
-
-Define “No Bid” as a first-class canonical area with explicit rules:
-
-- Always exists
-- Hidden from unauthenticated users
-- Has no rounds or limits
-- Used as:
-  - Import fallback
-  - Deletion sink (pre-bidding only)
-  - Manual review staging area
-
-Bootstrap completion requires:
-
-- Manual confirmation of all users in No Bid
-
-#### No Bid Review Semantics
-
-- Having users in No Bid is **not inherently invalid**
-- Bootstrap completion requires **explicit review**, not automatic emptiness
-- Review means:
-  - An administrator has consciously confirmed that remaining users are intentionally unassigned
-- The system may block bootstrap until review is acknowledged
-- Review does NOT imply assignment
-
-UI workflows may distinguish:
-
-- "Users present and unreviewed" (blocking)
-- "Users present but reviewed" (allowed)
-
----
-
-### 7. Audit & Observability Guarantees
-
-Every canonicalization and override must:
-
-- Emit an audit event
-- Capture intent and reason
-- Be replayable in event history
-
-This ensures:
-
-- Trust
-- Debuggability
-- Post-hoc justification for decisions
-
----
-
-## Testing Expectations
-
-Required:
-
-- State transition validation
-- Canonicalization idempotency tests
-- Override application tests
-- Editing permission enforcement
-
-Not required:
-
-- Time-based bidding tests
-- Slot exhaustion logic
-- Concurrency testing
-
----
-
-## Exit Criteria
-
-Phase 25 is complete when:
-
-- Bid-year lifecycle is explicit and enforced
-- Canonicalization exists as a single domain action
-- Canonical tables are the sole source of truth post-lock
-- Overrides are possible, auditable, and intentional
-- No bidding logic depends on derived data
-- System remains flexible without being permissive
-
----
-
-## Why This Phase Matters
-
-This phase determines whether the system:
-
-- Supports human judgment
-- Or fights it at every turn
-
-By freezing derivation but not authority, the system gains:
-
-- Determinism where it matters
-- Flexibility where reality demands it
-
-After this phase, bidding logic becomes straightforward because it operates on **truth**, not assumptions.
+# Notes
+
+- Move area to use a unique ID
+- Move bid year to use a unique ID
+- During bootstrap of a NEW install (ie, with no bid years defined) the first area is automatically selected to be "active" after creation
+- Introduce the concept of "bid year start"
+  - This is going to be a toggle that will, in the next step, lock editing
+  - Requires bootstrap completion
+- Introduce the concept of a "no area" area
+  - This will be called "No Bid" to use our internal parlance, but that is NOT indicative of its actual function. They do bid.
+  - No bid is NOT going to be visible to any user that is unauthenticated. We have no interfaces for that class of interaction yet, but it needs to be codified
+  - This is going to be used for a handful of users that AREN'T in an area, and DONT compete for leave against others
+    - I don't believe we have any domain rules that touch how leave competes, but think about if we have other domain rules that may touch this concept
+  - Also a catch all area if, during a future editing phase, an area is deleted. Those users will be auto transferred to this area
+  - Bootstrap is not complete until a manual review (with a toggle on each user indicating that user is fine) in No Bid is done
+- Editing:
+  - All data for users, bid year and area
+  - If we exceed the configured "expected user count" set for an area, increment the count by the actual number of users
+    - For instance, if I say the area has 40 people, and then right before bidding starts I add a person, increment
+  - Domain Rule Changes:
+    - Editing is locked, EXCEPT for user name and initials, once bidding starts
+    - Users have to exist in an area. If during import, no area is given (this is now a valid domain state), auto add to the No Bid area.
+- Define Rounds
+  - Data:
+    - Number of available slots per day
+    - Group Identifier....object, I guess?
+      - Auto generated ID
+      - Canonical visible name
+      - associated editing enabled
+    - Number of Groups
+      - Groups are defined as up to 5 consecutive days off. This means that a users' RDOs are not counted in the group total. On crew 1, S/S off, you can do M-F as a group of 5 days, or F-Th. Both are valid, and any pattern like that is valid. If a user skips a day (previous crew example, they do M-Tu, and then Th-F in the same week, that's two groups)
+      - Groups do not matter for anything up to this point, but it's going to define the core logic for bidding
+    - Order number
+    - Canonical name
+    - Uses a unique ID to identify itself.
+    - Group Identifier. We have at least two different sets of rules that apply (if you care, it's negotiated between labor and management, and it's dependent on the number of people in the area)...the idea here is that I can create 6 rounds or whatever of rules with the same group ID, and those rules are considered when taking a bid. Other existing group IDs with their own rules are not counted. UI should use the canonical name of the group identifier object but store the ID for accessing rules
+  - No Bid area does not have rounds or limits
+  - Bootstrap is not considered complete UNTIL all areas (less no bid) have been assigned a group ID of rounds
+  - Holidays typically DO NOT have a different amount of available days, but they MAY, and we should have a toggle and associated data for holidays (holidays should be treated as all the same....xmas is not any different than thanksgiving or vets day for the purposes of determining the number of slots)
+
+- Create the concept of "Bid order" and "Bid Windows"
+  - Bid order is determined _per area_ using natca seniority rules, with data we already have:
+    - "Section 1. The following shall be used to determine seniority for the National Air Traffic Controllers Association:
+      a. Cumulative NATCA Bargaining Unit Time;
+      b. First Tie Breaker: NATCA Bargaining Unit Time;
+      c. Second Tie Breaker: EOD/FAA;
+      d.Third Tie Breaker: SCD;
+      e. Fourth Tie Breaker: Lottery. The lottery shall be determined at the local level"
+  - People only bid against others in their area
+  - We need to introduce the concept of "bid start date".
+  - Each "round" of bidding is M-F of a single week.
+  - Bid status (defined below) is tracked per round, per area, per user
+  - Each round resets the bid status for all users in that area
+  - Each round needs to track, and keep, the bid status of all users in that area, meaning we can view and see that person's bid history over time
+  - Each person gets an hour, starting at the bid start date (which should be a Monday), at 0800, and the day ends at 1800 hours. 10 total people per day, per area, in seniority order. Most areas end early Friday of that week.
+  - We need to track bid status:
+    - Not Started, before their bid window
+    - Not Started, in their window
+    - In Progress
+    - Completed, on time
+    - Completed, late
+    - Missed
+      - No call
+      - Missed due to management (pauses bid for that area until they bid or select to not bid)
+    - Voluntarily Not Bidding (we skip their slot)
+    - Proxy (they submit a bid early, we auto execute the bid at the end of their assigned hour, OR if they bid late their bid is processed in the hour they called in, AFTER the person whose hour it is has bid OR at the end of that hour if that person doesn't bid)
+  - This whole section is just settings rules for domain logic that will be used in the future. We just need to track the bid status per user, per round, per area at the moment.
+
+- Set up for "start bidding"
+  - Activate a round
+  - Because I am going to have to simulate time passing for testing, I need the ability to "play" a bid round
+    - This means that I can set the current time to any time I want, and the system behaves as if that is the current time
+    - I need the ability to input all bids for an hour, and "press a button" to move to the next hour
+    - This is ONLY for testing, and should be hidden behind a "time-play" feature flag

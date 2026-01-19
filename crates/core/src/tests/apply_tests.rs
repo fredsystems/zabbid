@@ -682,6 +682,7 @@ fn test_update_user_on_empty_state_fails() {
     let state: State = State::new(BidYear::new(2026), Area::new("North"));
     let active_bid_year: BidYear = BidYear::new(2026);
     let command: Command = Command::UpdateUser {
+        user_id: 999, // Non-existent user_id for testing failure case
         initials: Initials::new("AB"),
         name: String::from("Alice Blue"),
         area: Area::new("North"),

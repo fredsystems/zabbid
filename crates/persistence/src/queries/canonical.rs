@@ -457,6 +457,7 @@ backend_fn! {
 pub fn get_actual_area_count(conn: &mut _, bid_year_id: i64) -> Result<usize, PersistenceError> {
     let count: i64 = areas::table
         .filter(areas::bid_year_id.eq(bid_year_id))
+        .filter(areas::is_system_area.eq(0))
         .count()
         .get_result(conn)?;
 
