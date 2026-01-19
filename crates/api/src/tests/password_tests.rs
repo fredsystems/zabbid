@@ -464,3 +464,45 @@ fn test_password_reset_emits_audit_event() {
     assert_eq!(last_event.action.name, "ResetPassword");
     assert_eq!(last_event.actor.operator_id, Some(admin_id));
 }
+
+/// `PHASE_27H.7`: Verify `reset_password` fails when target operator does not exist
+#[test]
+fn test_reset_password_with_nonexistent_operator() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+
+    let admin_id = persistence
+        .create_operator("admin", "Admin User", "AdminPassword123!", "Admin")
+        .unwrap();
+
+    let admin = persistence.get_operator_by_id(admin_id).unwrap().unwrap();
+    let admin_actor = AuthenticatedActor {
+        id: admin_id.to_string(),
+        role: Role::Admin,
+    };
+
+    // Use an operator ID that doesn't exist
+    let nonexistent_id = 99999;
+
+    let request = ResetPasswordRequest {
+        operator_id: nonexistent_id,
+        new_password: String::from("ResetPassword456!"),
+        new_password_confirmation: String::from("ResetPassword456!"),
+    };
+
+    let cause = create_test_cause();
+
+    let result = reset_password(&mut persistence, &request, &admin_actor, &admin, cause);
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ApiError::ResourceNotFound {
+            resource_type,
+            message,
+        } => {
+            assert_eq!(resource_type, "Operator");
+            assert!(message.contains("99999"));
+            assert!(message.contains("not found"));
+        }
+        _ => panic!("Expected ResourceNotFound error"),
+    }
+}

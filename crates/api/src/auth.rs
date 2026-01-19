@@ -559,6 +559,14 @@ mod tests {
             .expect("Failed to create operator")
     }
 
+    fn create_admin_actor() -> AuthenticatedActor {
+        AuthenticatedActor::new(String::from("admin_user"), Role::Admin)
+    }
+
+    fn create_bidder_actor() -> AuthenticatedActor {
+        AuthenticatedActor::new(String::from("bidder_user"), Role::Bidder)
+    }
+
     /// `PHASE_22.1`: Verify unknown operator returns generic error message
     #[test]
     fn test_login_unknown_operator_returns_generic_error() {
@@ -694,5 +702,207 @@ mod tests {
         assert_eq!(msg1, msg2);
         assert_eq!(msg2, msg3);
         assert_eq!(msg1, "invalid_credentials");
+    }
+
+    // Authorization Service Tests
+
+    /// `PHASE_27H.6`: Verify admin can register users
+    #[test]
+    fn test_authorize_register_user_allows_admin() {
+        let admin = create_admin_actor();
+
+        let result = AuthorizationService::authorize_register_user(&admin);
+
+        assert!(result.is_ok());
+    }
+
+    /// `PHASE_27H.6`: Verify bidder cannot register users
+    #[test]
+    fn test_authorize_register_user_rejects_bidder() {
+        let bidder = create_bidder_actor();
+
+        let result = AuthorizationService::authorize_register_user(&bidder);
+
+        assert!(result.is_err());
+        if let AuthError::Unauthorized {
+            action,
+            required_role,
+        } = result.unwrap_err()
+        {
+            assert_eq!(action, "register_user");
+            assert_eq!(required_role, "Admin");
+        } else {
+            panic!("Expected Unauthorized error");
+        }
+    }
+
+    /// `PHASE_27H.6`: Verify admin can create bid years
+    #[test]
+    fn test_authorize_create_bid_year_allows_admin() {
+        let admin = create_admin_actor();
+
+        let result = AuthorizationService::authorize_create_bid_year(&admin);
+
+        assert!(result.is_ok());
+    }
+
+    /// `PHASE_27H.6`: Verify bidder cannot create bid years
+    #[test]
+    fn test_authorize_create_bid_year_rejects_bidder() {
+        let bidder = create_bidder_actor();
+
+        let result = AuthorizationService::authorize_create_bid_year(&bidder);
+
+        assert!(result.is_err());
+        if let AuthError::Unauthorized {
+            action,
+            required_role,
+        } = result.unwrap_err()
+        {
+            assert_eq!(action, "create_bid_year");
+            assert_eq!(required_role, "Admin");
+        } else {
+            panic!("Expected Unauthorized error");
+        }
+    }
+
+    /// `PHASE_27H.6`: Verify admin can create areas
+    #[test]
+    fn test_authorize_create_area_allows_admin() {
+        let admin = create_admin_actor();
+
+        let result = AuthorizationService::authorize_create_area(&admin);
+
+        assert!(result.is_ok());
+    }
+
+    /// `PHASE_27H.6`: Verify bidder cannot create areas
+    #[test]
+    fn test_authorize_create_area_rejects_bidder() {
+        let bidder = create_bidder_actor();
+
+        let result = AuthorizationService::authorize_create_area(&bidder);
+
+        assert!(result.is_err());
+        if let AuthError::Unauthorized {
+            action,
+            required_role,
+        } = result.unwrap_err()
+        {
+            assert_eq!(action, "create_area");
+            assert_eq!(required_role, "Admin");
+        } else {
+            panic!("Expected Unauthorized error");
+        }
+    }
+
+    /// `PHASE_27H.6`: Verify admin can reassign crew
+    #[test]
+    fn test_authorize_reassign_crew_allows_admin() {
+        let admin = create_admin_actor();
+
+        let result = AuthorizationService::authorize_reassign_crew(&admin);
+
+        assert!(result.is_ok());
+    }
+
+    /// `PHASE_27H.6`: Verify bidder can reassign crew
+    #[test]
+    fn test_authorize_reassign_crew_allows_bidder() {
+        let bidder = create_bidder_actor();
+
+        let result = AuthorizationService::authorize_reassign_crew(&bidder);
+
+        assert!(result.is_ok());
+    }
+
+    /// `PHASE_27H.6`: Verify admin can create checkpoint
+    #[test]
+    fn test_authorize_checkpoint_allows_admin() {
+        let admin = create_admin_actor();
+
+        let result = AuthorizationService::authorize_checkpoint(&admin);
+
+        assert!(result.is_ok());
+    }
+
+    /// `PHASE_27H.6`: Verify bidder cannot create checkpoint
+    #[test]
+    fn test_authorize_checkpoint_rejects_bidder() {
+        let bidder = create_bidder_actor();
+
+        let result = AuthorizationService::authorize_checkpoint(&bidder);
+
+        assert!(result.is_err());
+        if let AuthError::Unauthorized {
+            action,
+            required_role,
+        } = result.unwrap_err()
+        {
+            assert_eq!(action, "checkpoint");
+            assert_eq!(required_role, "Admin");
+        } else {
+            panic!("Expected Unauthorized error");
+        }
+    }
+
+    /// `PHASE_27H.6`: Verify admin can finalize round
+    #[test]
+    fn test_authorize_finalize_allows_admin() {
+        let admin = create_admin_actor();
+
+        let result = AuthorizationService::authorize_finalize(&admin);
+
+        assert!(result.is_ok());
+    }
+
+    /// `PHASE_27H.6`: Verify bidder cannot finalize round
+    #[test]
+    fn test_authorize_finalize_rejects_bidder() {
+        let bidder = create_bidder_actor();
+
+        let result = AuthorizationService::authorize_finalize(&bidder);
+
+        assert!(result.is_err());
+        if let AuthError::Unauthorized {
+            action,
+            required_role,
+        } = result.unwrap_err()
+        {
+            assert_eq!(action, "finalize");
+            assert_eq!(required_role, "Admin");
+        } else {
+            panic!("Expected Unauthorized error");
+        }
+    }
+
+    /// `PHASE_27H.6`: Verify admin can perform rollback
+    #[test]
+    fn test_authorize_rollback_allows_admin() {
+        let admin = create_admin_actor();
+
+        let result = AuthorizationService::authorize_rollback(&admin);
+
+        assert!(result.is_ok());
+    }
+
+    /// `PHASE_27H.6`: Verify bidder cannot perform rollback
+    #[test]
+    fn test_authorize_rollback_rejects_bidder() {
+        let bidder = create_bidder_actor();
+
+        let result = AuthorizationService::authorize_rollback(&bidder);
+
+        assert!(result.is_err());
+        if let AuthError::Unauthorized {
+            action,
+            required_role,
+        } = result.unwrap_err()
+        {
+            assert_eq!(action, "rollback");
+            assert_eq!(required_role, "Admin");
+        } else {
+            panic!("Expected Unauthorized error");
+        }
     }
 }

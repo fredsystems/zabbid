@@ -147,3 +147,154 @@ fn test_user_creation() {
     assert!(user.crew.is_some());
     assert_eq!(user.crew.unwrap().number(), 1);
 }
+
+// ============================================================================
+// Gap 10: Domain Validation Error Messages
+// ============================================================================
+
+/// `PHASE_27H.10`: Test initials with empty string
+#[test]
+fn test_initials_empty_string() {
+    let initials: Initials = Initials::new("");
+    assert_eq!(initials.value(), "");
+}
+
+/// `PHASE_27H.10`: Test initials with single character
+#[test]
+fn test_initials_single_character() {
+    let initials: Initials = Initials::new("A");
+    assert_eq!(initials.value(), "A");
+}
+
+/// `PHASE_27H.10`: Test initials with more than two characters
+#[test]
+fn test_initials_three_characters() {
+    let initials: Initials = Initials::new("ABC");
+    assert_eq!(initials.value(), "ABC");
+}
+
+/// `PHASE_27H.10`: Test initials with special characters
+#[test]
+fn test_initials_with_special_characters() {
+    let initials: Initials = Initials::new("A-B");
+    assert_eq!(initials.value(), "A-B");
+}
+
+/// `PHASE_27H.10`: Test initials with numbers
+#[test]
+fn test_initials_with_numbers() {
+    let initials: Initials = Initials::new("A1");
+    assert_eq!(initials.value(), "A1");
+}
+
+/// `PHASE_27H.10`: Test initials with whitespace
+#[test]
+fn test_initials_with_whitespace() {
+    let initials: Initials = Initials::new("A B");
+    assert_eq!(initials.value(), "A B");
+}
+
+/// `PHASE_27H.10`: Test crew validation with maximum u8 value
+#[test]
+fn test_crew_validation_rejects_max_u8() {
+    let crew: Result<Crew, DomainError> = Crew::new(255);
+    assert!(matches!(crew, Err(DomainError::InvalidCrew(_))));
+}
+
+/// `PHASE_27H.10`: Test crew error message contains helpful information
+#[test]
+fn test_crew_error_message_is_descriptive() {
+    let crew_result: Result<Crew, DomainError> = Crew::new(0);
+    assert!(crew_result.is_err());
+
+    if let Err(DomainError::InvalidCrew(msg)) = crew_result {
+        assert!(msg.contains('1'));
+        assert!(msg.contains('7'));
+    } else {
+        panic!("Expected InvalidCrew error");
+    }
+}
+
+/// `PHASE_27H.10`: Test user type parsing is case-sensitive
+#[test]
+fn test_user_type_parse_is_case_sensitive() {
+    assert!(UserType::parse("cpc").is_err());
+    assert!(UserType::parse("Cpc").is_err());
+    assert!(UserType::parse("cpc-it").is_err());
+}
+
+/// `PHASE_27H.10`: Test user type error message contains the invalid value
+#[test]
+fn test_user_type_error_message_contains_input() {
+    let result: Result<UserType, DomainError> = UserType::parse("InvalidType");
+    assert!(result.is_err());
+
+    if let Err(DomainError::InvalidUserType(msg)) = result {
+        assert!(msg.contains("InvalidType"));
+    } else {
+        panic!("Expected InvalidUserType error");
+    }
+}
+
+/// `PHASE_27H.10`: Test user type with empty string
+#[test]
+fn test_user_type_parse_empty_string() {
+    let result: Result<UserType, DomainError> = UserType::parse("");
+    assert!(matches!(result, Err(DomainError::InvalidUserType(_))));
+}
+
+/// `PHASE_27H.10`: Test user type with whitespace
+#[test]
+fn test_user_type_parse_whitespace() {
+    let result: Result<UserType, DomainError> = UserType::parse(" CPC ");
+    assert!(matches!(result, Err(DomainError::InvalidUserType(_))));
+}
+
+/// `PHASE_27H.10`: Test user type with similar but invalid values
+#[test]
+fn test_user_type_parse_similar_invalid_values() {
+    assert!(UserType::parse("CPC_IT").is_err());
+    assert!(UserType::parse("CPCIT").is_err());
+    assert!(UserType::parse("Dev R").is_err());
+    assert!(UserType::parse("DevR").is_err());
+}
+
+/// `PHASE_27H.10`: Test area code normalization with special characters
+#[test]
+fn test_area_code_with_special_characters() {
+    let area: Area = Area::new("NORTH-EAST");
+    assert_eq!(area.id(), "NORTH-EAST");
+}
+
+/// `PHASE_27H.10`: Test area code with numbers
+#[test]
+fn test_area_code_with_numbers() {
+    let area: Area = Area::new("AREA1");
+    assert_eq!(area.id(), "AREA1");
+}
+
+/// `PHASE_27H.10`: Test area code with empty string
+#[test]
+fn test_area_code_empty_string() {
+    let area: Area = Area::new("");
+    assert_eq!(area.id(), "");
+}
+
+/// `PHASE_27H.10`: Test area code with whitespace
+#[test]
+fn test_area_code_with_whitespace() {
+    let area: Area = Area::new("NORTH AREA");
+    assert_eq!(area.id(), "NORTH AREA");
+}
+
+/// `PHASE_27H.10`: Test crew boundary values 1 and 7
+#[test]
+fn test_crew_boundary_values() {
+    let crew1: Result<Crew, DomainError> = Crew::new(1);
+    let crew7: Result<Crew, DomainError> = Crew::new(7);
+
+    assert!(crew1.is_ok());
+    assert!(crew7.is_ok());
+    assert_eq!(crew1.unwrap().number(), 1);
+    assert_eq!(crew7.unwrap().number(), 7);
+}
