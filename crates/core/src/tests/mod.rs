@@ -6,4 +6,5 @@
 mod apply_tests;
 mod bootstrap_tests;
 mod helpers;
+mod lifecycle_tests;
 mod validation_tests;
