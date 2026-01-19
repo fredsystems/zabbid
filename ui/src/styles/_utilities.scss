@@ -1,0 +1,82 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Utility classes for common UI patterns.
+ * Created to replace inline styles identified in Phase 27I.
+ */
+
+@use "variables" as *;
+
+// ============================================================================
+// Connection Status Hints
+// ============================================================================
+
+// Used for backend unavailable messages (H1, H2, H3, H4)
+.connection-hint {
+  margin-top: $spacing-md;
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  line-height: 1.5;
+}
+
+// ============================================================================
+// Typography Utilities
+// ============================================================================
+
+// Monospace value display (H6, H14)
+.monospace-value {
+  font-family: $font-family-mono;
+}
+
+// Monospace input fields (H10, H11)
+.monospace-input {
+  font-family: $font-family-mono;
+  margin-top: $spacing-xs;
+}
+
+// Placeholder/muted text (H7, H8, H13)
+.placeholder-text {
+  font-style: italic;
+  color: $color-text-overlay;
+}
+
+// ============================================================================
+// Layout Utilities
+// ============================================================================
+
+// Action button groups (H9)
+.action-buttons {
+  display: flex;
+  gap: $spacing-sm;
+  margin-top: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+// Button metadata display (H15)
+.button-metadata {
+  margin-left: $spacing-md;
+  font-size: $font-size-xs;
+}
+
+// ============================================================================
+// Spacing Utilities
+// ============================================================================
+
+// Add spacing to existing classes without modifying original files
+.error-banner-spaced {
+  margin-top: $spacing-md;
+}
+
+.warning-message-spaced {
+  margin-bottom: $spacing-md;
+}
+
+// Locked metadata notices (canonicalization messages)
+.locked-message {
+  font-size: $font-size-sm;
+  color: $color-text-muted;
+  margin-top: $spacing-sm;
+}
