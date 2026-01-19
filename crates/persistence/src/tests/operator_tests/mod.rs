@@ -247,3 +247,214 @@ fn test_operator_lifecycle_complete_flow() {
             .is_none()
     );
 }
+
+#[test]
+fn test_list_operators_empty() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+
+    // List operators when none exist
+    let operators = persistence.list_operators().unwrap();
+
+    assert_eq!(
+        operators.len(),
+        0,
+        "Should return empty list when no operators exist"
+    );
+}
+
+#[test]
+fn test_list_operators_returns_all() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+
+    // Create multiple operators
+    persistence
+        .create_operator("admin1", "Admin One", "password", "Admin")
+        .unwrap();
+    persistence
+        .create_operator("bidder1", "Bidder One", "password", "Bidder")
+        .unwrap();
+    persistence
+        .create_operator("admin2", "Admin Two", "password", "Admin")
+        .unwrap();
+
+    // List all operators
+    let operators = persistence.list_operators().unwrap();
+
+    assert_eq!(operators.len(), 3, "Should return all created operators");
+
+    // Verify ordering (should be sorted by login_name)
+    assert_eq!(operators[0].login_name, "ADMIN1");
+    assert_eq!(operators[1].login_name, "ADMIN2");
+    assert_eq!(operators[2].login_name, "BIDDER1");
+}
+
+#[test]
+fn test_count_operators_zero() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+
+    // Count when no operators exist
+    let count = persistence.count_operators().unwrap();
+
+    assert_eq!(count, 0, "Should return 0 when no operators exist");
+}
+
+#[test]
+fn test_count_operators_multiple() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+
+    // Create operators
+    persistence
+        .create_operator("op1", "Operator One", "password", "Admin")
+        .unwrap();
+    persistence
+        .create_operator("op2", "Operator Two", "password", "Bidder")
+        .unwrap();
+    persistence
+        .create_operator("op3", "Operator Three", "password", "Admin")
+        .unwrap();
+
+    // Count operators
+    let count = persistence.count_operators().unwrap();
+
+    assert_eq!(count, 3, "Should return correct operator count");
+}
+
+#[test]
+fn test_count_active_admin_operators_zero() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+
+    // Count when no operators exist
+    let count = persistence.count_active_admin_operators().unwrap();
+
+    assert_eq!(count, 0, "Should return 0 when no admin operators exist");
+}
+
+#[test]
+fn test_count_active_admin_operators_excludes_disabled() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+
+    // Create admin operators
+    let admin1 = persistence
+        .create_operator("admin1", "Admin One", "password", "Admin")
+        .unwrap();
+    let admin2 = persistence
+        .create_operator("admin2", "Admin Two", "password", "Admin")
+        .unwrap();
+
+    // Create bidder (should not be counted)
+    persistence
+        .create_operator("bidder1", "Bidder One", "password", "Bidder")
+        .unwrap();
+
+    // Initially should count both admins
+    let count = persistence.count_active_admin_operators().unwrap();
+    assert_eq!(count, 2, "Should count both active admins");
+
+    // Disable one admin
+    persistence.disable_operator(admin1).unwrap();
+
+    // Should now count only one
+    let count = persistence.count_active_admin_operators().unwrap();
+    assert_eq!(count, 1, "Should count only enabled admins");
+
+    // Disable second admin
+    persistence.disable_operator(admin2).unwrap();
+
+    // Should count zero
+    let count = persistence.count_active_admin_operators().unwrap();
+    assert_eq!(count, 0, "Should count zero when all admins are disabled");
+}
+
+#[test]
+fn test_count_active_admin_operators_excludes_bidders() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+
+    // Create admin and bidder
+    persistence
+        .create_operator("admin1", "Admin One", "password", "Admin")
+        .unwrap();
+    persistence
+        .create_operator("bidder1", "Bidder One", "password", "Bidder")
+        .unwrap();
+    persistence
+        .create_operator("bidder2", "Bidder Two", "password", "Bidder")
+        .unwrap();
+
+    // Should count only admin
+    let count = persistence.count_active_admin_operators().unwrap();
+    assert_eq!(count, 1, "Should count only Admin role, not Bidder");
+}
+
+#[test]
+fn test_get_operator_by_login_not_found() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+
+    // Create an operator
+    persistence
+        .create_operator("existingop", "Existing Operator", "password", "Admin")
+        .unwrap();
+
+    // Try to get a nonexistent operator
+    let result = persistence.get_operator_by_login("nonexistent").unwrap();
+
+    assert!(
+        result.is_none(),
+        "Should return None for nonexistent operator"
+    );
+}
+
+#[test]
+fn test_get_operator_by_login_case_insensitive() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+
+    // Create operator with lowercase login
+    persistence
+        .create_operator("testop", "Test Operator", "password", "Admin")
+        .unwrap();
+
+    // Try different case variations
+    let result1 = persistence.get_operator_by_login("testop").unwrap();
+    let result2 = persistence.get_operator_by_login("TESTOP").unwrap();
+    let result3 = persistence.get_operator_by_login("TestOp").unwrap();
+
+    assert!(result1.is_some(), "Should find with lowercase");
+    assert!(result2.is_some(), "Should find with uppercase");
+    assert!(result3.is_some(), "Should find with mixed case");
+
+    assert_eq!(result1.unwrap().login_name, "TESTOP");
+    assert_eq!(result2.unwrap().login_name, "TESTOP");
+    assert_eq!(result3.unwrap().login_name, "TESTOP");
+}
+
+#[test]
+fn test_get_operator_by_id_not_found() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+
+    // Create an operator
+    persistence
+        .create_operator("existingop", "Existing Operator", "password", "Admin")
+        .unwrap();
+
+    // Try to get a nonexistent operator ID
+    let result = persistence.get_operator_by_id(999).unwrap();
+
+    assert!(
+        result.is_none(),
+        "Should return None for nonexistent operator ID"
+    );
+}
+
+#[test]
+fn test_get_session_by_token_not_found() {
+    let mut persistence = SqlitePersistence::new_in_memory().unwrap();
+
+    // Try to get a nonexistent session
+    let result = persistence
+        .get_session_by_token("nonexistent-token")
+        .unwrap();
+
+    assert!(
+        result.is_none(),
+        "Should return None for nonexistent session token"
+    );
+}
