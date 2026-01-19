@@ -9,17 +9,18 @@
 
 - Status: In Progress
 - Last Updated: 2026-01-20
-- Reason: Phase 28A and 28B complete, ready for Phase 28C — No-Bid Area Exclusion
+- Reason: Phase 28A, 28B, and 28C complete, ready for Phase 28D — Test Hardening
 
 ## Active Sub-Phase
 
-- Sub-Phase: 28C — No-Bid Area Exclusion
+- Sub-Phase: 28D — Test Hardening & Validation
 - State: Not Started
 
 ## Completed Sub-Phases
 
 - [x] Phase 28A — Remove Identity Reconstruction Helpers & Patterns
 - [x] Phase 28B — Make Commands Carry Canonical user_id
+- [x] Phase 28C — Fix No-Bid Area Exclusion in Completeness Logic
 
 ## Work Completed
 
@@ -63,9 +64,20 @@
 - `pre-commit run --all-files` passing
 - Committed as: "Phase 28B — Make commands carry canonical user_id"
 
+### Phase 28C (Complete)
+
+- Updated `get_actual_area_count()` to filter `is_system_area = 0` (flag-based exclusion)
+- System areas (identified by `is_system_area = 1`) now excluded from actual area count
+- Added regression test `test_actual_area_count_excludes_system_areas`
+- Test verifies system area (NO BID) does not count toward expected area totals
+- Filter uses flag-based identification, not area code or name string matching
+- All tests passing (125 persistence tests including new test)
+- `cargo xtask ci` passing
+- `pre-commit run --all-files` passing
+- Committed as: "Phase 28C — Fix No-Bid area exclusion in completeness logic"
+
 ## Outstanding Work
 
-- Execute Phase 28C (fix No-Bid area exclusion in completeness logic)
 - Execute Phase 28D (test hardening & validation)
 
 ## Known Failures / Breakages
@@ -78,10 +90,10 @@ None.
 
 ## Resume Instructions
 
-1. Read PHASE_28C_NOBID_EXCLUSION.md
-2. Review bootstrap completeness logic
-3. Identify where No-Bid area is incorrectly counted
-4. Fix completeness logic to exclude No-Bid area from counts
-5. Update tests to verify No-Bid exclusion
+1. Read PHASE_28D_TEST_HARDENING.md
+2. Add tests verifying no initials-based lookup paths remain
+3. Add tests verifying commands require explicit user_id with no fallback
+4. Add tests verifying audit events reference users by user_id only
+5. Add tests for edge cases (e.g., duplicate initials across areas)
 6. Run tests and CI
-7. Update this document before pausing or completing Phase 28C
+7. Update this document before pausing or completing Phase 28D
