@@ -248,15 +248,13 @@
 
 // For admin interfaces that need tables but should still be mobile-usable
 .responsive-table-wrapper {
-  overflow-x: auto;
   margin: $spacing-md 0;
   border-radius: $radius-md;
   box-shadow: $shadow-sm;
-  -webkit-overflow-scrolling: touch; // Smooth scrolling on iOS
 
   table {
     margin: 0;
-    min-width: 600px; // Force horizontal scroll on small screens
+    width: 100%;
   }
 }
 
