@@ -211,7 +211,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
         <h2>Unable to Load Areas</h2>
         <p>{error}</p>
         {error.includes("unavailable") && (
-          <p style={{ marginTop: "1rem", fontSize: "0.9rem", color: "#666" }}>
+          <p className="connection-hint">
             Check the connection status indicator in the header. The UI will
             automatically refresh when the backend becomes available.
           </p>
@@ -297,10 +297,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
                 {area.area_name ? (
                   <p className="card-subtitle">{area.area_name}</p>
                 ) : (
-                  <p
-                    className="card-subtitle"
-                    style={{ fontStyle: "italic", color: "#888" }}
-                  >
+                  <p className="card-subtitle placeholder-text">
                     No display name
                   </p>
                 )}
@@ -361,10 +358,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
         <div className="card-body">
           <div className="card-field">
             <span className="card-field-label">Area Code (immutable)</span>
-            <span
-              className="card-field-value"
-              style={{ fontFamily: "monospace" }}
-            >
+            <span className="card-field-value monospace-value">
               {area.area_code}
             </span>
           </div>
@@ -424,8 +418,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
           Areas for Bid Year {bidYear ?? bidYearIdNum}
           {lifecycleState && (
             <span
-              className={`badge lifecycle-${lifecycleState.toLowerCase()}`}
-              style={{ marginLeft: "1rem", fontSize: "0.8em" }}
+              className={`badge lifecycle-${lifecycleState.toLowerCase()} button-metadata`}
               title={`Lifecycle: ${lifecycleState}`}
             >
               {lifecycleState}
