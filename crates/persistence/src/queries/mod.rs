@@ -53,6 +53,7 @@ pub use completeness::{
     count_users_by_bid_year_and_area_sqlite, count_users_by_bid_year_mysql,
     count_users_by_bid_year_sqlite,
 };
+#[allow(unused_imports)]
 pub use rounds::{
     count_rounds_using_group_mysql, count_rounds_using_group_sqlite, delete_round_group_mysql,
     delete_round_group_sqlite, delete_round_mysql, delete_round_sqlite, get_round_group_mysql,

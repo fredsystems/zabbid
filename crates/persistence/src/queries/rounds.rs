@@ -11,8 +11,11 @@
 //! All queries are generated in backend-specific monomorphic versions
 //! (`_sqlite` and `_mysql` suffixes) using the `backend_fn!` macro.
 
+#![allow(dead_code)]
+
 use diesel::prelude::*;
 use diesel::{MysqlConnection, SqliteConnection};
+use num_traits::cast::ToPrimitive;
 use zab_bid_domain::{Area, BidYear, Round, RoundGroup};
 
 use crate::diesel_schema::{round_groups, rounds};
@@ -144,8 +147,8 @@ backend_fn! {
 ///
 /// * `conn` - The database connection
 /// * `round_group_id` - The round group ID
-/// * `name` - The new name (optional)
-/// * `editing_enabled` - The new editing_enabled value (optional)
+/// * `name` - The new name
+/// * `editing_enabled` - The new `editing_enabled` value
 ///
 /// # Errors
 ///
@@ -153,27 +156,14 @@ backend_fn! {
 pub fn update_round_group(
     conn: &mut _,
     round_group_id: i64,
-    name: Option<&str>,
-    editing_enabled: Option<bool>,
+    name: &str,
+    editing_enabled: bool,
 ) -> Result<(), PersistenceError> {
-    use diesel::query_builder::AsChangeset;
-
-    let mut changeset = vec![];
-
-    if let Some(n) = name {
-        changeset.push(round_groups::name.eq(n));
-    }
-
-    if let Some(e) = editing_enabled {
-        changeset.push(round_groups::editing_enabled.eq(i32::from(e)));
-    }
-
-    if changeset.is_empty() {
-        return Ok(());
-    }
-
     diesel::update(round_groups::table.filter(round_groups::round_group_id.eq(round_group_id)))
-        .set(changeset)
+        .set((
+            round_groups::name.eq(name),
+            round_groups::editing_enabled.eq(i32::from(editing_enabled)),
+        ))
         .execute(conn)?;
 
     Ok(())
@@ -221,7 +211,7 @@ pub fn count_rounds_using_group(
         .count()
         .get_result::<i64>(conn)?;
 
-    Ok(count as usize)
+    Ok(count.to_usize().unwrap_or(0))
 }
 }
 
@@ -316,11 +306,11 @@ pub fn list_rounds(
                     round_id,
                     area,
                     round_group,
-                    round_number as u32,
+                    round_number.to_u32().unwrap_or(0),
                     name,
-                    slots_per_day as u32,
-                    max_groups as u32,
-                    max_total_hours as u32,
+                    slots_per_day.to_u32().unwrap_or(0),
+                    max_groups.to_u32().unwrap_or(0),
+                    max_total_hours.to_u32().unwrap_or(0),
                     include_holidays != 0,
                     allow_overbid != 0,
                 ))
@@ -380,11 +370,11 @@ pub fn get_round(
         r_id,
         area,
         round_group,
-        round_number as u32,
+        round_number.to_u32().unwrap_or(0),
         name,
-        slots_per_day as u32,
-        max_groups as u32,
-        max_total_hours as u32,
+        slots_per_day.to_u32().unwrap_or(0),
+        max_groups.to_u32().unwrap_or(0),
+        max_total_hours.to_u32().unwrap_or(0),
         include_holidays != 0,
         allow_overbid != 0,
     ))
@@ -427,11 +417,11 @@ pub fn insert_round(
         .values((
             rounds::area_id.eq(area_id),
             rounds::round_group_id.eq(round_group_id),
-            rounds::round_number.eq(round_number as i32),
+            rounds::round_number.eq(round_number.to_i32().unwrap_or(0)),
             rounds::name.eq(name),
-            rounds::slots_per_day.eq(slots_per_day as i32),
-            rounds::max_groups.eq(max_groups as i32),
-            rounds::max_total_hours.eq(max_total_hours as i32),
+            rounds::slots_per_day.eq(slots_per_day.to_i32().unwrap_or(0)),
+            rounds::max_groups.eq(max_groups.to_i32().unwrap_or(0)),
+            rounds::max_total_hours.eq(max_total_hours.to_i32().unwrap_or(0)),
             rounds::include_holidays.eq(i32::from(include_holidays)),
             rounds::allow_overbid.eq(i32::from(allow_overbid)),
         ))
@@ -453,12 +443,12 @@ backend_fn! {
 ///
 /// * `conn` - The database connection
 /// * `round_id` - The round ID
-/// * `name` - The new name (optional)
-/// * `slots_per_day` - The new slots_per_day (optional)
-/// * `max_groups` - The new max_groups (optional)
-/// * `max_total_hours` - The new max_total_hours (optional)
-/// * `include_holidays` - The new include_holidays (optional)
-/// * `allow_overbid` - The new allow_overbid (optional)
+/// * `name` - The new name
+/// * `slots_per_day` - The new `slots_per_day`
+/// * `max_groups` - The new `max_groups`
+/// * `max_total_hours` - The new `max_total_hours`
+/// * `include_holidays` - The new `include_holidays`
+/// * `allow_overbid` - The new `allow_overbid`
 ///
 /// # Errors
 ///
@@ -467,47 +457,22 @@ backend_fn! {
 pub fn update_round(
     conn: &mut _,
     round_id: i64,
-    name: Option<&str>,
-    slots_per_day: Option<u32>,
-    max_groups: Option<u32>,
-    max_total_hours: Option<u32>,
-    include_holidays: Option<bool>,
-    allow_overbid: Option<bool>,
+    name: &str,
+    slots_per_day: u32,
+    max_groups: u32,
+    max_total_hours: u32,
+    include_holidays: bool,
+    allow_overbid: bool,
 ) -> Result<(), PersistenceError> {
-    use diesel::query_builder::AsChangeset;
-
-    let mut changeset = vec![];
-
-    if let Some(n) = name {
-        changeset.push(rounds::name.eq(n));
-    }
-
-    if let Some(s) = slots_per_day {
-        changeset.push(rounds::slots_per_day.eq(s as i32));
-    }
-
-    if let Some(g) = max_groups {
-        changeset.push(rounds::max_groups.eq(g as i32));
-    }
-
-    if let Some(h) = max_total_hours {
-        changeset.push(rounds::max_total_hours.eq(h as i32));
-    }
-
-    if let Some(ih) = include_holidays {
-        changeset.push(rounds::include_holidays.eq(i32::from(ih)));
-    }
-
-    if let Some(ao) = allow_overbid {
-        changeset.push(rounds::allow_overbid.eq(i32::from(ao)));
-    }
-
-    if changeset.is_empty() {
-        return Ok(());
-    }
-
     diesel::update(rounds::table.filter(rounds::round_id.eq(round_id)))
-        .set(changeset)
+        .set((
+            rounds::name.eq(name),
+            rounds::slots_per_day.eq(slots_per_day.to_i32().unwrap_or(0)),
+            rounds::max_groups.eq(max_groups.to_i32().unwrap_or(0)),
+            rounds::max_total_hours.eq(max_total_hours.to_i32().unwrap_or(0)),
+            rounds::include_holidays.eq(i32::from(include_holidays)),
+            rounds::allow_overbid.eq(i32::from(allow_overbid)),
+        ))
         .execute(conn)?;
 
     Ok(())
@@ -556,7 +521,7 @@ pub fn round_number_exists(
 ) -> Result<bool, PersistenceError> {
     let mut query = rounds::table
         .filter(rounds::area_id.eq(area_id))
-        .filter(rounds::round_number.eq(round_number as i32))
+        .filter(rounds::round_number.eq(round_number.to_i32().unwrap_or(0)))
         .into_boxed();
 
     if let Some(id) = exclude_id {
