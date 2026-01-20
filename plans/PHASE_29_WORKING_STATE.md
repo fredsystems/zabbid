@@ -9,7 +9,7 @@
 
 - Status: In Progress
 - Last Updated: 2026-01-19
-- Reason: Sub-Phase 29A complete, ready to begin 29B
+- Reason: Sub-Phase 29B in progress - persistence layer complete
 
 ## Active Sub-Phase
 
@@ -134,6 +134,11 @@
 - [x] Domain error variants added
 - [x] Domain validation methods implemented
 - [x] API error translations added
+- [x] Persistence layer CRUD operations implemented:
+  - [x] Round group queries (list, get, insert, update, delete)
+  - [x] Round queries (list, get, insert, update, delete)
+  - [x] Validation queries (name exists, round number exists, group in use)
+  - [x] Backend-specific functions for SQLite and MySQL
 - [x] Code compiles without errors
 - [x] All existing tests pass
 - [x] Clippy passes
@@ -141,17 +146,17 @@
 
 #### Remaining Work
 
-- [ ] Persistence layer CRUD operations for round groups
-- [ ] Persistence layer CRUD operations for rounds
-- [ ] Core layer commands for round group management
-- [ ] Core layer commands for round management
+- [ ] Core layer commands for round group management (Create, Update, Delete)
+- [ ] Core layer commands for round management (Create, Update, Delete)
+- [ ] Core layer lifecycle constraint enforcement
+- [ ] Core layer system area validation for rounds
 - [ ] API endpoints for round groups (POST, GET, PATCH, DELETE)
 - [ ] API endpoints for rounds (POST, GET, PATCH, DELETE)
-- [ ] System area constraint enforcement in API layer
-- [ ] Lifecycle constraint enforcement in API layer
-- [ ] Unit tests for domain validation
+- [ ] API request/response types
+- [ ] Unit tests for domain validation methods
+- [ ] Unit tests for core commands
 - [ ] Integration tests for API endpoints
-- [ ] Constraint tests (system area rejection, unique round numbers, etc.)
+- [ ] Constraint tests (system area rejection, unique round numbers, round group in use)
 
 ## Outstanding Work
 
@@ -223,7 +228,7 @@ None
 - [x] Domain types created
 - [x] Domain error variants added
 - [x] API error translations added
-- [ ] Persistence layer CRUD operations
+- [x] Persistence layer CRUD operations
 - [ ] Core layer commands implemented
 - [ ] API endpoints implemented
 - [ ] System area constraint enforced
