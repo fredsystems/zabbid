@@ -112,6 +112,30 @@ diesel::table! {
 }
 
 diesel::table! {
+    round_groups (round_group_id) {
+        round_group_id -> BigInt,
+        bid_year_id -> BigInt,
+        name -> Text,
+        editing_enabled -> Integer,
+    }
+}
+
+diesel::table! {
+    rounds (round_id) {
+        round_id -> BigInt,
+        area_id -> BigInt,
+        round_group_id -> BigInt,
+        round_number -> Integer,
+        name -> Text,
+        slots_per_day -> Integer,
+        max_groups -> Integer,
+        max_total_hours -> Integer,
+        include_holidays -> Integer,
+        allow_overbid -> Integer,
+    }
+}
+
+diesel::table! {
     sessions (session_id) {
         session_id -> BigInt,
         session_token -> Text,
@@ -169,6 +193,9 @@ diesel::joinable!(canonical_bid_windows -> users (user_id));
 diesel::joinable!(canonical_eligibility -> audit_events (audit_event_id));
 diesel::joinable!(canonical_eligibility -> bid_years (bid_year_id));
 diesel::joinable!(canonical_eligibility -> users (user_id));
+diesel::joinable!(round_groups -> bid_years (bid_year_id));
+diesel::joinable!(rounds -> areas (area_id));
+diesel::joinable!(rounds -> round_groups (round_group_id));
 diesel::joinable!(sessions -> operators (operator_id));
 diesel::joinable!(state_snapshots -> areas (area_id));
 diesel::joinable!(state_snapshots -> audit_events (event_id));
@@ -185,6 +212,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     canonical_bid_windows,
     canonical_eligibility,
     operators,
+    round_groups,
+    rounds,
     sessions,
     state_snapshots,
     users,

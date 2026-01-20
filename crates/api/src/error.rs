@@ -404,6 +404,46 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
             rule: String::from("participation_flag_invariant"),
             message: format!("Participation flag violation for user '{user_initials}': {reason}"),
         },
+        DomainError::RoundGroupNotFound { round_group_id } => ApiError::ResourceNotFound {
+            resource_type: String::from("Round group"),
+            message: format!("Round group with ID {round_group_id} not found"),
+        },
+        DomainError::DuplicateRoundGroupName { bid_year, name } => ApiError::DomainRuleViolation {
+            rule: String::from("unique_round_group_name"),
+            message: format!(
+                "Round group with name '{name}' already exists in bid year {bid_year}"
+            ),
+        },
+        DomainError::RoundNotFound { round_id } => ApiError::ResourceNotFound {
+            resource_type: String::from("Round"),
+            message: format!("Round with ID {round_id} not found"),
+        },
+        DomainError::DuplicateRoundNumber {
+            area_code,
+            round_number,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("unique_round_number"),
+            message: format!("Round number {round_number} already exists in area '{area_code}'"),
+        },
+        DomainError::CannotCreateRoundForSystemArea { area_code } => {
+            ApiError::DomainRuleViolation {
+                rule: String::from("no_rounds_for_system_areas"),
+                message: format!("Cannot create round for system area '{area_code}'"),
+            }
+        }
+        DomainError::InvalidRoundConfiguration { reason } => ApiError::InvalidInput {
+            field: String::from("round_configuration"),
+            message: reason,
+        },
+        DomainError::RoundGroupInUse {
+            round_group_id,
+            round_count,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("round_group_in_use"),
+            message: format!(
+                "Cannot delete round group {round_group_id}: referenced by {round_count} round(s)"
+            ),
+        },
     }
 }
 

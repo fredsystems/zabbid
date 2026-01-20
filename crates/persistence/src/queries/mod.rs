@@ -28,6 +28,7 @@ pub mod audit;
 pub mod canonical;
 pub mod completeness;
 pub mod operators;
+pub mod rounds;
 pub mod state;
 
 // Re-export the should_snapshot helper (not backend-specific)
@@ -51,6 +52,15 @@ pub use completeness::{
     count_users_by_area_sqlite, count_users_by_bid_year_and_area_mysql,
     count_users_by_bid_year_and_area_sqlite, count_users_by_bid_year_mysql,
     count_users_by_bid_year_sqlite,
+};
+pub use rounds::{
+    count_rounds_using_group_mysql, count_rounds_using_group_sqlite, delete_round_group_mysql,
+    delete_round_group_sqlite, delete_round_mysql, delete_round_sqlite, get_round_group_mysql,
+    get_round_group_sqlite, get_round_mysql, get_round_sqlite, insert_round_group_mysql,
+    insert_round_group_sqlite, insert_round_mysql, insert_round_sqlite, list_round_groups_mysql,
+    list_round_groups_sqlite, list_rounds_mysql, list_rounds_sqlite, round_group_name_exists_mysql,
+    round_group_name_exists_sqlite, round_number_exists_mysql, round_number_exists_sqlite,
+    update_round_group_mysql, update_round_group_sqlite, update_round_mysql, update_round_sqlite,
 };
 pub use state::{
     get_current_state_mysql, get_current_state_sqlite, get_historical_state_mysql,

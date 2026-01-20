@@ -620,3 +620,359 @@ impl User {
         Ok(())
     }
 }
+
+// ============================================================================
+// Phase 29B: Round Groups and Rounds
+// ============================================================================
+
+/// A reusable configuration set for rounds.
+///
+/// Round groups define common rule sets that can be applied to multiple rounds
+/// across different areas within a bid year.
+#[allow(dead_code)]
+#[allow(clippy::struct_field_names)]
+pub struct RoundGroup {
+    /// The canonical numeric identifier assigned by the database.
+    /// `None` indicates the round group has not been persisted yet.
+    round_group_id: Option<i64>,
+    /// The bid year this round group belongs to.
+    bid_year: BidYear,
+    /// The name of this round group (unique within the bid year).
+    name: String,
+    /// Whether editing is enabled for this round group.
+    /// When false, rounds using this group should not be modifiable.
+    editing_enabled: bool,
+}
+
+#[allow(dead_code)]
+impl RoundGroup {
+    /// Creates a new `RoundGroup` without a persisted ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year` - The bid year this round group belongs to
+    /// * `name` - The name of this round group
+    /// * `editing_enabled` - Whether editing is enabled
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn new(bid_year: BidYear, name: String, editing_enabled: bool) -> Self {
+        Self {
+            round_group_id: None,
+            bid_year,
+            name,
+            editing_enabled,
+        }
+    }
+
+    /// Creates a `RoundGroup` with an existing persisted ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `round_group_id` - The canonical numeric identifier
+    /// * `bid_year` - The bid year this round group belongs to
+    /// * `name` - The name of this round group
+    /// * `editing_enabled` - Whether editing is enabled
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn with_id(
+        round_group_id: i64,
+        bid_year: BidYear,
+        name: String,
+        editing_enabled: bool,
+    ) -> Self {
+        Self {
+            round_group_id: Some(round_group_id),
+            bid_year,
+            name,
+            editing_enabled,
+        }
+    }
+
+    /// Returns the canonical numeric identifier if persisted.
+    #[must_use]
+    pub const fn round_group_id(&self) -> Option<i64> {
+        self.round_group_id
+    }
+
+    /// Returns the bid year this round group belongs to.
+    #[must_use]
+    pub const fn bid_year(&self) -> &BidYear {
+        &self.bid_year
+    }
+
+    /// Returns the name of this round group.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns whether editing is enabled for this round group.
+    #[must_use]
+    pub const fn editing_enabled(&self) -> bool {
+        self.editing_enabled
+    }
+
+    /// Validates the round group configuration constraints.
+    ///
+    /// Ensures that:
+    /// - `name` is not empty
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if all constraints are satisfied.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DomainError::InvalidRoundConfiguration` if any constraint is violated.
+    #[allow(dead_code)]
+    pub fn validate_constraints(&self) -> Result<(), crate::error::DomainError> {
+        if self.name.trim().is_empty() {
+            return Err(crate::error::DomainError::InvalidRoundConfiguration {
+                reason: String::from("round group name cannot be empty"),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// A bidding round within an area.
+///
+/// Rounds define the specific periods when users can bid for leave days,
+/// along with the constraints that apply during that period.
+#[allow(dead_code)]
+#[allow(clippy::struct_field_names)]
+pub struct Round {
+    /// The canonical numeric identifier assigned by the database.
+    /// `None` indicates the round has not been persisted yet.
+    round_id: Option<i64>,
+    /// The area this round belongs to.
+    area: Area,
+    /// The round group that defines this round's configuration.
+    round_group: RoundGroup,
+    /// The round number (unique within the area).
+    /// Determines the order in which rounds are executed.
+    round_number: u32,
+    /// The display name for this round.
+    name: String,
+    /// Maximum number of slots that can be bid per day.
+    slots_per_day: u32,
+    /// Maximum number of groups (consecutive day sequences) that can be bid.
+    max_groups: u32,
+    /// Maximum total hours that can be bid.
+    max_total_hours: u32,
+    /// Whether holidays are included in bid groups.
+    /// If false, holidays do not count toward group length.
+    include_holidays: bool,
+    /// Whether overbidding is allowed.
+    /// If true, accrued leave limits are ignored (round limits still apply).
+    /// Typically used for carryover rounds.
+    allow_overbid: bool,
+}
+
+#[allow(dead_code)]
+impl Round {
+    /// Creates a new `Round` without a persisted ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `area` - The area this round belongs to
+    /// * `round_group` - The round group configuration
+    /// * `round_number` - The round number (unique within area)
+    /// * `name` - The display name for this round
+    /// * `slots_per_day` - Maximum slots per day
+    /// * `max_groups` - Maximum number of groups
+    /// * `max_total_hours` - Maximum total hours
+    /// * `include_holidays` - Whether holidays are included
+    /// * `allow_overbid` - Whether overbidding is allowed
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn new(
+        area: Area,
+        round_group: RoundGroup,
+        round_number: u32,
+        name: String,
+        slots_per_day: u32,
+        max_groups: u32,
+        max_total_hours: u32,
+        include_holidays: bool,
+        allow_overbid: bool,
+    ) -> Self {
+        Self {
+            round_id: None,
+            area,
+            round_group,
+            round_number,
+            name,
+            slots_per_day,
+            max_groups,
+            max_total_hours,
+            include_holidays,
+            allow_overbid,
+        }
+    }
+
+    /// Creates a `Round` with an existing persisted ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `round_id` - The canonical numeric identifier
+    /// * `area` - The area this round belongs to
+    /// * `round_group` - The round group configuration
+    /// * `round_number` - The round number (unique within area)
+    /// * `name` - The display name for this round
+    /// * `slots_per_day` - Maximum slots per day
+    /// * `max_groups` - Maximum number of groups
+    /// * `max_total_hours` - Maximum total hours
+    /// * `include_holidays` - Whether holidays are included
+    /// * `allow_overbid` - Whether overbidding is allowed
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn with_id(
+        round_id: i64,
+        area: Area,
+        round_group: RoundGroup,
+        round_number: u32,
+        name: String,
+        slots_per_day: u32,
+        max_groups: u32,
+        max_total_hours: u32,
+        include_holidays: bool,
+        allow_overbid: bool,
+    ) -> Self {
+        Self {
+            round_id: Some(round_id),
+            area,
+            round_group,
+            round_number,
+            name,
+            slots_per_day,
+            max_groups,
+            max_total_hours,
+            include_holidays,
+            allow_overbid,
+        }
+    }
+
+    /// Returns the canonical numeric identifier if persisted.
+    #[must_use]
+    pub const fn round_id(&self) -> Option<i64> {
+        self.round_id
+    }
+
+    /// Returns the area this round belongs to.
+    #[must_use]
+    pub const fn area(&self) -> &Area {
+        &self.area
+    }
+
+    /// Returns the round group configuration.
+    #[must_use]
+    pub const fn round_group(&self) -> &RoundGroup {
+        &self.round_group
+    }
+
+    /// Returns the round number.
+    #[must_use]
+    pub const fn round_number(&self) -> u32 {
+        self.round_number
+    }
+
+    /// Returns the display name for this round.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the maximum number of slots per day.
+    #[must_use]
+    pub const fn slots_per_day(&self) -> u32 {
+        self.slots_per_day
+    }
+
+    /// Returns the maximum number of groups.
+    #[must_use]
+    pub const fn max_groups(&self) -> u32 {
+        self.max_groups
+    }
+
+    /// Returns the maximum total hours.
+    #[must_use]
+    pub const fn max_total_hours(&self) -> u32 {
+        self.max_total_hours
+    }
+
+    /// Returns whether holidays are included in groups.
+    #[must_use]
+    pub const fn include_holidays(&self) -> bool {
+        self.include_holidays
+    }
+
+    /// Returns whether overbidding is allowed.
+    #[must_use]
+    pub const fn allow_overbid(&self) -> bool {
+        self.allow_overbid
+    }
+
+    /// Validates that this round is not being created for a system area.
+    ///
+    /// System areas (e.g., "No Bid") cannot have rounds.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the area is not a system area.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DomainError::CannotCreateRoundForSystemArea` if the area is a system area.
+    #[allow(dead_code)]
+    pub fn validate_not_system_area(&self) -> Result<(), crate::error::DomainError> {
+        if self.area.is_system_area() {
+            return Err(crate::error::DomainError::CannotCreateRoundForSystemArea {
+                area_code: self.area.area_code().to_owned(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Validates the round configuration constraints.
+    ///
+    /// Ensures that:
+    /// - `slots_per_day` is greater than 0
+    /// - `max_groups` is greater than 0
+    /// - `max_total_hours` is greater than 0
+    /// - `name` is not empty
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if all constraints are satisfied.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DomainError::InvalidRoundConfiguration` if any constraint is violated.
+    #[allow(dead_code)]
+    pub fn validate_constraints(&self) -> Result<(), crate::error::DomainError> {
+        if self.slots_per_day == 0 {
+            return Err(crate::error::DomainError::InvalidRoundConfiguration {
+                reason: String::from("slots_per_day must be greater than 0"),
+            });
+        }
+        if self.max_groups == 0 {
+            return Err(crate::error::DomainError::InvalidRoundConfiguration {
+                reason: String::from("max_groups must be greater than 0"),
+            });
+        }
+        if self.max_total_hours == 0 {
+            return Err(crate::error::DomainError::InvalidRoundConfiguration {
+                reason: String::from("max_total_hours must be greater than 0"),
+            });
+        }
+        if self.name.trim().is_empty() {
+            return Err(crate::error::DomainError::InvalidRoundConfiguration {
+                reason: String::from("name cannot be empty"),
+            });
+        }
+        Ok(())
+    }
+}

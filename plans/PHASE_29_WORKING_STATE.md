@@ -13,8 +13,8 @@
 
 ## Active Sub-Phase
 
-- Sub-Phase: 29A — User Participation Flags
-- State: Complete
+- Sub-Phase: 29B — Round Groups and Rounds
+- State: In Progress
 
 ## Completed Sub-Phases
 
@@ -24,7 +24,7 @@
 ## Planned Sub-Phases
 
 - [x] 29A — User Participation Flags (COMPLETE)
-- [ ] 29B — Round Groups and Rounds
+- [ ] 29B — Round Groups and Rounds (IN PROGRESS)
 - [ ] 29C — Bid Schedule Declaration
 - [ ] 29D — Readiness Evaluation
 - [ ] 29E — Confirmation and Bid Order Freezing
@@ -124,11 +124,40 @@
 - All clippy warnings resolved
 - All files tracked in git
 
+### Sub-Phase 29B (In Progress)
+
+#### Completed
+
+- [x] Database schema migrations created (SQLite and MySQL)
+- [x] Schema parity verified (`cargo xtask verify-migrations`)
+- [x] Domain types created (`RoundGroup` and `Round`)
+- [x] Domain error variants added
+- [x] Domain validation methods implemented
+- [x] API error translations added
+- [x] Code compiles without errors
+- [x] All existing tests pass
+- [x] Clippy passes
+- [x] Pre-commit hooks pass
+
+#### Remaining Work
+
+- [ ] Persistence layer CRUD operations for round groups
+- [ ] Persistence layer CRUD operations for rounds
+- [ ] Core layer commands for round group management
+- [ ] Core layer commands for round management
+- [ ] API endpoints for round groups (POST, GET, PATCH, DELETE)
+- [ ] API endpoints for rounds (POST, GET, PATCH, DELETE)
+- [ ] System area constraint enforcement in API layer
+- [ ] Lifecycle constraint enforcement in API layer
+- [ ] Unit tests for domain validation
+- [ ] Integration tests for API endpoints
+- [ ] Constraint tests (system area rejection, unique round numbers, etc.)
+
 ## Outstanding Work
 
 ### Future Sub-Phases
 
-- Execute Sub-Phase 29B (Round Groups and Rounds)
+- Complete Sub-Phase 29B (Round Groups and Rounds)
 - Execute Sub-Phase 29C (Bid Schedule Declaration)
 - Execute Sub-Phase 29D (Readiness Evaluation)
 - Execute Sub-Phase 29E (Confirmation and Bid Order Freezing)
@@ -146,56 +175,64 @@ None
 
 ## Resume Instructions
 
-### Immediate Next Steps
+### Immediate Next Steps for Sub-Phase 29B
 
-1. **Write Unit Tests**:
-   - Create `test_validate_participation_flags_*` tests in `domain/src/tests/validation.rs`
-   - Create `test_update_user_participation_*` tests in `core/src/tests/apply_tests.rs`
-   - Run `cargo test --lib` to verify
+1. **Persistence Layer**:
+   - Add queries for round groups (list, get, insert, update, delete)
+   - Add queries for rounds (list, get, insert, update, delete)
+   - Add query to check if round group is in use before deletion
+   - Test queries compile and work with existing database
 
-2. **Write Integration Tests**:
-   - Create test file or add to existing integration tests in `api/src/tests/`
-   - Test all success and failure paths
-   - Run `cargo test --lib` to verify
+2. **Core Layer**:
+   - Add `CreateRoundGroup`, `UpdateRoundGroup`, `DeleteRoundGroup` commands
+   - Add `CreateRound`, `UpdateRound`, `DeleteRound` commands
+   - Implement command handlers with lifecycle constraint checks
+   - Validate system area constraint for rounds
+   - Generate appropriate audit events
 
-3. **Wire Routes** (if needed):
-   - Add route definition in appropriate router file
-   - Test via HTTP client
-   - Remove `#[allow(dead_code)]` attributes
+3. **API Layer**:
+   - Implement round group endpoints (POST, GET, PATCH, DELETE)
+   - Implement round endpoints (POST, GET, PATCH, DELETE)
+   - Add request/response types
+   - Enforce lifecycle constraints (Draft/BootstrapComplete only)
+   - Return appropriate error responses
 
-4. **Final Validation**:
+4. **Testing**:
+   - Write domain validation tests
+   - Write core command tests
+   - Write API integration tests
+   - Test system area rejection
+   - Test unique constraints (round group name, round number)
+   - Test lifecycle constraints
+
+5. **Final Validation**:
+   - Run `cargo test --lib`
    - Run `cargo xtask ci`
    - Run `pre-commit run --all-files`
-   - Ensure all tests pass
-   - Update Phase 29A checklist in `plans/PHASE_29/PHASE_29A.md`
-
-5. **Mark Sub-Phase 29A Complete**:
-   - Check off all items in `plans/PHASE_29/PHASE_29A.md`
-   - Update this working state to mark 29A as complete
+   - Update Phase 29B checklist in `plans/PHASE_29/PHASE_29B.md`
+   - Update this working state document
    - Commit all changes
 
-6. **Move to Sub-Phase 29B**:
-   - Only after 29A is fully complete with all tests passing
+6. **Move to Sub-Phase 29C**:
+   - Only after 29B is fully complete with all tests passing
 
-### Completion Criteria for 29A
+### Completion Criteria for 29B
 
 - [x] Database schema migrations created (both SQLite and MySQL)
 - [x] Schema parity verified
-- [x] Domain types updated
-- [x] Directional invariant enforced in domain
-- [x] Persistence layer supports new fields
-- [x] API endpoint implemented
-- [x] API response types updated
-- [x] Lifecycle constraints enforced
-- [x] Unit tests for invariant enforcement (COMPLETE)
-- [x] Integration tests for API endpoint (COMPLETE)
-- [x] Routes wired up (exported from lib, HTTP wiring deferred)
-- [x] `cargo xtask ci` passes
-- [x] `pre-commit run --all-files` passes
-
-### Next Steps
-
-Begin Sub-Phase 29B: Round Groups and Rounds
+- [x] Domain types created
+- [x] Domain error variants added
+- [x] API error translations added
+- [ ] Persistence layer CRUD operations
+- [ ] Core layer commands implemented
+- [ ] API endpoints implemented
+- [ ] System area constraint enforced
+- [ ] Lifecycle constraints enforced
+- [ ] Unit tests for domain types
+- [ ] Integration tests for API endpoints
+- [ ] Constraint tests (system area, unique round numbers)
+- [ ] `cargo xtask ci` passes
+- [ ] `pre-commit run --all-files` passes
 
 ### Reference Documents
 

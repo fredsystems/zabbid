@@ -224,6 +224,54 @@ pub enum DomainError {
         /// Description of the violation.
         reason: String,
     },
+    /// Round group not found.
+    /// Phase 29B
+    RoundGroupNotFound {
+        /// The round group ID.
+        round_group_id: i64,
+    },
+    /// Round group name already exists in the bid year.
+    /// Phase 29B
+    DuplicateRoundGroupName {
+        /// The bid year.
+        bid_year: u16,
+        /// The round group name.
+        name: String,
+    },
+    /// Round not found.
+    /// Phase 29B
+    RoundNotFound {
+        /// The round ID.
+        round_id: i64,
+    },
+    /// Round number already exists in the area.
+    /// Phase 29B
+    DuplicateRoundNumber {
+        /// The area code.
+        area_code: String,
+        /// The round number.
+        round_number: u32,
+    },
+    /// Cannot create round for system area.
+    /// Phase 29B
+    CannotCreateRoundForSystemArea {
+        /// The system area code.
+        area_code: String,
+    },
+    /// Invalid round configuration.
+    /// Phase 29B
+    InvalidRoundConfiguration {
+        /// Description of the validation error.
+        reason: String,
+    },
+    /// Cannot delete round group because it is referenced by rounds.
+    /// Phase 29B
+    RoundGroupInUse {
+        /// The round group ID.
+        round_group_id: i64,
+        /// Number of rounds referencing this group.
+        round_count: usize,
+    },
 }
 
 impl std::fmt::Display for DomainError {
@@ -429,6 +477,42 @@ impl std::fmt::Display for DomainError {
                 write!(
                     f,
                     "Participation flag violation for user {user_initials}: {reason}"
+                )
+            }
+            Self::RoundGroupNotFound { round_group_id } => {
+                write!(f, "Round group with ID {round_group_id} not found")
+            }
+            Self::DuplicateRoundGroupName { bid_year, name } => {
+                write!(
+                    f,
+                    "Round group with name '{name}' already exists in bid year {bid_year}"
+                )
+            }
+            Self::RoundNotFound { round_id } => {
+                write!(f, "Round with ID {round_id} not found")
+            }
+            Self::DuplicateRoundNumber {
+                area_code,
+                round_number,
+            } => {
+                write!(
+                    f,
+                    "Round number {round_number} already exists in area '{area_code}'"
+                )
+            }
+            Self::CannotCreateRoundForSystemArea { area_code } => {
+                write!(f, "Cannot create round for system area '{area_code}'")
+            }
+            Self::InvalidRoundConfiguration { reason } => {
+                write!(f, "Invalid round configuration: {reason}")
+            }
+            Self::RoundGroupInUse {
+                round_group_id,
+                round_count,
+            } => {
+                write!(
+                    f,
+                    "Cannot delete round group {round_group_id}: referenced by {round_count} round(s)"
                 )
             }
         }
