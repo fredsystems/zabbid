@@ -27,6 +27,8 @@ fn create_test_user(bid_year: BidYear, initials: Initials) -> User {
         UserType::CPC,
         Some(Crew::new(1).unwrap()),
         create_test_seniority_data(),
+        false, // excluded_from_bidding
+        false, // excluded_from_leave_calculation
     )
 }
 
@@ -91,6 +93,8 @@ fn test_validate_user_fields_rejects_empty_name() {
         UserType::CPC,
         Some(Crew::new(1).unwrap()),
         create_test_seniority_data(),
+        false, // excluded_from_bidding
+        false, // excluded_from_leave_calculation
     );
 
     let result: Result<(), DomainError> = validate_user_fields(&user);
@@ -107,6 +111,8 @@ fn test_validate_user_fields_rejects_empty_area() {
         UserType::CPC,
         Some(Crew::new(1).unwrap()),
         create_test_seniority_data(),
+        false, // excluded_from_bidding
+        false, // excluded_from_leave_calculation
     );
 
     let result: Result<(), DomainError> = validate_user_fields(&user);
@@ -123,6 +129,8 @@ fn test_validate_user_fields_accepts_user_with_no_crew() {
         UserType::CPC,
         None,
         create_test_seniority_data(),
+        false, // excluded_from_bidding
+        false, // excluded_from_leave_calculation
     );
 
     let result: Result<(), DomainError> = validate_user_fields(&user);

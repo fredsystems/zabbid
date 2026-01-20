@@ -216,6 +216,14 @@ pub enum DomainError {
         /// Description of the validation error.
         reason: String,
     },
+    /// Participation flag directional invariant violation.
+    /// Phase 29A: `excluded_from_leave_calculation` => `excluded_from_bidding`
+    ParticipationFlagViolation {
+        /// The user's initials (for error context).
+        user_initials: String,
+        /// Description of the violation.
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for DomainError {
@@ -413,6 +421,15 @@ impl std::fmt::Display for DomainError {
             }
             Self::InvalidBidWindow { reason } => {
                 write!(f, "Invalid bid window: {reason}")
+            }
+            Self::ParticipationFlagViolation {
+                user_initials,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "Participation flag violation for user {user_initials}: {reason}"
+                )
             }
         }
     }

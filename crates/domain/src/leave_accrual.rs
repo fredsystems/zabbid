@@ -286,6 +286,8 @@ mod tests {
                 scd.to_string(),
                 None,
             ),
+            false, // excluded_from_bidding
+            false, // excluded_from_leave_calculation
         )
     }
 

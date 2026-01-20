@@ -232,6 +232,8 @@ fn parse_csv_row(
         user_type,
         crew,
         seniority_data,
+        false, // excluded_from_bidding: default to false
+        false, // excluded_from_leave_calculation: default to false
     );
 
     Ok(user)

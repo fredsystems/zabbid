@@ -550,6 +550,8 @@ pub fn apply(
                 user_type,
                 crew,
                 seniority_data,
+                false, // excluded_from_bidding: default to false
+                false, // excluded_from_leave_calculation: default to false
             );
 
             // Validate user field constraints
@@ -716,8 +718,12 @@ pub fn apply(
                 })
             })?;
 
-            // Create the updated user object
-            let updated_user: User = User::new(
+            // Get existing user to preserve participation flags
+            let existing_user: &User = &state.users[user_index];
+
+            // Create the updated user object (preserve user_id and participation flags)
+            let updated_user: User = User::with_id(
+                user_id,
                 bid_year.clone(),
                 initials.clone(),
                 name,
@@ -725,6 +731,8 @@ pub fn apply(
                 user_type,
                 crew,
                 seniority_data,
+                existing_user.excluded_from_bidding,
+                existing_user.excluded_from_leave_calculation,
             );
 
             // Validate user field constraints
@@ -753,6 +761,89 @@ pub fn apply(
                     user_id,
                     initials.value(),
                     bid_year.year()
+                )),
+            );
+            let audit_event: AuditEvent = AuditEvent::new(
+                actor,
+                cause,
+                action,
+                before,
+                after,
+                state.bid_year.clone(),
+                state.area.clone(),
+            );
+
+            Ok(TransitionResult {
+                new_state,
+                audit_event,
+            })
+        }
+        Command::UpdateUserParticipation {
+            user_id,
+            initials,
+            excluded_from_bidding,
+            excluded_from_leave_calculation,
+        } => {
+            // Use the active bid year
+            let bid_year = active_bid_year;
+
+            // Find the user to update by canonical user_id
+            let user_index: Option<usize> = state
+                .users
+                .iter()
+                .position(|u| u.user_id == Some(user_id) && &u.bid_year == bid_year);
+
+            let user_index: usize = user_index.ok_or_else(|| {
+                CoreError::DomainViolation(DomainError::UserNotFound {
+                    bid_year: bid_year.year(),
+                    area: state.area.id().to_string(),
+                    initials: initials.value().to_string(),
+                })
+            })?;
+
+            let existing_user: &User = &state.users[user_index];
+
+            // Create the updated user object with new participation flags (preserve user_id)
+            let updated_user: User = User::with_id(
+                user_id,
+                existing_user.bid_year.clone(),
+                existing_user.initials.clone(),
+                existing_user.name.clone(),
+                existing_user.area.clone(),
+                existing_user.user_type,
+                existing_user.crew,
+                existing_user.seniority_data.clone(),
+                excluded_from_bidding,
+                excluded_from_leave_calculation,
+            );
+
+            // Validate participation flag directional invariant
+            updated_user.validate_participation_flags()?;
+
+            // Capture state before transition
+            let before: StateSnapshot = state.to_snapshot();
+
+            // Create new state with the user updated
+            let mut new_users: Vec<User> = state.users.clone();
+            new_users[user_index] = updated_user;
+            let new_state: State = State {
+                bid_year: state.bid_year.clone(),
+                area: state.area.clone(),
+                users: new_users,
+            };
+
+            // Capture state after transition
+            let after: StateSnapshot = new_state.to_snapshot();
+
+            // Create audit event
+            let action: Action = Action::new(
+                String::from("UpdateUserParticipation"),
+                Some(format!(
+                    "Updated participation flags for user_id={} (initials '{}'): excluded_from_bidding={}, excluded_from_leave_calculation={}",
+                    user_id,
+                    initials.value(),
+                    excluded_from_bidding,
+                    excluded_from_leave_calculation
                 )),
             );
             let audit_event: AuditEvent = AuditEvent::new(

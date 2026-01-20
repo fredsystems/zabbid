@@ -397,6 +397,13 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
             field: String::from("bid_window"),
             message: reason,
         },
+        DomainError::ParticipationFlagViolation {
+            user_initials,
+            reason,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("participation_flag_invariant"),
+            message: format!("Participation flag violation for user '{user_initials}': {reason}"),
+        },
     }
 }
 

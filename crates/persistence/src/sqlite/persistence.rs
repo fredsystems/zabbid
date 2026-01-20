@@ -295,8 +295,9 @@ fn insert_new_user_tx(tx: &Transaction<'_>, state: &State) -> Result<(), Persist
         "INSERT INTO users (
             bid_year, area_id, initials, name, user_type, crew,
             cumulative_natca_bu_date, natca_bu_date,
-            eod_faa_date, service_computation_date, lottery_value
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            eod_faa_date, service_computation_date, lottery_value,
+            excluded_from_bidding, excluded_from_leave_calculation
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             user.bid_year.year(),
             user.area.id(),
@@ -309,6 +310,8 @@ fn insert_new_user_tx(tx: &Transaction<'_>, state: &State) -> Result<(), Persist
             user.seniority_data.eod_faa_date,
             user.seniority_data.service_computation_date,
             user.seniority_data.lottery_value,
+            user.excluded_from_bidding as i32,
+            user.excluded_from_leave_calculation as i32,
         ],
     )?;
 
@@ -346,8 +349,9 @@ fn sync_canonical_users_tx(tx: &Transaction<'_>, state: &State) -> Result<(), Pe
                 "INSERT INTO users (
                     user_id, bid_year, area_id, initials, name, user_type, crew,
                     cumulative_natca_bu_date, natca_bu_date,
-                    eod_faa_date, service_computation_date, lottery_value
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    eod_faa_date, service_computation_date, lottery_value,
+                    excluded_from_bidding, excluded_from_leave_calculation
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
                     user_id,
                     user.bid_year.year(),
@@ -361,6 +365,8 @@ fn sync_canonical_users_tx(tx: &Transaction<'_>, state: &State) -> Result<(), Pe
                     user.seniority_data.eod_faa_date,
                     user.seniority_data.service_computation_date,
                     user.seniority_data.lottery_value,
+                    user.excluded_from_bidding as i32,
+                    user.excluded_from_leave_calculation as i32,
                 ],
             )?;
         } else {
@@ -369,8 +375,9 @@ fn sync_canonical_users_tx(tx: &Transaction<'_>, state: &State) -> Result<(), Pe
                 "INSERT INTO users (
                     bid_year, area_id, initials, name, user_type, crew,
                     cumulative_natca_bu_date, natca_bu_date,
-                    eod_faa_date, service_computation_date, lottery_value
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    eod_faa_date, service_computation_date, lottery_value,
+                    excluded_from_bidding, excluded_from_leave_calculation
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![
                     user.bid_year.year(),
                     user.area.id(),
@@ -383,6 +390,8 @@ fn sync_canonical_users_tx(tx: &Transaction<'_>, state: &State) -> Result<(), Pe
                     user.seniority_data.eod_faa_date,
                     user.seniority_data.service_computation_date,
                     user.seniority_data.lottery_value,
+                    user.excluded_from_bidding as i32,
+                    user.excluded_from_leave_calculation as i32,
                 ],
             )?;
         }

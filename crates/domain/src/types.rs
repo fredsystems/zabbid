@@ -500,6 +500,13 @@ pub struct User {
     pub crew: Option<Crew>,
     /// Seniority-related data (informational only in Phase 1).
     pub seniority_data: SeniorityData,
+    /// Phase 29A: Whether this user is excluded from bidding.
+    /// If true, user is excluded from bid order derivation and does not receive a bid window.
+    pub excluded_from_bidding: bool,
+    /// Phase 29A: Whether this user is excluded from leave calculation.
+    /// If true, user does not count toward area leave capacity or maximum bid slots.
+    /// Directional invariant: `excluded_from_leave_calculation` => `excluded_from_bidding`
+    pub excluded_from_leave_calculation: bool,
 }
 
 impl User {
@@ -526,6 +533,8 @@ impl User {
         user_type: UserType,
         crew: Option<Crew>,
         seniority_data: SeniorityData,
+        excluded_from_bidding: bool,
+        excluded_from_leave_calculation: bool,
     ) -> Self {
         Self {
             user_id: None,
@@ -536,6 +545,8 @@ impl User {
             user_type,
             crew,
             seniority_data,
+            excluded_from_bidding,
+            excluded_from_leave_calculation,
         }
     }
 
@@ -562,6 +573,8 @@ impl User {
         user_type: UserType,
         crew: Option<Crew>,
         seniority_data: SeniorityData,
+        excluded_from_bidding: bool,
+        excluded_from_leave_calculation: bool,
     ) -> Self {
         Self {
             user_id: Some(user_id),
@@ -572,6 +585,38 @@ impl User {
             user_type,
             crew,
             seniority_data,
+            excluded_from_bidding,
+            excluded_from_leave_calculation,
         }
+    }
+
+    /// Validates the directional invariant for participation flags.
+    ///
+    /// Validates the participation flag directional invariant.
+    ///
+    /// # Invariant
+    ///
+    /// `excluded_from_leave_calculation == true` ⇒ `excluded_from_bidding == true`
+    ///
+    /// A user may never be included in bidding while excluded from leave calculation.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the invariant holds.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DomainError::ParticipationFlagViolation` if `excluded_from_leave_calculation`
+    /// is true but `excluded_from_bidding` is false.
+    pub fn validate_participation_flags(&self) -> Result<(), DomainError> {
+        if self.excluded_from_leave_calculation && !self.excluded_from_bidding {
+            return Err(DomainError::ParticipationFlagViolation {
+                user_initials: self.initials.value().to_owned(),
+                reason: String::from(
+                    "User excluded from leave calculation must also be excluded from bidding",
+                ),
+            });
+        }
+        Ok(())
     }
 }

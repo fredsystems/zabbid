@@ -24,6 +24,8 @@ fn create_test_user(bid_year: BidYear, initials: Initials) -> User {
         UserType::CPC,
         Some(Crew::new(1).unwrap()),
         create_test_seniority_data(),
+        false, // excluded_from_bidding
+        false, // excluded_from_leave_calculation
     )
 }
 

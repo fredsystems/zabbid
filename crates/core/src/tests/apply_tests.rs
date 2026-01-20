@@ -580,6 +580,8 @@ fn test_checkpoint_on_state_with_multiple_users() {
             UserType::CPC,
             Some(Crew::new(1).unwrap()),
             create_test_seniority_data(),
+            false, // excluded_from_bidding
+            false, // excluded_from_leave_calculation
         ));
     }
 
@@ -617,6 +619,8 @@ fn test_finalize_preserves_existing_state() {
         UserType::CPC,
         Some(Crew::new(1).unwrap()),
         create_test_seniority_data(),
+        false, // excluded_from_bidding
+        false, // excluded_from_leave_calculation
     ));
 
     let active_bid_year: BidYear = BidYear::new(2026);

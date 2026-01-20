@@ -192,4 +192,22 @@ pub enum Command {
         /// The reason for the override (must be non-empty, min 10 chars).
         reason: String,
     },
+    /// Update a user's participation flags.
+    ///
+    /// Phase 29A: Controls bid order derivation and leave calculation inclusion.
+    /// The user is identified by `user_id` (canonical, immutable).
+    /// Initials are included for audit trail clarity only.
+    ///
+    /// Directional invariant enforced:
+    /// `excluded_from_leave_calculation == true` ⇒ `excluded_from_bidding == true`
+    UpdateUserParticipation {
+        /// The user's canonical identifier (immutable, authoritative).
+        user_id: i64,
+        /// The user's initials (metadata for audit trail only).
+        initials: Initials,
+        /// Whether the user is excluded from bidding.
+        excluded_from_bidding: bool,
+        /// Whether the user is excluded from leave calculation.
+        excluded_from_leave_calculation: bool,
+    },
 }

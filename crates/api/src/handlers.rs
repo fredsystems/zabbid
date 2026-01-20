@@ -973,6 +973,8 @@ pub fn list_users(
                 remaining_days: availability.remaining_days,
                 is_exhausted: availability.is_exhausted,
                 is_overdrawn: availability.is_overdrawn,
+                excluded_from_bidding: user.excluded_from_bidding,
+                excluded_from_leave_calculation: user.excluded_from_leave_calculation,
                 capabilities,
             })
         })
@@ -4654,6 +4656,173 @@ pub fn override_bid_window(
     Ok(OverrideBidWindowResponse {
         audit_event_id: event_id,
         message: format!("Bid window overridden for user {user_initials} (audit event {event_id})"),
+    })
+}
+
+/// Update a user's participation flags.
+///
+/// Phase 29A: Controls bid order derivation and leave calculation inclusion.
+///
+/// # Directional Invariant
+///
+/// `excluded_from_leave_calculation == true` ⇒ `excluded_from_bidding == true`
+///
+/// A user may never be included in bidding while excluded from leave calculation.
+///
+/// # Lifecycle Constraints
+///
+/// Flags are editable in `Draft` and `BootstrapComplete` states.
+/// After canonicalization, flags become immutable (or require override).
+///
+/// # Arguments
+///
+/// * `metadata` - Bootstrap metadata
+/// * `persistence` - Persistence layer
+/// * `request` - The participation flag update request
+/// * `authenticated_actor` - The authenticated actor performing the update
+///
+/// # Returns
+///
+/// * `Ok(UpdateUserParticipationResponse)` on success
+/// * `Err(ApiError)` on validation failure or lifecycle constraint violation
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - User does not exist
+/// - Directional invariant is violated
+/// - Lifecycle state does not allow flag updates
+#[allow(clippy::too_many_arguments)]
+#[allow(dead_code)] // TODO: Wire up route for this handler
+pub fn update_user_participation(
+    metadata: &BootstrapMetadata,
+    persistence: &mut SqlitePersistence,
+    request: &crate::request_response::UpdateUserParticipationRequest,
+    authenticated_actor: &Actor,
+    lifecycle_state: zab_bid_domain::BidYearLifecycle,
+) -> Result<crate::request_response::UpdateUserParticipationResponse, ApiError> {
+    use zab_bid_domain::{BidYearLifecycle, DomainError};
+
+    // Enforce lifecycle constraints: only allow in Draft or BootstrapComplete
+    if !matches!(
+        lifecycle_state,
+        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
+    ) {
+        return Err(ApiError::DomainRuleViolation {
+            rule: String::from("participation_flags_lifecycle"),
+            message: format!(
+                "Cannot update participation flags in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+            ),
+        });
+    }
+
+    // Validate directional invariant before constructing command
+    if request.excluded_from_leave_calculation && !request.excluded_from_bidding {
+        return Err(translate_domain_error(
+            DomainError::ParticipationFlagViolation {
+                user_initials: format!("user_id={}", request.user_id),
+                reason: String::from(
+                    "User excluded from leave calculation must also be excluded from bidding",
+                ),
+            },
+        ));
+    }
+
+    // Resolve the active bid year from canonical state
+    let active_bid_year: BidYear = resolve_active_bid_year(persistence)?;
+
+    // Find bid_year_id
+    let bid_year_id: i64 = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == active_bid_year.year())
+        .and_then(BidYear::bid_year_id)
+        .ok_or_else(|| ApiError::Internal {
+            message: format!(
+                "Active bid year {} has no ID in metadata",
+                active_bid_year.year()
+            ),
+        })?;
+
+    // We need to iterate through all areas to find the user
+    // since we don't know which area the user is in
+    let mut found_user: Option<(zab_bid_domain::User, Area, State)> = None;
+
+    for (by, area_meta) in &metadata.areas {
+        if by.year() != active_bid_year.year() {
+            continue;
+        }
+
+        let area = Area::new(area_meta.area_code());
+
+        // Try to load state for this area
+        let Ok(state) = persistence.get_current_state(&active_bid_year, &area) else {
+            continue; // Skip areas with no state
+        };
+
+        // Check if the user is in this area
+        if let Some(user) = state
+            .users
+            .iter()
+            .find(|u| u.user_id == Some(request.user_id))
+        {
+            found_user = Some((user.clone(), area, state));
+            break;
+        }
+    }
+
+    let (user, _area, state) = found_user.ok_or_else(|| ApiError::ResourceNotFound {
+        resource_type: String::from("User"),
+        message: format!(
+            "User with user_id={} not found in active bid year",
+            request.user_id
+        ),
+    })?;
+
+    // Create the command
+    let command: Command = Command::UpdateUserParticipation {
+        user_id: request.user_id,
+        initials: user.initials.clone(),
+        excluded_from_bidding: request.excluded_from_bidding,
+        excluded_from_leave_calculation: request.excluded_from_leave_calculation,
+    };
+
+    // Apply the command
+    let cause = Cause::new(
+        String::from("update_user_participation"),
+        format!(
+            "Update participation flags for user {}",
+            user.initials.value()
+        ),
+    );
+    let result: TransitionResult = apply(
+        metadata,
+        &state,
+        &active_bid_year,
+        command,
+        authenticated_actor.clone(),
+        cause,
+    )
+    .map_err(translate_core_error)?;
+
+    // Persist the audit event and new state
+    persistence
+        .persist_audit_event(&result.audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    Ok(crate::request_response::UpdateUserParticipationResponse {
+        bid_year_id,
+        bid_year: active_bid_year.year(),
+        user_id: request.user_id,
+        initials: user.initials.value().to_string(),
+        excluded_from_bidding: request.excluded_from_bidding,
+        excluded_from_leave_calculation: request.excluded_from_leave_calculation,
+        message: format!(
+            "Updated participation flags for user '{}'",
+            user.initials.value()
+        ),
     })
 }
 

@@ -147,6 +147,8 @@ diesel::table! {
         eod_faa_date -> Text,
         service_computation_date -> Text,
         lottery_value -> Nullable<Integer>,
+        excluded_from_bidding -> Integer,
+        excluded_from_leave_calculation -> Integer,
     }
 }
 

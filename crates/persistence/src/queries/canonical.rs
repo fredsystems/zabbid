@@ -273,6 +273,8 @@ pub fn list_users(
         String,
         String,
         Option<i32>,
+        i32,
+        i32,
     );
 
     let rows: Vec<UserRowTuple> = users::table
@@ -287,6 +289,8 @@ pub fn list_users(
             users::eod_faa_date,
             users::service_computation_date,
             users::lottery_value,
+            users::excluded_from_bidding,
+            users::excluded_from_leave_calculation,
         ))
         .filter(users::bid_year_id.eq(bid_year_id))
         .filter(users::area_id.eq(area_id))
@@ -305,6 +309,8 @@ pub fn list_users(
         eod_faa_date,
         service_computation_date,
         lottery_value,
+        excluded_from_bidding,
+        excluded_from_leave_calculation,
     ) in rows
     {
         let initials: Initials = Initials::new(&initials_str);
@@ -329,6 +335,8 @@ pub fn list_users(
             user_type,
             crew,
             seniority_data,
+            excluded_from_bidding != 0,
+            excluded_from_leave_calculation != 0,
         );
         users_list.push(user);
     }
@@ -858,6 +866,8 @@ pub fn list_users_canonical(
         String,
         Option<i32>,
         i32, // can_bid from canonical_eligibility
+        i32, // excluded_from_bidding
+        i32, // excluded_from_leave_calculation
     );
 
     let rows: Vec<UserRowTuple> = users::table
@@ -886,6 +896,8 @@ pub fn list_users_canonical(
             users::service_computation_date,
             users::lottery_value,
             canonical_eligibility::can_bid,
+            users::excluded_from_bidding,
+            users::excluded_from_leave_calculation,
         ))
         .filter(users::bid_year_id.eq(bid_year_id))
         .order(users::initials.asc())
@@ -904,6 +916,8 @@ pub fn list_users_canonical(
         service_computation_date,
         lottery_value,
         _can_bid,
+        excluded_from_bidding,
+        excluded_from_leave_calculation,
     ) in rows
     {
         let initials: Initials = Initials::new(&initials_str);
@@ -928,6 +942,8 @@ pub fn list_users_canonical(
             user_type,
             crew,
             seniority_data,
+            excluded_from_bidding != 0,
+            excluded_from_leave_calculation != 0,
         );
         users_list.push(user);
     }

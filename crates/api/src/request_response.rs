@@ -194,6 +194,7 @@ pub struct ListUsersResponse {
 
 /// User information for listing.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // Booleans represent independent domain state
 pub struct UserInfo {
     /// The user's canonical internal identifier.
     pub user_id: i64,
@@ -231,6 +232,10 @@ pub struct UserInfo {
     pub is_exhausted: bool,
     /// Whether leave balance is overdrawn.
     pub is_overdrawn: bool,
+    /// Phase 29A: Whether this user is excluded from bidding.
+    pub excluded_from_bidding: bool,
+    /// Phase 29A: Whether this user is excluded from leave calculation.
+    pub excluded_from_leave_calculation: bool,
     /// Target-specific capabilities for this user instance.
     pub capabilities: UserCapabilities,
 }
@@ -683,6 +688,39 @@ pub struct UpdateUserResponse {
     pub initials: String,
     /// The user's name.
     pub name: String,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to update user participation flags.
+/// Phase 29A: Controls bid order derivation and leave calculation inclusion.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // TODO: Wire up route for this request type
+pub struct UpdateUserParticipationRequest {
+    /// The user's canonical internal identifier.
+    pub user_id: i64,
+    /// Whether the user is excluded from bidding.
+    pub excluded_from_bidding: bool,
+    /// Whether the user is excluded from leave calculation.
+    pub excluded_from_leave_calculation: bool,
+}
+
+/// API response for successful participation flag update.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // TODO: Wire up route for this response type
+pub struct UpdateUserParticipationResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year (display value).
+    pub bid_year: u16,
+    /// The user's canonical internal identifier.
+    pub user_id: i64,
+    /// The user's initials.
+    pub initials: String,
+    /// Whether the user is excluded from bidding.
+    pub excluded_from_bidding: bool,
+    /// Whether the user is excluded from leave calculation.
+    pub excluded_from_leave_calculation: bool,
     /// Success message.
     pub message: String,
 }
