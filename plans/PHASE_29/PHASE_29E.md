@@ -49,6 +49,17 @@ At confirmation time, the system must:
 - Assign sequential position numbers
 - Record audit event
 
+**Critical:** Phase 29E must use the **exact same** `compute_bid_order()` function
+that was used for readiness evaluation and preview.
+
+DO NOT:
+
+- Duplicate bid order logic
+- Recompute ordering independently
+- Introduce new tie-breaking rules
+
+The frozen bid order must match what operators reviewed in the preview.
+
 #### Canonical Bid Order Table
 
 Already exists from earlier phases. Verify schema supports:

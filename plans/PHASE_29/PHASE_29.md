@@ -282,6 +282,13 @@ This is configuration only in Phase 29.
 - Read-only
 - Non-authoritative
 
+#### Pre-Confirmation Review
+
+- Derived bid order is computed and **visible via preview API**
+- Operators may review ordering before confirmation
+- No irreversible action occurs without operator visibility
+- Readiness evaluation **includes real bid order computation**
+
 #### At Confirmed Ready to Bid
 
 At confirmation:

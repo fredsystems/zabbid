@@ -106,7 +106,15 @@ The result is a structured response containing:
 
 ### 5. Seniority Conflict Detection
 
-This sub-phase must implement **seniority conflict detection**.
+**Implementation:** Real bid order computation via `compute_bid_order()`
+
+This function:
+
+- Applies strict 5-tier seniority ordering
+- Returns `SeniorityConflict` error on unresolved ties
+- Is used by readiness evaluation and bid order preview
+
+**No manual resolution path exists.** Conflicts are blocking errors.
 
 #### Requirements
 
@@ -131,7 +139,22 @@ If a conflict exists:
 - the underlying data or logic must be fixed
 - **no manual override or UI correction is permitted**
 
-### 6. No Bid User Review Tracking
+### 6. Derived Bid Order Preview API (NEW)
+
+**Purpose:** Allow operators to view computed bid order before confirmation.
+
+**Endpoint:** `GET /api/bid-years/{bid_year_id}/areas/{area_id}/bid-order-preview`
+
+**Constraints:**
+
+- Pre-confirmation only
+- Read-only (no persistence, no audit events)
+- Uses same computation logic that will be frozen at confirmation
+- Lifecycle constraint: Draft or BootstrapComplete only
+
+**Response:** Ordered list of users with seniority inputs (for transparency)
+
+### 7. No Bid User Review Tracking
 
 Users in No Bid area must be tracked as "reviewed" or "pending review".
 
