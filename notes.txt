@@ -1,0 +1,28 @@
+Resume Phase 29.
+
+Refer to:
+
+plans/PHASE_29.md
+
+all Phase 29 sub-phase documents
+
+AGENTS.md
+
+plans/PHASE_29_WORKING_STATE.md
+
+Follow the Phase Planning & Execution Protocol.
+
+Continue from the current working state.
+Update the working state document before pausing or completing a sub-phase.
+When using git commands, be mindful the system auto uses pagers, so commands may appear to hang. Use no-pager as appropriate.
+
+Do not reinterpret scope or invariants.
+
+git rebase -i HEAD~5
+git commit --amend -S --no-edit
+git rebase --continue
+
+initials,name,area_id,crew,user_type,service_computation_date,eod_faa_date,natca_bu_date,cumulative_natca_bu_date,lottery_value
+CS,Fred Clausen,East,3,CPC,2008-04-01,2008-04-01,2008-08-05,2008-08-05,
+SB,Steve Barnes,East,3,CPC,2008-04-01,2008-04-01,2008-08-05,2008-08-05,
+PU,Peaches Waddell,South East,7,CPC,2008-04-01,2008-04-01,2008-08-05,2008-08-05,
