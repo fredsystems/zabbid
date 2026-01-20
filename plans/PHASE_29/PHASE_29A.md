@@ -93,18 +93,18 @@ Update `UserInfo` to include:
 
 ## Completion Checklist
 
-- [ ] Migration created for both SQLite and MySQL
-- [ ] Schema verification passes (`cargo xtask verify-migrations`)
-- [ ] Domain types updated
-- [ ] Directional invariant enforced in domain
-- [ ] Persistence layer supports new fields
-- [ ] API endpoint implemented
-- [ ] API response types updated
-- [ ] Lifecycle constraints enforced
-- [ ] Unit tests for invariant enforcement
-- [ ] Integration tests for API endpoint
-- [ ] `cargo xtask ci` passes
-- [ ] `pre-commit run --all-files` passes
+- [x] Migration created for both SQLite and MySQL
+- [x] Schema verification passes (`cargo xtask verify-migrations`)
+- [x] Domain types updated
+- [x] Directional invariant enforced in domain
+- [x] Persistence layer supports new fields
+- [x] API endpoint implemented
+- [x] API response types updated
+- [x] Lifecycle constraints enforced
+- [x] Unit tests for invariant enforcement
+- [x] Integration tests for API endpoint
+- [x] `cargo xtask ci` passes
+- [x] `pre-commit run --all-files` passes
 
 ---
 

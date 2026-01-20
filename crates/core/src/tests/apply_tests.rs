@@ -706,3 +706,191 @@ fn test_update_user_on_empty_state_fails() {
         CoreError::DomainViolation(DomainError::UserNotFound { .. })
     ));
 }
+
+#[test]
+fn test_update_user_participation_successful() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let bid_year: BidYear = BidYear::new(2026);
+    let active_bid_year: BidYear = BidYear::new(2026);
+
+    // Manually create a state with a user that has an ID (simulating persisted state)
+    let user: User = User::with_id(
+        1, // user_id
+        bid_year.clone(),
+        Initials::new("AB"),
+        String::from("John Doe"),
+        Area::new("North"),
+        UserType::CPC,
+        Some(Crew::new(1).unwrap()),
+        create_test_seniority_data(),
+        false, // excluded_from_bidding
+        false, // excluded_from_leave_calculation
+    );
+    let state: State = State {
+        bid_year,
+        area: Area::new("North"),
+        users: vec![user],
+    };
+
+    // Update participation flags
+    let update_command: Command = Command::UpdateUserParticipation {
+        user_id: 1,
+        initials: Initials::new("AB"),
+        excluded_from_bidding: true,
+        excluded_from_leave_calculation: false,
+    };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<TransitionResult, CoreError> = apply(
+        &metadata,
+        &state,
+        &active_bid_year,
+        update_command,
+        actor,
+        cause,
+    );
+
+    assert!(result.is_ok());
+    let transition: TransitionResult = result.unwrap();
+    assert_eq!(transition.new_state.users.len(), 1);
+    assert!(transition.new_state.users[0].excluded_from_bidding);
+    assert!(!transition.new_state.users[0].excluded_from_leave_calculation);
+}
+
+#[test]
+fn test_update_user_participation_invariant_violation() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let bid_year: BidYear = BidYear::new(2026);
+    let active_bid_year: BidYear = BidYear::new(2026);
+
+    // Manually create a state with a user that has an ID (simulating persisted state)
+    let user: User = User::with_id(
+        1, // user_id
+        bid_year.clone(),
+        Initials::new("AB"),
+        String::from("John Doe"),
+        Area::new("North"),
+        UserType::CPC,
+        Some(Crew::new(1).unwrap()),
+        create_test_seniority_data(),
+        false, // excluded_from_bidding
+        false, // excluded_from_leave_calculation
+    );
+    let state: State = State {
+        bid_year,
+        area: Area::new("North"),
+        users: vec![user],
+    };
+
+    // Attempt to update with invalid flags (excluded from leave but not bidding)
+    let invalid_command: Command = Command::UpdateUserParticipation {
+        user_id: 1,
+        initials: Initials::new("AB"),
+        excluded_from_bidding: false,
+        excluded_from_leave_calculation: true, // Invalid!
+    };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<TransitionResult, CoreError> = apply(
+        &metadata,
+        &state,
+        &active_bid_year,
+        invalid_command,
+        actor,
+        cause,
+    );
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        CoreError::DomainViolation(DomainError::ParticipationFlagViolation { .. })
+    ));
+}
+
+#[test]
+fn test_update_user_participation_user_not_found() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let state: State = State::new(BidYear::new(2026), Area::new("North"));
+    let active_bid_year: BidYear = BidYear::new(2026);
+
+    let command: Command = Command::UpdateUserParticipation {
+        user_id: 999, // Non-existent user_id
+        initials: Initials::new("AB"),
+        excluded_from_bidding: true,
+        excluded_from_leave_calculation: false,
+    };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<TransitionResult, CoreError> =
+        apply(&metadata, &state, &active_bid_year, command, actor, cause);
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        CoreError::DomainViolation(DomainError::UserNotFound { .. })
+    ));
+}
+
+#[test]
+fn test_update_user_participation_preserves_other_fields() {
+    let metadata: BootstrapMetadata = create_test_metadata();
+    let bid_year: BidYear = BidYear::new(2026);
+    let active_bid_year: BidYear = BidYear::new(2026);
+
+    // Manually create a state with a user that has an ID (simulating persisted state)
+    let user: User = User::with_id(
+        1, // user_id
+        bid_year.clone(),
+        Initials::new("AB"),
+        String::from("John Doe"),
+        Area::new("North"),
+        UserType::CPC,
+        Some(Crew::new(1).unwrap()),
+        create_test_seniority_data(),
+        false, // excluded_from_bidding
+        false, // excluded_from_leave_calculation
+    );
+    let state: State = State {
+        bid_year,
+        area: Area::new("North"),
+        users: vec![user],
+    };
+
+    // Update participation flags
+    let update_command: Command = Command::UpdateUserParticipation {
+        user_id: 1,
+        initials: Initials::new("AB"),
+        excluded_from_bidding: true,
+        excluded_from_leave_calculation: true,
+    };
+    let actor: Actor = create_test_actor();
+    let cause: Cause = create_test_cause();
+
+    let result: Result<TransitionResult, CoreError> = apply(
+        &metadata,
+        &state,
+        &active_bid_year,
+        update_command,
+        actor,
+        cause,
+    );
+
+    assert!(result.is_ok());
+    let transition: TransitionResult = result.unwrap();
+    let updated_user: &User = &transition.new_state.users[0];
+
+    // Verify participation flags are updated
+    assert!(updated_user.excluded_from_bidding);
+    assert!(updated_user.excluded_from_leave_calculation);
+
+    // Verify all other fields are preserved
+    assert_eq!(updated_user.user_id, Some(1));
+    assert_eq!(updated_user.initials.value(), "AB");
+    assert_eq!(updated_user.name, "John Doe");
+    assert_eq!(updated_user.area.area_code(), "NORTH");
+    assert_eq!(updated_user.user_type, UserType::CPC);
+    assert_eq!(updated_user.crew, Some(Crew::new(1).unwrap()));
+}

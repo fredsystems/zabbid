@@ -3085,3 +3085,269 @@ fn test_update_user_uses_user_id_from_request() {
     assert_eq!(updated_user.initials, "XY");
     assert_eq!(updated_user.name, "Updated Name");
 }
+
+// ============================================================================
+// Update User Participation Tests (Phase 29A)
+// ============================================================================
+
+#[test]
+fn test_update_user_participation_successful() {
+    use crate::{UpdateUserParticipationRequest, update_user_participation};
+
+    let mut persistence = setup_test_persistence().expect("Failed to setup persistence");
+
+    // Get metadata and canonical bid years from persistence
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+    let bid_year: BidYear = BidYear::new(2026);
+    let area: Area = Area::new("North");
+    let state: State = State::new(bid_year.clone(), area.clone());
+    let admin_actor = create_test_admin();
+    let operator = create_test_admin_operator();
+
+    // Register a user
+    let register_request = RegisterUserRequest {
+        initials: String::from("AB"),
+        name: String::from("Test User"),
+        area: String::from("North"),
+        user_type: String::from("CPC"),
+        crew: Some(1),
+        cumulative_natca_bu_date: String::from("2019-01-15"),
+        natca_bu_date: String::from("2019-06-01"),
+        eod_faa_date: String::from("2020-01-15"),
+        service_computation_date: String::from("2020-01-15"),
+        lottery_value: Some(42),
+    };
+
+    let cause = create_test_cause();
+    let register_result = register_user(
+        &mut persistence,
+        &metadata,
+        &state,
+        register_request,
+        &admin_actor,
+        &operator,
+        cause,
+    );
+    assert!(register_result.is_ok());
+
+    // Persist the transition
+    let api_result = register_result.unwrap();
+    let transition = TransitionResult {
+        audit_event: api_result.audit_event,
+        new_state: api_result.new_state,
+    };
+    persistence.persist_transition(&transition).unwrap();
+
+    // Get the registered user's ID
+    let state_after_register = persistence.get_current_state(&bid_year, &area).unwrap();
+    let user_id = state_after_register.users[0]
+        .user_id
+        .expect("User should have ID");
+
+    // Update participation flags
+    let update_request = UpdateUserParticipationRequest {
+        user_id,
+        excluded_from_bidding: true,
+        excluded_from_leave_calculation: false,
+    };
+
+    let update_result = update_user_participation(
+        &metadata,
+        &mut persistence,
+        &update_request,
+        &admin_actor.to_audit_actor(&operator),
+        zab_bid_domain::BidYearLifecycle::Draft,
+    );
+
+    assert!(update_result.is_ok(), "Update should succeed");
+    let response = update_result.unwrap();
+    assert_eq!(response.user_id, user_id);
+    assert_eq!(response.initials, "AB");
+    assert!(response.excluded_from_bidding);
+    assert!(!response.excluded_from_leave_calculation);
+}
+
+#[test]
+fn test_update_user_participation_invariant_violation() {
+    use crate::{UpdateUserParticipationRequest, update_user_participation};
+
+    let mut persistence = setup_test_persistence().expect("Failed to setup persistence");
+
+    // Get metadata and canonical bid years from persistence
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+    let bid_year: BidYear = BidYear::new(2026);
+    let area: Area = Area::new("North");
+    let state: State = State::new(bid_year.clone(), area.clone());
+    let admin_actor = create_test_admin();
+    let operator = create_test_admin_operator();
+
+    // Register a user
+    let register_request = RegisterUserRequest {
+        initials: String::from("AB"),
+        name: String::from("Test User"),
+        area: String::from("North"),
+        user_type: String::from("CPC"),
+        crew: Some(1),
+        cumulative_natca_bu_date: String::from("2019-01-15"),
+        natca_bu_date: String::from("2019-06-01"),
+        eod_faa_date: String::from("2020-01-15"),
+        service_computation_date: String::from("2020-01-15"),
+        lottery_value: Some(42),
+    };
+
+    let cause = create_test_cause();
+    let register_result = register_user(
+        &mut persistence,
+        &metadata,
+        &state,
+        register_request,
+        &admin_actor,
+        &operator,
+        cause,
+    );
+    assert!(register_result.is_ok());
+
+    // Persist the transition
+    let api_result = register_result.unwrap();
+    let transition = TransitionResult {
+        audit_event: api_result.audit_event,
+        new_state: api_result.new_state,
+    };
+    persistence.persist_transition(&transition).unwrap();
+
+    // Get the registered user's ID
+    let state_after_register = persistence.get_current_state(&bid_year, &area).unwrap();
+    let user_id = state_after_register.users[0]
+        .user_id
+        .expect("User should have ID");
+
+    // Attempt invalid update (excluded from leave but not bidding)
+    let invalid_request = UpdateUserParticipationRequest {
+        user_id,
+        excluded_from_bidding: false,
+        excluded_from_leave_calculation: true, // Invalid!
+    };
+
+    let update_result = update_user_participation(
+        &metadata,
+        &mut persistence,
+        &invalid_request,
+        &admin_actor.to_audit_actor(&operator),
+        zab_bid_domain::BidYearLifecycle::Draft,
+    );
+
+    assert!(update_result.is_err(), "Invalid flags should be rejected");
+    assert!(matches!(
+        update_result.unwrap_err(),
+        ApiError::DomainRuleViolation { .. }
+    ));
+}
+
+#[test]
+fn test_update_user_participation_user_not_found() {
+    use crate::{UpdateUserParticipationRequest, update_user_participation};
+
+    let mut persistence = setup_test_persistence().expect("Failed to setup persistence");
+
+    // Get metadata (but don't register any users)
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+    let admin_actor = create_test_admin();
+    let operator = create_test_admin_operator();
+
+    // Attempt to update non-existent user
+    let update_request = UpdateUserParticipationRequest {
+        user_id: 999,
+        excluded_from_bidding: true,
+        excluded_from_leave_calculation: false,
+    };
+
+    let update_result = update_user_participation(
+        &metadata,
+        &mut persistence,
+        &update_request,
+        &admin_actor.to_audit_actor(&operator),
+        zab_bid_domain::BidYearLifecycle::Draft,
+    );
+
+    assert!(update_result.is_err(), "Non-existent user should fail");
+    assert!(matches!(
+        update_result.unwrap_err(),
+        ApiError::ResourceNotFound { .. }
+    ));
+}
+
+#[test]
+fn test_update_user_participation_lifecycle_constraint() {
+    use crate::{UpdateUserParticipationRequest, update_user_participation};
+
+    let mut persistence = setup_test_persistence().expect("Failed to setup persistence");
+
+    // Get metadata and canonical bid years from persistence
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata().unwrap();
+    let bid_year: BidYear = BidYear::new(2026);
+    let area: Area = Area::new("North");
+    let state: State = State::new(bid_year.clone(), area.clone());
+    let admin_actor = create_test_admin();
+    let operator = create_test_admin_operator();
+
+    // Register a user
+    let register_request = RegisterUserRequest {
+        initials: String::from("AB"),
+        name: String::from("Test User"),
+        area: String::from("North"),
+        user_type: String::from("CPC"),
+        crew: Some(1),
+        cumulative_natca_bu_date: String::from("2019-01-15"),
+        natca_bu_date: String::from("2019-06-01"),
+        eod_faa_date: String::from("2020-01-15"),
+        service_computation_date: String::from("2020-01-15"),
+        lottery_value: Some(42),
+    };
+
+    let cause = create_test_cause();
+    let register_result = register_user(
+        &mut persistence,
+        &metadata,
+        &state,
+        register_request,
+        &admin_actor,
+        &operator,
+        cause,
+    );
+    assert!(register_result.is_ok());
+
+    // Persist the transition
+    let api_result = register_result.unwrap();
+    let transition = TransitionResult {
+        audit_event: api_result.audit_event,
+        new_state: api_result.new_state,
+    };
+    persistence.persist_transition(&transition).unwrap();
+
+    // Get the registered user's ID
+    let state_after_register = persistence.get_current_state(&bid_year, &area).unwrap();
+    let user_id = state_after_register.users[0]
+        .user_id
+        .expect("User should have ID");
+
+    // Attempt update in wrong lifecycle state (Canonicalized)
+    let update_request = UpdateUserParticipationRequest {
+        user_id,
+        excluded_from_bidding: true,
+        excluded_from_leave_calculation: false,
+    };
+
+    let update_result = update_user_participation(
+        &metadata,
+        &mut persistence,
+        &update_request,
+        &admin_actor.to_audit_actor(&operator),
+        zab_bid_domain::BidYearLifecycle::Canonicalized, // Wrong state!
+    );
+
+    assert!(update_result.is_err(), "Wrong lifecycle state should fail");
+    assert!(matches!(
+        update_result.unwrap_err(),
+        ApiError::DomainRuleViolation { .. }
+    ));
+}

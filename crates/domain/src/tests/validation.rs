@@ -230,3 +230,88 @@ fn test_validate_initials_unique_with_multiple_existing_users() {
         validate_initials_unique(&bid_year, &duplicate_initials, &existing_users);
     assert!(matches!(result, Err(DomainError::DuplicateInitials { .. })));
 }
+
+#[test]
+fn test_validate_participation_flags_both_false() {
+    let user: User = User::new(
+        BidYear::new(2026),
+        Initials::new("AB"),
+        String::from("Test User"),
+        Area::new("North"),
+        UserType::CPC,
+        Some(Crew::new(1).unwrap()),
+        create_test_seniority_data(),
+        false, // excluded_from_bidding
+        false, // excluded_from_leave_calculation
+    );
+
+    let result: Result<(), DomainError> = user.validate_participation_flags();
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_validate_participation_flags_both_true() {
+    let user: User = User::new(
+        BidYear::new(2026),
+        Initials::new("AB"),
+        String::from("Test User"),
+        Area::new("North"),
+        UserType::CPC,
+        Some(Crew::new(1).unwrap()),
+        create_test_seniority_data(),
+        true, // excluded_from_bidding
+        true, // excluded_from_leave_calculation
+    );
+
+    let result: Result<(), DomainError> = user.validate_participation_flags();
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_validate_participation_flags_excluded_from_bidding_only() {
+    let user: User = User::new(
+        BidYear::new(2026),
+        Initials::new("AB"),
+        String::from("Test User"),
+        Area::new("North"),
+        UserType::CPC,
+        Some(Crew::new(1).unwrap()),
+        create_test_seniority_data(),
+        true,  // excluded_from_bidding
+        false, // excluded_from_leave_calculation
+    );
+
+    let result: Result<(), DomainError> = user.validate_participation_flags();
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_validate_participation_flags_invalid_excluded_from_leave_only() {
+    let user: User = User::new(
+        BidYear::new(2026),
+        Initials::new("AB"),
+        String::from("Test User"),
+        Area::new("North"),
+        UserType::CPC,
+        Some(Crew::new(1).unwrap()),
+        create_test_seniority_data(),
+        false, // excluded_from_bidding
+        true,  // excluded_from_leave_calculation
+    );
+
+    let result: Result<(), DomainError> = user.validate_participation_flags();
+    assert!(matches!(
+        result,
+        Err(DomainError::ParticipationFlagViolation { .. })
+    ));
+
+    if let Err(DomainError::ParticipationFlagViolation {
+        user_initials,
+        reason,
+    }) = result
+    {
+        assert_eq!(user_initials, "AB");
+        assert!(reason.contains("excluded from leave calculation"));
+        assert!(reason.contains("excluded from bidding"));
+    }
+}

@@ -695,7 +695,6 @@ pub struct UpdateUserResponse {
 /// API request to update user participation flags.
 /// Phase 29A: Controls bid order derivation and leave calculation inclusion.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[allow(dead_code)] // TODO: Wire up route for this request type
 pub struct UpdateUserParticipationRequest {
     /// The user's canonical internal identifier.
     pub user_id: i64,
@@ -707,7 +706,6 @@ pub struct UpdateUserParticipationRequest {
 
 /// API response for successful participation flag update.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[allow(dead_code)] // TODO: Wire up route for this response type
 pub struct UpdateUserParticipationResponse {
     /// The canonical bid year identifier.
     pub bid_year_id: i64,

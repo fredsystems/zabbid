@@ -4693,7 +4693,6 @@ pub fn override_bid_window(
 /// - Directional invariant is violated
 /// - Lifecycle state does not allow flag updates
 #[allow(clippy::too_many_arguments)]
-#[allow(dead_code)] // TODO: Wire up route for this handler
 pub fn update_user_participation(
     metadata: &BootstrapMetadata,
     persistence: &mut SqlitePersistence,

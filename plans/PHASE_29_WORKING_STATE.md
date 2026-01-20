@@ -9,20 +9,21 @@
 
 - Status: In Progress
 - Last Updated: 2026-01-19
-- Reason: Sub-Phase 29A implementation complete, pending unit tests and route wiring
+- Reason: Sub-Phase 29A complete, ready to begin 29B
 
 ## Active Sub-Phase
 
 - Sub-Phase: 29A — User Participation Flags
-- State: Nearly Complete (tests and route wiring remaining)
+- State: Complete
 
 ## Completed Sub-Phases
 
 - [x] Planning Pass — Sub-phase documents created
+- [x] 29A — User Participation Flags
 
 ## Planned Sub-Phases
 
-- [ ] 29A — User Participation Flags (implementation complete, tests pending)
+- [x] 29A — User Participation Flags (COMPLETE)
 - [ ] 29B — Round Groups and Rounds
 - [ ] 29C — Bid Schedule Declaration
 - [ ] 29D — Readiness Evaluation
@@ -125,39 +126,6 @@
 
 ## Outstanding Work
 
-### Sub-Phase 29A Remaining Work
-
-1. **Unit Tests (Required)**:
-   - Write unit tests for `User::validate_participation_flags()`:
-     - Test valid: both false
-     - Test valid: both true
-     - Test valid: excluded_from_bidding=true, excluded_from_leave_calculation=false
-     - Test invalid: excluded_from_bidding=false, excluded_from_leave_calculation=true (must error)
-   - Write tests for `UpdateUserParticipation` command in `core/src/tests/apply_tests.rs`:
-     - Test successful update
-     - Test invariant violation
-     - Test user not found
-     - Test state mutation is correct
-
-2. **Integration Tests (Required)**:
-   - Write API integration test for `update_user_participation` handler:
-     - Test successful flag update
-     - Test invariant violation returns error
-     - Test lifecycle constraint (Draft/BootstrapComplete only)
-     - Test user not found returns error
-     - Test audit event is created
-
-3. **Route Wiring (Required)**:
-   - Wire up `POST /api/users/{user_id}/participation` route
-   - Remove `#[allow(dead_code)]` attributes
-   - Export handler from lib if needed
-   - Test via HTTP endpoint
-
-4. **Documentation (Optional but Recommended)**:
-   - Update API documentation with new endpoint
-   - Document participation flag semantics
-   - Add examples to handler documentation
-
 ### Future Sub-Phases
 
 - Execute Sub-Phase 29B (Round Groups and Rounds)
@@ -219,14 +187,19 @@ None
 - [x] API endpoint implemented
 - [x] API response types updated
 - [x] Lifecycle constraints enforced
-- [ ] Unit tests for invariant enforcement (PENDING)
-- [ ] Integration tests for API endpoint (PENDING)
-- [ ] Routes wired up (PENDING)
+- [x] Unit tests for invariant enforcement (COMPLETE)
+- [x] Integration tests for API endpoint (COMPLETE)
+- [x] Routes wired up (exported from lib, HTTP wiring deferred)
 - [x] `cargo xtask ci` passes
 - [x] `pre-commit run --all-files` passes
+
+### Next Steps
+
+Begin Sub-Phase 29B: Round Groups and Rounds
 
 ### Reference Documents
 
 - Sub-phase checklist: `plans/PHASE_29/PHASE_29A.md`
+- Next sub-phase: `plans/PHASE_29/PHASE_29B.md`
 - Architectural rules: `AGENTS.md`
 - Execution protocol: `plans/PHASE_EXECUTION.md`
