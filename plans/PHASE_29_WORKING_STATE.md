@@ -8,13 +8,13 @@
 ## Current Status
 
 - Status: In Progress
-- Last Updated: 2026-01-20
-- Reason: Sub-Phase 29C complete, continuing with remaining sub-phases
+- Last Updated: 2026-01-21
+- Reason: Sub-Phase 29D complete, Phase 29E in progress
 
 ## Active Sub-Phase
 
-- Sub-Phase: 29C — Bid Schedule Declaration
-- State: Complete
+- Sub-Phase: 29E — Confirmation and Bid Order Freezing
+- State: In Progress
 
 ## Completed Sub-Phases
 
@@ -22,14 +22,15 @@
 - [x] 29A — User Participation Flags
 - [x] 29B — Round Groups and Rounds (including semantic correction)
 - [x] 29C — Bid Schedule Declaration
+- [x] 29D — Readiness Evaluation
 
 ## Planned Sub-Phases
 
 - [x] 29A — User Participation Flags
 - [x] 29B — Round Groups and Rounds (COMPLETE)
 - [x] 29C — Bid Schedule Declaration (COMPLETE)
-- [ ] 29D — Readiness Evaluation
-- [ ] 29E — Confirmation and Bid Order Freezing
+- [x] 29D — Readiness Evaluation (COMPLETE)
+- [ ] 29E — Confirmation and Bid Order Freezing (IN PROGRESS)
 - [ ] 29F — Bid Status Tracking Structure
 - [ ] 29G — Post-Confirmation Bid Order Adjustments
 - [ ] 29H — Docker Compose Deployment
@@ -617,6 +618,78 @@ Phase 29D is fully complete with all required functionality implemented and test
 Ready to proceed to Phase 29E (Bid Order Freezing at Confirmation).
 
 ## Phase 29D Complete - 2026-01-21
+
+---
+
+## Phase 29E — Confirmation and Bid Order Freezing (In Progress)
+
+### 29E Current Status
+
+In Progress
+
+### 29E Last Updated
+
+2026-01-21
+
+### 29E Completed Work
+
+#### 29E Database Schema ✅ Complete
+
+- ✅ Created SQLite migration `2026-01-21-120000-0000_add_bid_windows_table/up.sql`
+- ✅ Created SQLite migration `2026-01-21-120000-0000_add_bid_windows_table/down.sql`
+- ✅ Created MySQL migration `2026-01-21-120000-0000_add_bid_windows_table/up.sql`
+- ✅ Created MySQL migration `2026-01-21-120000-0000_add_bid_windows_table/down.sql`
+- ✅ Added `bid_windows` table with fields:
+  - `bid_window_id` (PRIMARY KEY)
+  - `bid_year_id` (FK to bid_years)
+  - `area_id` (FK to areas)
+  - `user_id` (FK to users)
+  - `window_start_datetime` (UTC ISO 8601 TEXT)
+  - `window_end_datetime` (UTC ISO 8601 TEXT)
+  - UNIQUE constraint on (bid_year_id, area_id, user_id)
+- ✅ Updated Diesel schema in `persistence/src/diesel_schema.rs`
+- ✅ Schema parity verification passes
+
+#### 29E Domain Logic ✅ Complete
+
+- ✅ Created `domain/src/bid_window.rs` module
+- ✅ Implemented `BidWindow` struct with user_id, position, and UTC datetime fields
+- ✅ Implemented `calculate_bid_windows()` function:
+  - Takes user positions and BidSchedule
+  - Converts time::Date/Time to chrono types for calculation
+  - Calculates weekday offsets (skips weekends)
+  - Handles timezone conversions using chrono-tz
+  - Returns UTC ISO 8601 formatted timestamps
+- ✅ Implemented helper functions:
+  - `calculate_weekday_offset()` - determines day offset from position
+  - `add_weekdays()` - adds weekdays while skipping weekends
+  - `calculate_window_for_position()` - calculates individual window
+- ✅ Added comprehensive unit tests
+- ✅ Added error variants to `DomainError`:
+  - `InvalidBidStartDate` with date and reason
+  - `InvalidBidSchedule` with reason
+- ✅ Updated API error mappings in `api/src/error.rs`
+- ✅ Added chrono dependencies to workspace and domain crate
+- ✅ All tests pass
+- ✅ All clippy checks pass
+
+### 29E Outstanding Work
+
+- Bid order materialization persistence layer
+- Confirmation core logic implementation
+- Confirmation API endpoint
+- Editing lock enforcement
+- Integration tests
+
+### 29E Known Issues
+
+None
+
+### 29E Stop-and-Ask Items
+
+None
+
+## Phase 29E In Progress - 2026-01-21
 
 Phase 29D (Readiness Evaluation) has been successfully completed.
 
