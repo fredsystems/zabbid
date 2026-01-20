@@ -514,7 +514,7 @@ In Progress
 - ✅ Updated `UserRow` struct in state queries to include `no_bid_reviewed`
 - ✅ Updated all `User::with_id()` calls to pass `no_bid_reviewed`
 
-#### 29D API Layer ✅ Complete
+#### 29D User Flag API Layer ✅ Complete
 
 - ✅ Added `no_bid_reviewed` field to `UserInfo` response type
 - ✅ Updated `list_users` handler to include `no_bid_reviewed` in response
@@ -553,37 +553,93 @@ In Progress
 
 ### 29D Outstanding Work
 
-#### API Endpoints
+#### 29D Readiness API Layer ✅ Complete
 
-- [ ] Implement `GET /api/bid-years/{bid_year_id}/readiness` endpoint
-- [ ] Implement `POST /api/users/{user_id}/review-no-bid` endpoint
-- [ ] Define readiness response types
+- ✅ Defined API response types:
+  - `GetBidYearReadinessResponse`
+  - `ReadinessDetailsInfo`
+  - `ReviewNoBidUserResponse`
+- ✅ Implemented handler functions:
+  - `get_bid_year_readiness()` - evaluates all readiness criteria
+  - `review_no_bid_user()` - marks No Bid user as reviewed
+- ✅ Exposed readiness persistence queries via Persistence wrapper methods
+- ✅ Added num-traits dependency for safe i64->usize casting
+- ✅ Used ToPrimitive for safe database count conversions
+- ✅ Added dead_code allows until endpoints wired up in server
+- ✅ Build passes
+- ✅ `cargo xtask ci` passes
+- ✅ `pre-commit run --all-files` passes
+- ✅ Committed: "Phase 29D: Implement readiness evaluation API layer"
 
-#### Tests
+#### Next Steps After Decision
 
-- [ ] Unit tests for readiness criteria
-- [ ] Unit tests for seniority conflict detection
-- [ ] Unit tests for No Bid review tracking
-- [ ] Integration tests for readiness endpoint
-- [ ] Integration tests for review-no-bid endpoint
+- [ ] Wire up endpoints in server layer (Phase 29E or later)
+- [ ] Implement seniority conflict detection (currently returns 0)
+- [ ] Add integration tests for readiness endpoint
+- [ ] Add integration tests for review-no-bid endpoint
 
 ### 29D Known Issues
 
-- None at this time
+- Seniority conflict detection is stubbed (returns 0)
+- Endpoints not yet wired up in server layer
 
 ### 29D Stop-and-Ask Items
 
-- None at this time
+#### STOP: Seniority Conflict Detection Requires Clarification
+
+Phase 29D requires implementing seniority conflict detection as a readiness criterion.
+However, the actual bid order computation logic does not exist yet (appears to be in Phase 29E).
+
+**Current State:**
+
+- Seniority conflict detection is stubbed in domain layer (returns 0)
+- API handler uses the stubbed function
+- All other readiness criteria are fully implemented
+
+**Question:**
+
+How should seniority conflicts be detected without full bid order computation?
+
+**Options:**
+
+1. **Defer to Phase 29E**: Accept the stub for now, implement conflict detection when bid order computation is added in Phase 29E
+2. **Implement partial detection**: Check for duplicate seniority dates without full ordering logic
+3. **Implement full computation now**: Bring forward bid order computation from Phase 29E to Phase 29D
+
+**Recommendation:**
+
+Option 1 seems most aligned with phase boundaries, but requires confirmation that readiness evaluation can initially accept the stub.
+
+**Phase Document Quote (PHASE_29D.md):**
+
+> "This sub-phase must implement **seniority conflict detection**."
+
+This appears to be a firm requirement, suggesting we may need Option 2 or 3.
 
 ### 29D Resume Instructions
 
-**Next Task**: Implement API layer for readiness evaluation
+#### PAUSED: Awaiting Guidance on Seniority Conflict Detection
 
-1. Add API request/response types for readiness endpoints
-2. Implement `GET /api/bid-years/{bid_year_id}/readiness` endpoint
-3. Implement `POST /api/users/{user_id}/review-no-bid` endpoint
-4. Add Persistence struct methods for readiness queries
-5. Wire up API handlers in router
-6. Add integration tests
-7. Run `cargo xtask ci` and `pre-commit run --all-files`
-8. Update this working state document when complete
+**What's Complete:**
+
+- ✅ Database schema (no_bid_reviewed flag)
+- ✅ Domain types and logic
+- ✅ Persistence queries
+- ✅ API layer (handlers and response types)
+- ✅ All readiness criteria EXCEPT seniority conflict detection
+- ✅ Build, CI, and pre-commit all pass
+
+**What Requires Decision:**
+
+- ⚠️ Seniority conflict detection is stubbed (see Stop-and-Ask Items above)
+
+**To Resume After Decision:**
+
+1. Implement seniority conflict detection based on user guidance
+2. Add integration tests for readiness endpoint
+3. Add integration tests for review-no-bid endpoint
+4. Wire up endpoints in server layer (may be Phase 29E scope)
+
+**Last Commit:**
+
+- "Phase 29D: Implement readiness evaluation API layer"
