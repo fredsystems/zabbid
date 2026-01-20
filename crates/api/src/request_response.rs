@@ -256,6 +256,8 @@ pub struct UserInfo {
     pub excluded_from_bidding: bool,
     /// Phase 29A: Whether this user is excluded from leave calculation.
     pub excluded_from_leave_calculation: bool,
+    /// Phase 29D: Whether this user in "No Bid" system area has been reviewed.
+    pub no_bid_reviewed: bool,
     /// Target-specific capabilities for this user instance.
     pub capabilities: UserCapabilities,
 }

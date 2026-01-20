@@ -552,6 +552,7 @@ pub fn apply(
                 seniority_data,
                 false, // excluded_from_bidding: default to false
                 false, // excluded_from_leave_calculation: default to false
+                false, // no_bid_reviewed: default to false
             );
 
             // Validate user field constraints
@@ -733,6 +734,7 @@ pub fn apply(
                 seniority_data,
                 existing_user.excluded_from_bidding,
                 existing_user.excluded_from_leave_calculation,
+                existing_user.no_bid_reviewed,
             );
 
             // Validate user field constraints
@@ -815,6 +817,7 @@ pub fn apply(
                 existing_user.seniority_data.clone(),
                 excluded_from_bidding,
                 excluded_from_leave_calculation,
+                existing_user.no_bid_reviewed,
             );
 
             // Validate participation flag directional invariant

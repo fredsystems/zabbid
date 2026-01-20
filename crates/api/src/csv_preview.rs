@@ -238,6 +238,7 @@ fn parse_csv_row(
         seniority_data,
         false, // excluded_from_bidding: default to false
         false, // excluded_from_leave_calculation: default to false
+        false, // no_bid_reviewed: default to false
     );
 
     Ok(user)

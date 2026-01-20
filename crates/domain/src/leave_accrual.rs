@@ -289,6 +289,7 @@ mod tests {
             ),
             false, // excluded_from_bidding
             false, // excluded_from_leave_calculation
+            false, // no_bid_reviewed
         )
     }
 

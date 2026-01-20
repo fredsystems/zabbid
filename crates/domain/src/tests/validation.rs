@@ -29,6 +29,7 @@ fn create_test_user(bid_year: BidYear, initials: Initials) -> User {
         create_test_seniority_data(),
         false, // excluded_from_bidding
         false, // excluded_from_leave_calculation
+        false, // no_bid_reviewed
     )
 }
 
@@ -95,6 +96,7 @@ fn test_validate_user_fields_rejects_empty_name() {
         create_test_seniority_data(),
         false, // excluded_from_bidding
         false, // excluded_from_leave_calculation
+        false, // no_bid_reviewed
     );
 
     let result: Result<(), DomainError> = validate_user_fields(&user);
@@ -113,6 +115,7 @@ fn test_validate_user_fields_rejects_empty_area() {
         create_test_seniority_data(),
         false, // excluded_from_bidding
         false, // excluded_from_leave_calculation
+        false, // no_bid_reviewed
     );
 
     let result: Result<(), DomainError> = validate_user_fields(&user);
@@ -131,6 +134,7 @@ fn test_validate_user_fields_accepts_user_with_no_crew() {
         create_test_seniority_data(),
         false, // excluded_from_bidding
         false, // excluded_from_leave_calculation
+        false, // no_bid_reviewed
     );
 
     let result: Result<(), DomainError> = validate_user_fields(&user);
@@ -243,6 +247,7 @@ fn test_validate_participation_flags_both_false() {
         create_test_seniority_data(),
         false, // excluded_from_bidding
         false, // excluded_from_leave_calculation
+        false, // no_bid_reviewed
     );
 
     let result: Result<(), DomainError> = user.validate_participation_flags();
@@ -259,8 +264,9 @@ fn test_validate_participation_flags_both_true() {
         UserType::CPC,
         Some(Crew::new(1).unwrap()),
         create_test_seniority_data(),
-        true, // excluded_from_bidding
-        true, // excluded_from_leave_calculation
+        true,  // excluded_from_bidding
+        true,  // excluded_from_leave_calculation
+        false, // no_bid_reviewed
     );
 
     let result: Result<(), DomainError> = user.validate_participation_flags();
@@ -279,6 +285,7 @@ fn test_validate_participation_flags_excluded_from_bidding_only() {
         create_test_seniority_data(),
         true,  // excluded_from_bidding
         false, // excluded_from_leave_calculation
+        false, // no_bid_reviewed
     );
 
     let result: Result<(), DomainError> = user.validate_participation_flags();
@@ -297,6 +304,7 @@ fn test_validate_participation_flags_invalid_excluded_from_leave_only() {
         create_test_seniority_data(),
         false, // excluded_from_bidding
         true,  // excluded_from_leave_calculation
+        false, // no_bid_reviewed
     );
 
     let result: Result<(), DomainError> = user.validate_participation_flags();

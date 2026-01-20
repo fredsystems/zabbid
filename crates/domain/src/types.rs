@@ -670,6 +670,10 @@ pub struct User {
     /// If true, user does not count toward area leave capacity or maximum bid slots.
     /// Directional invariant: `excluded_from_leave_calculation` => `excluded_from_bidding`
     pub excluded_from_leave_calculation: bool,
+    /// Phase 29D: Whether this user in "No Bid" system area has been reviewed.
+    /// Review means the user was moved to a non-system area OR explicitly confirmed to remain in No Bid.
+    /// This flag is used by readiness evaluation to ensure all No Bid users are reviewed.
+    pub no_bid_reviewed: bool,
 }
 
 impl User {
@@ -698,6 +702,7 @@ impl User {
         seniority_data: SeniorityData,
         excluded_from_bidding: bool,
         excluded_from_leave_calculation: bool,
+        no_bid_reviewed: bool,
     ) -> Self {
         Self {
             user_id: None,
@@ -710,6 +715,7 @@ impl User {
             seniority_data,
             excluded_from_bidding,
             excluded_from_leave_calculation,
+            no_bid_reviewed,
         }
     }
 
@@ -738,6 +744,7 @@ impl User {
         seniority_data: SeniorityData,
         excluded_from_bidding: bool,
         excluded_from_leave_calculation: bool,
+        no_bid_reviewed: bool,
     ) -> Self {
         Self {
             user_id: Some(user_id),
@@ -750,6 +757,7 @@ impl User {
             seniority_data,
             excluded_from_bidding,
             excluded_from_leave_calculation,
+            no_bid_reviewed,
         }
     }
 

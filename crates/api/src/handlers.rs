@@ -1002,6 +1002,7 @@ pub fn list_users(
                 is_overdrawn: availability.is_overdrawn,
                 excluded_from_bidding: user.excluded_from_bidding,
                 excluded_from_leave_calculation: user.excluded_from_leave_calculation,
+                no_bid_reviewed: user.no_bid_reviewed,
                 capabilities,
             })
         })

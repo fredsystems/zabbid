@@ -582,6 +582,7 @@ fn test_checkpoint_on_state_with_multiple_users() {
             create_test_seniority_data(),
             false, // excluded_from_bidding
             false, // excluded_from_leave_calculation
+            false, // no_bid_reviewed
         ));
     }
 
@@ -621,6 +622,7 @@ fn test_finalize_preserves_existing_state() {
         create_test_seniority_data(),
         false, // excluded_from_bidding
         false, // excluded_from_leave_calculation
+        false, // no_bid_reviewed
     ));
 
     let active_bid_year: BidYear = BidYear::new(2026);
@@ -723,8 +725,9 @@ fn test_update_user_participation_successful() {
         UserType::CPC,
         Some(Crew::new(1).unwrap()),
         create_test_seniority_data(),
-        false, // excluded_from_bidding
-        false, // excluded_from_leave_calculation
+        false, // excluded_from_bidding: starts false
+        false, // excluded_from_leave_calculation: starts false
+        false, // no_bid_reviewed
     );
     let state: State = State {
         bid_year,
@@ -776,6 +779,7 @@ fn test_update_user_participation_invariant_violation() {
         create_test_seniority_data(),
         false, // excluded_from_bidding
         false, // excluded_from_leave_calculation
+        false, // no_bid_reviewed
     );
     let state: State = State {
         bid_year,
@@ -852,6 +856,7 @@ fn test_update_user_participation_preserves_other_fields() {
         create_test_seniority_data(),
         false, // excluded_from_bidding
         false, // excluded_from_leave_calculation
+        false, // no_bid_reviewed
     );
     let state: State = State {
         bid_year,

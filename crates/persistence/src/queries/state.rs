@@ -49,6 +49,7 @@ struct UserRow {
     lottery_value: Option<i32>,
     excluded_from_bidding: i32,
     excluded_from_leave_calculation: i32,
+    no_bid_reviewed: i32,
 }
 
 backend_fn! {
@@ -233,6 +234,7 @@ pub fn get_current_state(
             seniority_data,
             row.excluded_from_bidding != 0,
             row.excluded_from_leave_calculation != 0,
+            row.no_bid_reviewed != 0,
         );
         users_vec.push(user);
     }

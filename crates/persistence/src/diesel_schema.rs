@@ -56,7 +56,7 @@ diesel::table! {
 
 diesel::table! {
     canonical_area_membership (id) {
-        id -> Nullable<BigInt>,
+        id -> BigInt,
         bid_year_id -> BigInt,
         audit_event_id -> BigInt,
         user_id -> BigInt,
@@ -68,7 +68,7 @@ diesel::table! {
 
 diesel::table! {
     canonical_bid_order (id) {
-        id -> Nullable<BigInt>,
+        id -> BigInt,
         bid_year_id -> BigInt,
         audit_event_id -> BigInt,
         user_id -> BigInt,
@@ -80,7 +80,7 @@ diesel::table! {
 
 diesel::table! {
     canonical_bid_windows (id) {
-        id -> Nullable<BigInt>,
+        id -> BigInt,
         bid_year_id -> BigInt,
         audit_event_id -> BigInt,
         user_id -> BigInt,
@@ -93,7 +93,7 @@ diesel::table! {
 
 diesel::table! {
     canonical_eligibility (id) {
-        id -> Nullable<BigInt>,
+        id -> BigInt,
         bid_year_id -> BigInt,
         audit_event_id -> BigInt,
         user_id -> BigInt,
@@ -178,6 +178,7 @@ diesel::table! {
         lottery_value -> Nullable<Integer>,
         excluded_from_bidding -> Integer,
         excluded_from_leave_calculation -> Integer,
+        no_bid_reviewed -> Integer,
     }
 }
 

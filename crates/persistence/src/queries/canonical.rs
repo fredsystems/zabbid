@@ -316,6 +316,7 @@ pub fn list_users(
         Option<i32>,
         i32,
         i32,
+        i32,
     );
 
     let rows: Vec<UserRowTuple> = users::table
@@ -332,6 +333,7 @@ pub fn list_users(
             users::lottery_value,
             users::excluded_from_bidding,
             users::excluded_from_leave_calculation,
+            users::no_bid_reviewed,
         ))
         .filter(users::bid_year_id.eq(bid_year_id))
         .filter(users::area_id.eq(area_id))
@@ -352,6 +354,7 @@ pub fn list_users(
         lottery_value,
         excluded_from_bidding,
         excluded_from_leave_calculation,
+        no_bid_reviewed,
     ) in rows
     {
         let initials: Initials = Initials::new(&initials_str);
@@ -378,6 +381,7 @@ pub fn list_users(
             seniority_data,
             excluded_from_bidding != 0,
             excluded_from_leave_calculation != 0,
+            no_bid_reviewed != 0,
         );
         users_list.push(user);
     }
@@ -909,6 +913,7 @@ pub fn list_users_canonical(
         i32, // can_bid from canonical_eligibility
         i32, // excluded_from_bidding
         i32, // excluded_from_leave_calculation
+        i32, // no_bid_reviewed
     );
 
     let rows: Vec<UserRowTuple> = users::table
@@ -939,6 +944,7 @@ pub fn list_users_canonical(
             canonical_eligibility::can_bid,
             users::excluded_from_bidding,
             users::excluded_from_leave_calculation,
+            users::no_bid_reviewed,
         ))
         .filter(users::bid_year_id.eq(bid_year_id))
         .order(users::initials.asc())
@@ -959,6 +965,7 @@ pub fn list_users_canonical(
         _can_bid,
         excluded_from_bidding,
         excluded_from_leave_calculation,
+        no_bid_reviewed,
     ) in rows
     {
         let initials: Initials = Initials::new(&initials_str);
@@ -985,6 +992,7 @@ pub fn list_users_canonical(
             seniority_data,
             excluded_from_bidding != 0,
             excluded_from_leave_calculation != 0,
+            no_bid_reviewed != 0,
         );
         users_list.push(user);
     }
