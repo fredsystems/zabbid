@@ -26,7 +26,8 @@ jobs:
       - name: Use Determinate Cache
         uses: DeterminateSystems/magic-nix-cache-action@v13
         with:
-          upload-cache: false
+          use-flakehub: false
+          use-gha-cache: false
 
       # --- Enter your flake's devShell (same behavior as direnv) ---
       - name: Run checks in devShell
