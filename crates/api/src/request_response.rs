@@ -1445,15 +1445,13 @@ pub struct CreateRoundRequest {
 pub struct CreateRoundResponse {
     /// The canonical round identifier.
     pub round_id: i64,
-    /// The area ID this round belongs to.
-    pub area_id: i64,
-    /// The round group ID.
+    /// The round group ID this round belongs to.
     pub round_group_id: i64,
     /// The round number.
     pub round_number: u32,
     /// The display name.
     pub name: String,
-    /// A success message.
+    /// Success message.
     pub message: String,
 }
 
@@ -1485,15 +1483,13 @@ pub struct UpdateRoundRequest {
 pub struct UpdateRoundResponse {
     /// The canonical round identifier.
     pub round_id: i64,
-    /// The area ID this round belongs to.
-    pub area_id: i64,
-    /// The round group ID.
+    /// The round group ID this round belongs to.
     pub round_group_id: i64,
     /// The round number.
     pub round_number: u32,
     /// The display name.
     pub name: String,
-    /// A success message.
+    /// Success message.
     pub message: String,
 }
 
@@ -1502,9 +1498,7 @@ pub struct UpdateRoundResponse {
 pub struct RoundInfo {
     /// The canonical round identifier.
     pub round_id: i64,
-    /// The area ID this round belongs to.
-    pub area_id: i64,
-    /// The round group ID.
+    /// The round group ID this round belongs to.
     pub round_group_id: i64,
     /// The round number.
     pub round_number: u32,
@@ -1516,18 +1510,18 @@ pub struct RoundInfo {
     pub max_groups: u32,
     /// Maximum total hours.
     pub max_total_hours: u32,
-    /// Whether holidays are included in groups.
+    /// Whether holidays are included in this round.
     pub include_holidays: bool,
-    /// Whether overbidding is allowed.
+    /// Whether overbidding is allowed in this round.
     pub allow_overbid: bool,
 }
 
 /// API response for listing rounds.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ListRoundsResponse {
-    /// The area ID.
-    pub area_id: i64,
-    /// All rounds for this area.
+    /// The round group ID.
+    pub round_group_id: i64,
+    /// All rounds in this round group.
     pub rounds: Vec<RoundInfo>,
 }
 

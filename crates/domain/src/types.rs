@@ -216,6 +216,10 @@ pub struct Area {
     area_name: Option<String>,
     /// Phase 25B: Whether this is a system-managed area (e.g., "No Bid").
     is_system_area: bool,
+    /// Phase 29B: The round group this area references.
+    /// Non-system areas must reference exactly one round group.
+    /// System areas must not reference any round group (None).
+    round_group_id: Option<i64>,
 }
 
 // Phase 23A: Custom PartialEq and Hash that ignore area_id
@@ -252,6 +256,7 @@ impl Area {
             area_code: area_code.to_uppercase(),
             area_name: None,
             is_system_area: false,
+            round_group_id: None,
         }
     }
 
@@ -267,6 +272,7 @@ impl Area {
             area_code: area_code.to_uppercase(),
             area_name: None,
             is_system_area: true,
+            round_group_id: None,
         }
     }
 
@@ -284,12 +290,14 @@ impl Area {
         area_code: &str,
         area_name: Option<String>,
         is_system_area: bool,
+        round_group_id: Option<i64>,
     ) -> Self {
         Self {
             area_id: Some(area_id),
             area_code: area_code.to_uppercase(),
             area_name,
             is_system_area,
+            round_group_id,
         }
     }
 
@@ -315,6 +323,15 @@ impl Area {
     #[must_use]
     pub const fn is_system_area(&self) -> bool {
         self.is_system_area
+    }
+
+    /// Returns the round group ID this area references.
+    ///
+    /// Non-system areas should have exactly one round group.
+    /// System areas should have none.
+    #[must_use]
+    pub const fn round_group_id(&self) -> Option<i64> {
+        self.round_group_id
     }
 
     /// Legacy method for backward compatibility - returns `area_code`.
@@ -735,21 +752,19 @@ impl RoundGroup {
     }
 }
 
-/// A bidding round within an area.
+/// A bidding round within a round group.
 ///
-/// Rounds define the specific periods when users can bid for leave days,
-/// along with the constraints that apply during that period.
+/// Rounds carry all bidding rule fields and belong to round groups.
+/// Round groups are reusable collections of rounds that areas reference.
 #[allow(dead_code)]
 #[allow(clippy::struct_field_names)]
 pub struct Round {
     /// The canonical numeric identifier assigned by the database.
     /// `None` indicates the round has not been persisted yet.
     round_id: Option<i64>,
-    /// The area this round belongs to.
-    area: Area,
-    /// The round group that defines this round's configuration.
+    /// The round group this round belongs to.
     round_group: RoundGroup,
-    /// The round number (unique within the area).
+    /// The round number (unique within the round group).
     /// Determines the order in which rounds are executed.
     round_number: u32,
     /// The display name for this round.
@@ -775,9 +790,8 @@ impl Round {
     ///
     /// # Arguments
     ///
-    /// * `area` - The area this round belongs to
-    /// * `round_group` - The round group configuration
-    /// * `round_number` - The round number (unique within area)
+    /// * `round_group` - The round group this round belongs to
+    /// * `round_number` - The round number (unique within round group)
     /// * `name` - The display name for this round
     /// * `slots_per_day` - Maximum slots per day
     /// * `max_groups` - Maximum number of groups
@@ -788,7 +802,6 @@ impl Round {
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::missing_const_for_fn)]
     pub fn new(
-        area: Area,
         round_group: RoundGroup,
         round_number: u32,
         name: String,
@@ -800,7 +813,6 @@ impl Round {
     ) -> Self {
         Self {
             round_id: None,
-            area,
             round_group,
             round_number,
             name,
@@ -817,9 +829,8 @@ impl Round {
     /// # Arguments
     ///
     /// * `round_id` - The canonical numeric identifier
-    /// * `area` - The area this round belongs to
-    /// * `round_group` - The round group configuration
-    /// * `round_number` - The round number (unique within area)
+    /// * `round_group` - The round group this round belongs to
+    /// * `round_number` - The round number (unique within round group)
     /// * `name` - The display name for this round
     /// * `slots_per_day` - Maximum slots per day
     /// * `max_groups` - Maximum number of groups
@@ -831,7 +842,6 @@ impl Round {
     #[allow(clippy::missing_const_for_fn)]
     pub fn with_id(
         round_id: i64,
-        area: Area,
         round_group: RoundGroup,
         round_number: u32,
         name: String,
@@ -843,7 +853,6 @@ impl Round {
     ) -> Self {
         Self {
             round_id: Some(round_id),
-            area,
             round_group,
             round_number,
             name,
@@ -861,13 +870,7 @@ impl Round {
         self.round_id
     }
 
-    /// Returns the area this round belongs to.
-    #[must_use]
-    pub const fn area(&self) -> &Area {
-        &self.area
-    }
-
-    /// Returns the round group configuration.
+    /// Returns the round group this round belongs to.
     #[must_use]
     pub const fn round_group(&self) -> &RoundGroup {
         &self.round_group
@@ -913,27 +916,6 @@ impl Round {
     #[must_use]
     pub const fn allow_overbid(&self) -> bool {
         self.allow_overbid
-    }
-
-    /// Validates that this round is not being created for a system area.
-    ///
-    /// System areas (e.g., "No Bid") cannot have rounds.
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` if the area is not a system area.
-    ///
-    /// # Errors
-    ///
-    /// Returns `DomainError::CannotCreateRoundForSystemArea` if the area is a system area.
-    #[allow(dead_code)]
-    pub fn validate_not_system_area(&self) -> Result<(), crate::error::DomainError> {
-        if self.area.is_system_area() {
-            return Err(crate::error::DomainError::CannotCreateRoundForSystemArea {
-                area_code: self.area.area_code().to_owned(),
-            });
-        }
-        Ok(())
     }
 
     /// Validates the round configuration constraints.

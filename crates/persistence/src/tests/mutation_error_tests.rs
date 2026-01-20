@@ -128,7 +128,7 @@ fn test_update_user_with_nonexistent_area_id_returns_database_error() {
         setup_test_persistence_with_entities().expect("Failed to setup persistence");
 
     // Create an Area with a nonexistent area_id
-    let nonexistent_area = Area::with_id(99999, "INVALID", None, false);
+    let nonexistent_area = Area::with_id(99999, "INVALID", None, false, None);
     let initials = Initials::new("AB");
 
     // Even with nonexistent user, we hit area check first

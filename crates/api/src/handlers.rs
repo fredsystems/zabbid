@@ -5241,7 +5241,7 @@ pub fn delete_round_group(
     })
 }
 
-/// Creates a new round for an area.
+/// Creates a new round in a round group.
 ///
 /// Rounds are editable in `Draft` and `BootstrapComplete` states.
 /// After canonicalization, round configuration becomes immutable (or requires override).
@@ -5249,7 +5249,7 @@ pub fn delete_round_group(
 /// # Arguments
 ///
 /// * `persistence` - The persistence layer
-/// * `area_id` - The area ID this round belongs to
+/// * `round_group_id` - The round group ID this round belongs to
 /// * `request` - The round creation request
 /// * `authenticated_actor` - The authenticated actor performing the operation
 ///
@@ -5262,16 +5262,19 @@ pub fn delete_round_group(
 ///
 /// Returns an error if:
 /// - Actor is not authorized (Admin role required)
-/// - Area does not exist or is a system area
-/// - Lifecycle state does not allow round creation
-/// - Round number already exists in area
 /// - Round group does not exist
+/// - Lifecycle state does not allow round creation
+/// - Round number already exists in round group
 /// - Validation fails (`slots_per_day`, `max_groups`, `max_total_hours` must be > 0)
+///
+/// # Panics
+///
+/// Panics if the persisted round group does not have a `bid_year_id`.
 #[allow(dead_code)]
 #[allow(clippy::too_many_lines)]
 pub fn create_round(
     persistence: &mut SqlitePersistence,
-    area_id: i64,
+    round_group_id: i64,
     request: &crate::request_response::CreateRoundRequest,
     authenticated_actor: &AuthenticatedActor,
 ) -> Result<crate::request_response::CreateRoundResponse, ApiError> {
@@ -5286,24 +5289,22 @@ pub fn create_round(
     }
 
     // Get area to validate it exists and get bid_year_id
-    let (area, bid_year_id) = persistence.get_area_by_id(area_id).map_err(|e| match e {
-        PersistenceError::NotFound(_) => ApiError::ResourceNotFound {
-            resource_type: String::from("Area"),
-            message: format!("Area with ID {area_id} not found"),
-        },
-        _ => ApiError::Internal {
-            message: format!("Failed to get area: {e}"),
-        },
-    })?;
-
-    // Check if area is a system area
-    if area.is_system_area() {
-        return Err(translate_domain_error(
-            DomainError::CannotCreateRoundForSystemArea {
-                area_code: area.area_code().to_string(),
+    // Verify round group exists and get its bid year
+    let round_group = persistence
+        .get_round_group(round_group_id)
+        .map_err(|e| match e {
+            PersistenceError::NotFound(_) => {
+                translate_domain_error(DomainError::RoundGroupNotFound { round_group_id })
+            }
+            _ => ApiError::Internal {
+                message: format!("Failed to get round group: {e}"),
             },
-        ));
-    }
+        })?;
+
+    let bid_year_id = round_group
+        .bid_year()
+        .bid_year_id()
+        .expect("Round group must have bid_year_id");
 
     // Enforce lifecycle constraints
     let lifecycle_state_str: String =
@@ -5355,39 +5356,24 @@ pub fn create_round(
         });
     }
 
-    // Check for duplicate round number
+    // Check for duplicate round number within the round group
     let round_number_exists = persistence
-        .round_number_exists(area_id, request.round_number, None)
+        .round_number_exists(round_group_id, request.round_number, None)
         .map_err(|e| ApiError::Internal {
             message: format!("Failed to check round number: {e}"),
         })?;
 
     if round_number_exists {
         return Err(translate_domain_error(DomainError::DuplicateRoundNumber {
-            area_code: area.area_code().to_string(),
+            area_code: round_group.name().to_string(),
             round_number: request.round_number,
         }));
     }
 
-    // Verify round group exists
-    let _round_group = persistence
-        .get_round_group(request.round_group_id)
-        .map_err(|e| match e {
-            PersistenceError::NotFound(_) => {
-                translate_domain_error(DomainError::RoundGroupNotFound {
-                    round_group_id: request.round_group_id,
-                })
-            }
-            _ => ApiError::Internal {
-                message: format!("Failed to get round group: {e}"),
-            },
-        })?;
-
     // Insert the round
     let round_id = persistence
         .insert_round(
-            area_id,
-            request.round_group_id,
+            round_group_id,
             request.round_number,
             &request.name,
             request.slots_per_day,
@@ -5402,20 +5388,19 @@ pub fn create_round(
 
     Ok(crate::request_response::CreateRoundResponse {
         round_id,
-        area_id,
-        round_group_id: request.round_group_id,
+        round_group_id,
         round_number: request.round_number,
         name: request.name.clone(),
         message: format!("Created round {} '{}'", request.round_number, request.name),
     })
 }
 
-/// Lists all rounds for an area.
+/// Lists all rounds in a round group.
 ///
 /// # Arguments
 ///
 /// * `persistence` - The persistence layer
-/// * `area_id` - The area ID
+/// * `round_group_id` - The round group ID
 /// * `authenticated_actor` - The authenticated actor performing the operation
 ///
 /// # Returns
@@ -5435,7 +5420,7 @@ pub fn create_round(
 #[allow(dead_code)]
 pub fn list_rounds(
     persistence: &mut SqlitePersistence,
-    area_id: i64,
+    round_group_id: i64,
     authenticated_actor: &AuthenticatedActor,
 ) -> Result<crate::request_response::ListRoundsResponse, ApiError> {
     // Enforce authorization - only admins can view rounds
@@ -5447,7 +5432,7 @@ pub fn list_rounds(
     }
 
     let rounds = persistence
-        .list_rounds(area_id)
+        .list_rounds(round_group_id)
         .map_err(|e| ApiError::Internal {
             message: format!("Failed to list rounds: {e}"),
         })?;
@@ -5456,7 +5441,6 @@ pub fn list_rounds(
         .into_iter()
         .map(|r| crate::request_response::RoundInfo {
             round_id: r.round_id().expect("persisted round has ID"),
-            area_id,
             round_group_id: r
                 .round_group()
                 .round_group_id()
@@ -5472,7 +5456,7 @@ pub fn list_rounds(
         .collect();
 
     Ok(crate::request_response::ListRoundsResponse {
-        area_id,
+        round_group_id,
         rounds: round_infos,
     })
 }
@@ -5504,7 +5488,7 @@ pub fn list_rounds(
 ///
 /// # Panics
 ///
-/// Panics if the persisted round's area does not have an ID.
+/// Panics if the persisted round's round group does not have an ID or `bid_year_id`.
 #[allow(dead_code)]
 #[allow(clippy::too_many_lines)]
 pub fn update_round(
@@ -5522,7 +5506,7 @@ pub fn update_round(
         });
     }
 
-    // Get the existing round to find its area_id and bid_year_id
+    // Get the existing round to find its round_group_id and bid_year_id
     let existing_round = persistence
         .get_round(request.round_id)
         .map_err(|e| match e {
@@ -5534,18 +5518,23 @@ pub fn update_round(
             },
         })?;
 
-    let area_id = existing_round
-        .area()
-        .area_id()
-        .expect("persisted area has ID");
+    let round_group_id = existing_round
+        .round_group()
+        .round_group_id()
+        .expect("persisted round group has ID");
 
-    // Get bid_year_id from the database since Area doesn't have it
-    let (_area, bid_year_id) =
+    // Get bid_year_id from the round group
+    let round_group =
         persistence
-            .get_area_by_id(area_id)
+            .get_round_group(round_group_id)
             .map_err(|e| ApiError::Internal {
-                message: format!("Failed to get area for round: {e}"),
+                message: format!("Failed to get round group: {e}"),
             })?;
+
+    let bid_year_id = round_group
+        .bid_year()
+        .bid_year_id()
+        .expect("Round group must have bid_year_id");
 
     // Enforce lifecycle constraints
     let lifecycle_state_str: String =
@@ -5597,33 +5586,19 @@ pub fn update_round(
         });
     }
 
-    // Check for duplicate round number (excluding this round)
+    // Check for duplicate round number within the round group (excluding this round)
     let round_number_exists = persistence
-        .round_number_exists(area_id, request.round_number, Some(request.round_id))
+        .round_number_exists(round_group_id, request.round_number, Some(request.round_id))
         .map_err(|e| ApiError::Internal {
             message: format!("Failed to check round number: {e}"),
         })?;
 
     if round_number_exists {
         return Err(translate_domain_error(DomainError::DuplicateRoundNumber {
-            area_code: existing_round.area().area_code().to_string(),
+            area_code: round_group.name().to_string(),
             round_number: request.round_number,
         }));
     }
-
-    // Verify round group exists
-    let _round_group = persistence
-        .get_round_group(request.round_group_id)
-        .map_err(|e| match e {
-            PersistenceError::NotFound(_) => {
-                translate_domain_error(DomainError::RoundGroupNotFound {
-                    round_group_id: request.round_group_id,
-                })
-            }
-            _ => ApiError::Internal {
-                message: format!("Failed to get round group: {e}"),
-            },
-        })?;
 
     // Update the round
     persistence
@@ -5642,8 +5617,7 @@ pub fn update_round(
 
     Ok(crate::request_response::UpdateRoundResponse {
         round_id: request.round_id,
-        area_id,
-        round_group_id: request.round_group_id,
+        round_group_id,
         round_number: request.round_number,
         name: request.name.clone(),
         message: format!("Updated round {} '{}'", request.round_number, request.name),
@@ -5670,12 +5644,11 @@ pub fn update_round(
 /// Returns an error if:
 /// - Actor is not authorized (Admin role required)
 /// - Round does not exist
-/// - Lifecycle state does not allow updates
-/// - Round is referenced by other entities
+/// - Lifecycle state does not allow deletion
 ///
 /// # Panics
 ///
-/// Panics if the persisted round's area does not have an ID.
+/// Panics if the persisted round's round group does not have an ID or `bid_year_id`.
 #[allow(dead_code)]
 pub fn delete_round(
     persistence: &mut SqlitePersistence,
@@ -5702,17 +5675,22 @@ pub fn delete_round(
         },
     })?;
 
-    // Get bid_year_id from the database since Area doesn't have it
-    let area_id = existing_round
-        .area()
-        .area_id()
-        .expect("persisted area has ID");
-    let (_area, bid_year_id) =
+    // Get bid_year_id from the round group
+    let round_group_id = existing_round
+        .round_group()
+        .round_group_id()
+        .expect("persisted round group has ID");
+    let round_group =
         persistence
-            .get_area_by_id(area_id)
+            .get_round_group(round_group_id)
             .map_err(|e| ApiError::Internal {
-                message: format!("Failed to get area for round: {e}"),
+                message: format!("Failed to get round group: {e}"),
             })?;
+
+    let bid_year_id = round_group
+        .bid_year()
+        .bid_year_id()
+        .expect("Round group must have bid_year_id");
 
     // Enforce lifecycle constraints
     let lifecycle_state_str: String =

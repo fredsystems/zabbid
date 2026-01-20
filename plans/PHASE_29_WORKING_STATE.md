@@ -8,24 +8,23 @@
 ## Current Status
 
 - Status: In Progress
-- Last Updated: 2026-01-19
-- Reason: Sub-Phase 29B complete - moving to Sub-Phase 29C
+- Last Updated: 2026-01-20
+- Reason: Sub-Phase 29B semantic correction in progress - domain model mismatch identified and being corrected
 
 ## Active Sub-Phase
 
-- Sub-Phase: 29C — Bid Schedule Declaration
-- State: Not Started
+- Sub-Phase: 29B — Round Groups and Rounds (SEMANTIC CORRECTION)
+- State: In Progress - Correcting fundamental model mismatch
 
 ## Completed Sub-Phases
 
 - [x] Planning Pass — Sub-phase documents created
 - [x] 29A — User Participation Flags
-- [x] 29B — Round Groups and Rounds
 
 ## Planned Sub-Phases
 
 - [x] 29A — User Participation Flags (COMPLETE)
-- [x] 29B — Round Groups and Rounds (COMPLETE)
+- [ ] 29B — Round Groups and Rounds (SEMANTIC CORRECTION IN PROGRESS)
 - [ ] 29C — Bid Schedule Declaration
 - [ ] 29D — Readiness Evaluation
 - [ ] 29E — Confirmation and Bid Order Freezing
@@ -125,9 +124,19 @@
 - All clippy warnings resolved
 - All files tracked in git
 
-### Sub-Phase 29B (In Progress)
+### Sub-Phase 29B (Semantic Correction In Progress)
 
-#### Completed
+#### SEMANTIC MODEL CORRECTION REQUIRED
+
+**Issue Identified**: Initial implementation violated the authoritative domain model:
+
+- **WRONG**: Rounds referenced areas directly via `area_id`
+- **WRONG**: Round groups were not referenced by areas
+- **CORRECT**: Rounds belong to round groups, areas reference round groups
+- **CORRECT**: Round groups are reusable across multiple areas
+- **CORRECT**: Non-system areas must reference exactly one round group; system areas: none
+
+#### Completed — Semantic Correction Phase
 
 - [x] Database schema migrations created (SQLite and MySQL)
 - [x] Schema parity verified (`cargo xtask verify-migrations`)
@@ -153,24 +162,77 @@
 - [x] Round group in-use validation in delete handler
 - [x] Core command variants added (marked unreachable - not used for configuration)
 - [x] All files added to git
-- [x] Unit tests for domain validation methods (RoundGroup.validate*constraints, Round.validate*\*)
-- [x] Integration tests for API endpoints
-- [x] Constraint tests (system area rejection, unique round numbers, round group in use)
-- [x] Test lifecycle constraint enforcement
-- [x] Test duplicate name/number validation
-- [x] All tests pass (16 new tests in round_tests.rs, domain tests expanded)
-- [x] `cargo xtask ci` passes
-- [x] `pre-commit run --all-files` passes
 
-#### Sub-Phase 29B Complete
+**SEMANTIC CORRECTION STARTED - 2026-01-20**:
 
-All implementation, testing, and validation complete. Ready to move to Sub-Phase 29C.
+- [x] Created corrective migrations (SQLite & MySQL)
+  - [x] Removed `area_id` from `rounds` table
+  - [x] Added `round_group_id` to `areas` table
+  - [x] Changed unique constraint to `(round_group_id, round_number)`
+  - [x] Schema parity verified
+- [x] Updated Diesel schema
+  - [x] Added `round_group_id` to areas table definition
+  - [x] Removed `area_id` from rounds table definition
+  - [x] Updated joinable declarations
+- [x] Corrected domain types
+  - [x] Added `round_group_id: Option<i64>` to `Area` struct
+  - [x] Removed `area: Area` field from `Round` struct
+  - [x] Updated all constructors and accessors
+  - [x] Removed `validate_not_system_area()` from Round (no longer needed)
+  - [x] Updated documentation
+- [x] Fixed domain tests
+  - [x] Updated test helpers to match corrected model
+  - [x] Removed invalid system area test on rounds
+  - [x] All 129 domain tests pass
+
+#### Remaining Work — Semantic Correction Phase
+
+- [ ] **Persistence Layer** (CRITICAL - All queries need updating)
+  - [ ] Update `list_areas` to populate `round_group_id`
+  - [ ] Update all area creation/update queries to handle `round_group_id`
+  - [ ] Fix all `Area::with_id()` calls (now requires `round_group_id` parameter)
+  - [ ] Remove `area_id` from all round queries
+  - [ ] Update round CRUD to work with `round_group_id` only
+  - [ ] Update round list queries to query by round_group_id, not area_id
+
+- [ ] **API Layer** (All handlers need rework)
+  - [ ] Update `CreateRoundRequest` (remove area_id, only round_group_id)
+  - [ ] Update `list_rounds` handler (query by round_group_id, not area_id)
+  - [ ] Update all round handlers to work without area_id
+  - [ ] Update area response types to include `round_group_id`
+  - [ ] Add/update endpoints to assign round groups to areas
+  - [ ] Update area creation/update handlers to handle round group assignment
+
+- [ ] **API Tests** (All 16 integration tests need significant rework)
+  - [ ] Update tests: rounds created per round group (not per area)
+  - [ ] Add tests for area → round group assignment
+  - [ ] Add tests that areas can share round groups (reusability)
+  - [ ] Update all test helpers to match corrected model
+
+- [ ] **Planning Documents**
+  - [ ] Update `PHASE_29.md` to clarify corrected semantics
+  - [ ] Update `PHASE_29B.md` with authoritative domain model
+  - [ ] Ensure all other `PHASE_29x.md` documents do not encode this improper semantic issue.
+
+- [ ] **Final Validation**
+  - [ ] All tests pass
+  - [ ] `cargo xtask ci` passes
+  - [ ] `pre-commit run --all-files` passes
+  - [ ] Commit semantic correction changes
 
 ## Outstanding Work
 
+### Current Sub-Phase
+
+- **PRIORITY**: Complete semantic correction for Sub-Phase 29B
+  - Persistence layer updates (high complexity)
+  - API layer updates (all handlers)
+  - API test updates (all 16 tests)
+  - Planning document updates
+
 ### Future Sub-Phases
 
-- Complete Sub-Phase 29B (Round Groups and Rounds)
+- Complete Sub-Phase 29B semantic correction
 - Execute Sub-Phase 29C (Bid Schedule Declaration)
 - Execute Sub-Phase 29D (Readiness Evaluation)
 - Execute Sub-Phase 29E (Confirmation and Bid Order Freezing)
@@ -180,7 +242,13 @@ All implementation, testing, and validation complete. Ready to move to Sub-Phase
 
 ## Known Failures / Breakages
 
-None - all compilation errors resolved, all tests passing, CI passing.
+**SEMANTIC CORRECTION IN PROGRESS**:
+
+- Persistence layer: Queries still use old model (will fail when called)
+- API layer: Handlers reference old model (will fail when called)
+- API tests: 16 tests reference old model (currently broken, not run)
+- Domain layer: ✅ Corrected and tests passing (129 tests)
+- Database schema: ✅ Corrected via migrations
 
 ## Stop-and-Ask Items
 
@@ -188,64 +256,94 @@ None
 
 ## Resume Instructions
 
-### Immediate Next Steps for Sub-Phase 29B
+### CRITICAL: Complete Semantic Correction Before Proceeding
 
-1. **Persistence Layer**:
-   - Add queries for round groups (list, get, insert, update, delete)
-   - Add queries for rounds (list, get, insert, update, delete)
-   - Add query to check if round group is in use before deletion
-   - Test queries compile and work with existing database
+**DO NOT proceed to Sub-Phase 29C until 29B semantic correction is complete.**
 
-2. **Core Layer**:
-   - Add `CreateRoundGroup`, `UpdateRoundGroup`, `DeleteRoundGroup` commands
-   - Add `CreateRound`, `UpdateRound`, `DeleteRound` commands
-   - Implement command handlers with lifecycle constraint checks
-   - Validate system area constraint for rounds
-   - Generate appropriate audit events
+The initial implementation of 29B violated the authoritative domain model. Correction is in progress:
 
-3. **API Layer**:
-   - Implement round group endpoints (POST, GET, PATCH, DELETE)
-   - Implement round endpoints (POST, GET, PATCH, DELETE)
-   - Add request/response types
-   - Enforce lifecycle constraints (Draft/BootstrapComplete only)
-   - Return appropriate error responses
+**Corrected Domain Model**:
 
-4. **Testing**:
-   - Write domain validation tests
-   - Write core command tests
-   - Write API integration tests
-   - Test system area rejection
-   - Test unique constraints (round group name, round number)
-   - Test lifecycle constraints
+1. **Round Groups**: Ordered collections of rounds (reusable across areas)
+2. **Rounds**: Carry all bidding rules, belong to round groups (NOT areas)
+3. **Areas**: Reference exactly one round group (non-system) or none (system)
 
-5. **Final Validation**:
-   - Run `cargo test --lib`
-   - Run `cargo xtask ci`
-   - Run `pre-commit run --all-files`
-   - Update Phase 29B checklist in `plans/PHASE_29/PHASE_29B.md`
-   - Update this working state document
-   - Commit all changes
+**Corrections Applied**:
 
-6. **Move to Sub-Phase 29C**:
-   - Only after 29B is fully complete with all tests passing
+- ✅ Database schema migrations
+- ✅ Diesel schema
+- ✅ Domain types
+- ✅ Domain tests (129 passing)
 
-### Completion Criteria for 29B
+**Corrections Remaining** (in priority order):
 
-- [x] Database schema migrations created (both SQLite and MySQL)
+### 1. Persistence Layer Updates (NEXT - High Priority)
+
+- Update `list_areas()` in `queries/canonical.rs` to read `round_group_id` from database
+- Fix all `Area::with_id()` calls to include `round_group_id` parameter
+- Update area insert/update queries to handle `round_group_id`
+- Remove `area_id` parameter from all round queries
+- Update `list_rounds()` to query by `round_group_id` instead of `area_id`
+- Update round CRUD operations to work without `area_id`
+
+### 2. API Layer Updates
+
+- Update `CreateRoundRequest` to remove `area_id` field (use `round_group_id` only)
+- Update `list_rounds` handler signature (query by round_group_id)
+- Update area response types to include `round_group_id`
+- Update area handlers to manage round group assignment
+- Update all round handlers to work with corrected model
+
+### 3. API Tests Rework
+
+- Rewrite all 16 integration tests to match corrected model
+- Test rounds created per round group (not per area)
+- Test area → round group assignment
+- Test round group reusability across areas
+
+### 4. Planning Documents
+
+- Update `PHASE_29.md` with authoritative model
+- Update `PHASE_29B.md` with corrected semantics
+
+### 5. Final Validation
+
+- Run `cargo test --lib` (all tests must pass)
+- Run `cargo xtask ci`
+- Run `pre-commit run --all-files`
+- Commit semantic correction
+- Mark 29B complete
+- THEN proceed to 29C
+
+### Completion Criteria for 29B (Semantic Correction)
+
+**Schema & Domain**:
+
+- [x] Corrective migrations created (SQLite and MySQL)
 - [x] Schema parity verified
-- [x] Domain types created
-- [x] Domain error variants added
-- [x] API error translations added
-- [x] Persistence layer CRUD operations
-- [x] Core layer commands added (marked unreachable - configuration managed directly)
-- [x] API endpoints implemented (handlers created)
-- [x] System area constraint enforced (in create_round handler)
-- [x] Lifecycle constraints enforced (Draft/BootstrapComplete only)
-- [x] `cargo xtask ci` passes
-- [x] `pre-commit run --all-files` passes
-- [x] Unit tests for domain validation methods
-- [x] Integration tests for API endpoints
-- [x] Constraint tests (system area, unique round numbers, round group in use)
+- [x] Domain types corrected (Area has round_group_id, Round has no area)
+- [x] Domain tests updated and passing (129 tests)
+
+**Implementation** (IN PROGRESS):
+
+- [ ] Persistence layer queries updated for corrected model
+- [ ] API handlers updated for corrected model
+- [ ] API tests rewritten for corrected model
+- [ ] Planning documents updated
+
+**Validation**:
+
+- [ ] All tests pass (domain + persistence + API)
+- [ ] `cargo xtask ci` passes
+- [ ] `pre-commit run --all-files` passes
+- [ ] Semantic correction committed
+
+**Correctness Criteria** (MUST BE TRUE):
+
+- [ ] Rounds belong to round groups (not areas)
+- [ ] Areas reference exactly one round group (non-system) or none (system)
+- [ ] Round groups are reusable across multiple areas
+- [ ] Round number uniqueness is within round group (not within area)
 
 ### Reference Documents
 
@@ -253,3 +351,36 @@ None
 - Next sub-phase: `plans/PHASE_29/PHASE_29C.md`
 - Architectural rules: `AGENTS.md`
 - Execution protocol: `plans/PHASE_EXECUTION.md`
+
+---
+
+## PAUSED STATE - 2026-01-20
+
+**Uncommitted Work in Working Directory**:
+
+- Semantic correction Part 1 is complete but UNCOMMITTED
+- Changes staged but cannot commit due to persistence layer compilation errors
+- This is expected - persistence layer updates are Part 2 (next step)
+
+**What's Staged (Part 1 - Complete)**:
+
+- ✅ Database migrations (corrective)
+- ✅ Diesel schema updates
+- ✅ Domain type corrections
+- ✅ Domain test fixes
+- ✅ Working state document update
+
+**What's Broken (Expected)**:
+
+- ❌ Persistence layer still references old schema (area_id in rounds)
+- ❌ API handlers still use old model
+- ❌ API tests still use old model
+
+**Next Steps on Resume**:
+
+1. Update persistence layer queries (Part 2)
+2. Update API handlers
+3. Update API tests
+4. Commit all semantic corrections together
+5. Verify all tests pass
+6. Mark 29B complete

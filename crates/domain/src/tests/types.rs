@@ -312,11 +312,6 @@ fn create_test_bid_year() -> BidYear {
     BidYear::new(2026)
 }
 
-/// Helper to create a test area
-fn create_test_area() -> Area {
-    Area::new("North")
-}
-
 /// Helper to create a test round group
 fn create_test_round_group() -> RoundGroup {
     RoundGroup::new(create_test_bid_year(), String::from("Regular Round"), true)
@@ -325,7 +320,6 @@ fn create_test_round_group() -> RoundGroup {
 /// Helper to create a test round
 fn create_test_round() -> Round {
     Round::new(
-        create_test_area(),
         create_test_round_group(),
         1,
         String::from("Round 1"),
@@ -390,7 +384,6 @@ fn test_round_validate_constraints_accepts_valid_configuration() {
 #[test]
 fn test_round_validate_constraints_rejects_zero_slots_per_day() {
     let round = Round::new(
-        create_test_area(),
         create_test_round_group(),
         1,
         String::from("Round 1"),
@@ -413,7 +406,6 @@ fn test_round_validate_constraints_rejects_zero_slots_per_day() {
 #[test]
 fn test_round_validate_constraints_rejects_zero_max_groups() {
     let round = Round::new(
-        create_test_area(),
         create_test_round_group(),
         1,
         String::from("Round 1"),
@@ -436,7 +428,6 @@ fn test_round_validate_constraints_rejects_zero_max_groups() {
 #[test]
 fn test_round_validate_constraints_rejects_zero_max_total_hours() {
     let round = Round::new(
-        create_test_area(),
         create_test_round_group(),
         1,
         String::from("Round 1"),
@@ -459,7 +450,6 @@ fn test_round_validate_constraints_rejects_zero_max_total_hours() {
 #[test]
 fn test_round_validate_constraints_rejects_empty_name() {
     let round = Round::new(
-        create_test_area(),
         create_test_round_group(),
         1,
         String::new(),
@@ -482,7 +472,6 @@ fn test_round_validate_constraints_rejects_empty_name() {
 #[test]
 fn test_round_validate_constraints_rejects_whitespace_only_name() {
     let round = Round::new(
-        create_test_area(),
         create_test_round_group(),
         1,
         String::from("   "),
@@ -505,7 +494,6 @@ fn test_round_validate_constraints_rejects_whitespace_only_name() {
 #[test]
 fn test_round_validate_constraints_accepts_minimum_valid_values() {
     let round = Round::new(
-        create_test_area(),
         create_test_round_group(),
         1,
         String::from("Minimal Round"),
@@ -519,47 +507,8 @@ fn test_round_validate_constraints_accepts_minimum_valid_values() {
 }
 
 #[test]
-fn test_round_validate_not_system_area_accepts_regular_area() {
-    let round = create_test_round();
-    assert!(round.validate_not_system_area().is_ok());
-}
-
-#[test]
-fn test_round_validate_not_system_area_rejects_system_area() {
-    // Create a system area using the with_id constructor
-    let system_area = Area::with_id(
-        1,
-        "NO_BID",
-        Some(String::from("No Bid")),
-        true, // is_system_area
-    );
-
-    let round = Round::new(
-        system_area,
-        create_test_round_group(),
-        1,
-        String::from("Invalid Round"),
-        10,
-        5,
-        80,
-        false,
-        false,
-    );
-
-    let result = round.validate_not_system_area();
-    assert!(matches!(
-        result,
-        Err(DomainError::CannotCreateRoundForSystemArea { .. })
-    ));
-    if let Err(DomainError::CannotCreateRoundForSystemArea { area_code }) = result {
-        assert_eq!(area_code, "NO_BID");
-    }
-}
-
-#[test]
 fn test_round_with_overbid_allowed() {
     let round = Round::new(
-        create_test_area(),
         create_test_round_group(),
         1,
         String::from("Carryover Round"),
@@ -576,7 +525,6 @@ fn test_round_with_overbid_allowed() {
 #[test]
 fn test_round_with_holidays_included() {
     let round = Round::new(
-        create_test_area(),
         create_test_round_group(),
         1,
         String::from("Holiday Round"),

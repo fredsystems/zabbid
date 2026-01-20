@@ -122,7 +122,8 @@ pub fn get_bootstrap_metadata(conn: &mut _) -> Result<BootstrapMetadata, Persist
     }
 
     // Query canonical areas table
-    let area_rows: Vec<(i64, i64, i32, String, Option<String>, i32)> = areas::table
+    #[allow(clippy::type_complexity)]
+    let area_rows = areas::table
         .inner_join(bid_years::table)
         .select((
             areas::area_id,
@@ -131,14 +132,15 @@ pub fn get_bootstrap_metadata(conn: &mut _) -> Result<BootstrapMetadata, Persist
             areas::area_code,
             areas::area_name,
             areas::is_system_area,
+            areas::round_group_id,
         ))
         .order((bid_years::year.asc(), areas::area_code.asc()))
-        .load::<(i64, i64, i32, String, Option<String>, i32)>(conn)?;
+        .load::<(i64, i64, i32, String, Option<String>, i32, Option<i64>)>(conn)?;
 
-    for (area_id, bid_year_id_val, year_value, code, name, is_sys) in area_rows {
+    for (area_id, bid_year_id_val, year_value, code, name, is_sys, rg_id) in area_rows {
         let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
         let bid_year: BidYear = BidYear::with_id(bid_year_id_val, year);
-        let area: Area = Area::with_id(area_id, &code, name, is_sys != 0);
+        let area: Area = Area::with_id(area_id, &code, name, is_sys != 0, rg_id);
         metadata.areas.push((bid_year, area));
     }
 
@@ -224,15 +226,16 @@ backend_fn! {
 ///
 /// Returns an error if the database cannot be queried.
 pub fn list_areas(conn: &mut _, bid_year_id: i64) -> Result<Vec<Area>, PersistenceError> {
-    let rows: Vec<(i64, String, Option<String>, i32)> = areas::table
-        .select((areas::area_id, areas::area_code, areas::area_name, areas::is_system_area))
+    #[allow(clippy::type_complexity)]
+    let rows = areas::table
+        .select((areas::area_id, areas::area_code, areas::area_name, areas::is_system_area, areas::round_group_id))
         .filter(areas::bid_year_id.eq(bid_year_id))
         .order(areas::area_code.asc())
-        .load::<(i64, String, Option<String>, i32)>(conn)?;
+        .load::<(i64, String, Option<String>, i32, Option<i64>)>(conn)?;
 
     let areas_list: Vec<Area> = rows
         .into_iter()
-        .map(|(area_id, code, name, is_sys)| Area::with_id(area_id, &code, name, is_sys != 0))
+        .map(|(area_id, code, name, is_sys, rg_id)| Area::with_id(area_id, &code, name, is_sys != 0, rg_id))
         .collect();
 
     Ok(areas_list)
@@ -251,14 +254,15 @@ backend_fn! {
 ///
 /// Returns an error if the area does not exist or the database cannot be queried.
 pub fn get_area_by_id(conn: &mut _, area_id: i64) -> Result<(Area, i64), PersistenceError> {
-    let (aid, bid_year_id, code, name, is_sys): (i64, i64, String, Option<String>, i32) = areas::table
-        .select((areas::area_id, areas::bid_year_id, areas::area_code, areas::area_name, areas::is_system_area))
+    #[allow(clippy::type_complexity)]
+    let (aid, bid_year_id, code, name, is_sys, rg_id) = areas::table
+        .select((areas::area_id, areas::bid_year_id, areas::area_code, areas::area_name, areas::is_system_area, areas::round_group_id))
         .filter(areas::area_id.eq(area_id))
-        .first::<(i64, i64, String, Option<String>, i32)>(conn)?;
+        .first::<(i64, i64, String, Option<String>, i32, Option<i64>)>(conn)?;
 
     // Area doesn't have a bid_year field - it's tracked in the database
     // Return both the area and its bid_year_id for round validation
-    let area = Area::with_id(aid, &code, name, is_sys != 0);
+    let area = Area::with_id(aid, &code, name, is_sys != 0, rg_id);
 
     Ok((area, bid_year_id))
 }

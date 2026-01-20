@@ -16,7 +16,7 @@
 use diesel::prelude::*;
 use diesel::{MysqlConnection, SqliteConnection};
 use num_traits::cast::ToPrimitive;
-use zab_bid_domain::{Area, BidYear, Round, RoundGroup};
+use zab_bid_domain::{BidYear, Round, RoundGroup};
 
 use crate::diesel_schema::{round_groups, rounds};
 use crate::error::PersistenceError;
@@ -249,28 +249,27 @@ pub fn round_group_name_exists(
 }
 
 backend_fn! {
-/// Lists all rounds for a given area.
+/// Lists all rounds for a given round group.
 ///
 /// # Arguments
 ///
 /// * `conn` - The database connection
-/// * `area_id` - The area ID
+/// * `round_group_id` - The round group ID
 ///
 /// # Errors
 ///
 /// Returns an error if the query fails.
 pub fn list_rounds(
     conn: &mut _,
-    area_id: i64,
+    round_group_id: i64,
 ) -> Result<Vec<Round>, PersistenceError> {
     // This is a simplified implementation. A full implementation would
-    // join with areas and round_groups to reconstruct complete domain objects.
+    // join with round_groups to reconstruct complete domain objects.
     // For Phase 29B, we accept this limitation.
     let rows = rounds::table
-        .filter(rounds::area_id.eq(area_id))
+        .filter(rounds::round_group_id.eq(round_group_id))
         .select((
             rounds::round_id,
-            rounds::area_id,
             rounds::round_group_id,
             rounds::round_number,
             rounds::name,
@@ -280,16 +279,15 @@ pub fn list_rounds(
             rounds::include_holidays,
             rounds::allow_overbid,
         ))
-        .load::<(i64, i64, i64, i32, String, i32, i32, i32, i32, i32)>(conn)?;
+        .load::<(i64, i64, i32, String, i32, i32, i32, i32, i32)>(conn)?;
 
     // Placeholder: construct minimal domain objects
-    // In production, we would join tables to get full Area and RoundGroup objects
+    // In production, we would join tables to get full RoundGroup objects
     rows.into_iter()
         .map(
             |(
                 round_id,
-                _area_id,
-                round_group_id,
+                rg_id,
                 round_number,
                 name,
                 slots_per_day,
@@ -298,13 +296,11 @@ pub fn list_rounds(
                 include_holidays,
                 allow_overbid,
             )| {
-                let area = Area::with_id(area_id, "", None, false);
                 let bid_year = BidYear::with_id(0, 0);
-                let round_group = RoundGroup::with_id(round_group_id, bid_year, String::new(), true);
+                let round_group = RoundGroup::with_id(rg_id, bid_year, String::new(), true);
 
                 Ok(Round::with_id(
                     round_id,
-                    area,
                     round_group,
                     round_number.to_u32().unwrap_or(0),
                     name,
@@ -337,7 +333,6 @@ pub fn get_round(
 ) -> Result<Round, PersistenceError> {
     let (
         r_id,
-        area_id,
         round_group_id,
         round_number,
         name,
@@ -350,7 +345,6 @@ pub fn get_round(
         .filter(rounds::round_id.eq(round_id))
         .select((
             rounds::round_id,
-            rounds::area_id,
             rounds::round_group_id,
             rounds::round_number,
             rounds::name,
@@ -360,15 +354,13 @@ pub fn get_round(
             rounds::include_holidays,
             rounds::allow_overbid,
         ))
-        .first::<(i64, i64, i64, i32, String, i32, i32, i32, i32, i32)>(conn)?;
+        .first::<(i64, i64, i32, String, i32, i32, i32, i32, i32)>(conn)?;
 
-    let area = Area::with_id(area_id, "", None, false);
     let bid_year = BidYear::with_id(0, 0);
     let round_group = RoundGroup::with_id(round_group_id, bid_year, String::new(), true);
 
     Ok(Round::with_id(
         r_id,
-        area,
         round_group,
         round_number.to_u32().unwrap_or(0),
         name,
@@ -387,7 +379,6 @@ backend_fn! {
 /// # Arguments
 ///
 /// * `conn` - The database connection
-/// * `area_id` - The area ID
 /// * `round_group_id` - The round group ID
 /// * `round_number` - The round number
 /// * `name` - The round name
@@ -403,7 +394,6 @@ backend_fn! {
 #[allow(clippy::too_many_arguments)]
 pub fn insert_round(
     conn: &mut _,
-    area_id: i64,
     round_group_id: i64,
     round_number: u32,
     name: &str,
@@ -415,7 +405,6 @@ pub fn insert_round(
 ) -> Result<i64, PersistenceError> {
     diesel::insert_into(rounds::table)
         .values((
-            rounds::area_id.eq(area_id),
             rounds::round_group_id.eq(round_group_id),
             rounds::round_number.eq(round_number.to_i32().unwrap_or(0)),
             rounds::name.eq(name),
@@ -501,12 +490,12 @@ pub fn delete_round(
 }
 
 backend_fn! {
-/// Checks if a round number exists within an area.
+/// Checks if a round number exists within a round group.
 ///
 /// # Arguments
 ///
 /// * `conn` - The database connection
-/// * `area_id` - The area ID
+/// * `round_group_id` - The round group ID
 /// * `round_number` - The round number
 /// * `exclude_id` - Optional round ID to exclude from the check
 ///
@@ -515,12 +504,12 @@ backend_fn! {
 /// Returns an error if the query fails.
 pub fn round_number_exists(
     conn: &mut _,
-    area_id: i64,
+    round_group_id: i64,
     round_number: u32,
     exclude_id: Option<i64>,
 ) -> Result<bool, PersistenceError> {
     let mut query = rounds::table
-        .filter(rounds::area_id.eq(area_id))
+        .filter(rounds::round_group_id.eq(round_group_id))
         .filter(rounds::round_number.eq(round_number.to_i32().unwrap_or(0)))
         .into_boxed();
 

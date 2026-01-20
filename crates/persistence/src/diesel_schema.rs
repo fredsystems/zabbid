@@ -12,6 +12,7 @@ diesel::table! {
         area_name -> Nullable<Text>,
         expected_user_count -> Nullable<Integer>,
         is_system_area -> Integer,
+        round_group_id -> Nullable<BigInt>,
     }
 }
 
@@ -123,7 +124,6 @@ diesel::table! {
 diesel::table! {
     rounds (round_id) {
         round_id -> BigInt,
-        area_id -> BigInt,
         round_group_id -> BigInt,
         round_number -> Integer,
         name -> Text,
@@ -177,6 +177,7 @@ diesel::table! {
 }
 
 diesel::joinable!(areas -> bid_years (bid_year_id));
+diesel::joinable!(areas -> round_groups (round_group_id));
 diesel::joinable!(audit_events -> areas (area_id));
 diesel::joinable!(audit_events -> bid_years (bid_year_id));
 diesel::joinable!(audit_events -> operators (actor_operator_id));
@@ -194,7 +195,6 @@ diesel::joinable!(canonical_eligibility -> audit_events (audit_event_id));
 diesel::joinable!(canonical_eligibility -> bid_years (bid_year_id));
 diesel::joinable!(canonical_eligibility -> users (user_id));
 diesel::joinable!(round_groups -> bid_years (bid_year_id));
-diesel::joinable!(rounds -> areas (area_id));
 diesel::joinable!(rounds -> round_groups (round_group_id));
 diesel::joinable!(sessions -> operators (operator_id));
 diesel::joinable!(state_snapshots -> areas (area_id));

@@ -2381,19 +2381,23 @@ impl Persistence {
         }
     }
 
-    /// Lists all rounds for a given area.
+    /// Lists all rounds for a given round group.
     ///
     /// # Arguments
     ///
-    /// * `area_id` - The area ID
+    /// * `round_group_id` - The round group ID
     ///
     /// # Errors
     ///
     /// Returns an error if the query fails.
-    pub fn list_rounds(&mut self, area_id: i64) -> Result<Vec<Round>, PersistenceError> {
+    pub fn list_rounds(&mut self, round_group_id: i64) -> Result<Vec<Round>, PersistenceError> {
         match &mut self.conn {
-            BackendConnection::Sqlite(conn) => queries::rounds::list_rounds_sqlite(conn, area_id),
-            BackendConnection::Mysql(conn) => queries::rounds::list_rounds_mysql(conn, area_id),
+            BackendConnection::Sqlite(conn) => {
+                queries::rounds::list_rounds_sqlite(conn, round_group_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::rounds::list_rounds_mysql(conn, round_group_id)
+            }
         }
     }
 
@@ -2417,7 +2421,6 @@ impl Persistence {
     ///
     /// # Arguments
     ///
-    /// * `area_id` - The area ID
     /// * `round_group_id` - The round group ID
     /// * `round_number` - The round number
     /// * `name` - The round name
@@ -2433,7 +2436,6 @@ impl Persistence {
     #[allow(clippy::too_many_arguments)]
     pub fn insert_round(
         &mut self,
-        area_id: i64,
         round_group_id: i64,
         round_number: u32,
         name: &str,
@@ -2446,7 +2448,6 @@ impl Persistence {
         match &mut self.conn {
             BackendConnection::Sqlite(conn) => queries::rounds::insert_round_sqlite(
                 conn,
-                area_id,
                 round_group_id,
                 round_number,
                 name,
@@ -2458,7 +2459,6 @@ impl Persistence {
             ),
             BackendConnection::Mysql(conn) => queries::rounds::insert_round_mysql(
                 conn,
-                area_id,
                 round_group_id,
                 round_number,
                 name,
@@ -2537,11 +2537,11 @@ impl Persistence {
         }
     }
 
-    /// Checks if a round number exists within an area.
+    /// Checks if a round number exists within a round group.
     ///
     /// # Arguments
     ///
-    /// * `area_id` - The area ID
+    /// * `round_group_id` - The round group ID
     /// * `round_number` - The round number
     /// * `exclude_id` - Optional round ID to exclude from the check
     ///
@@ -2550,17 +2550,23 @@ impl Persistence {
     /// Returns an error if the query fails.
     pub fn round_number_exists(
         &mut self,
-        area_id: i64,
+        round_group_id: i64,
         round_number: u32,
         exclude_id: Option<i64>,
     ) -> Result<bool, PersistenceError> {
         match &mut self.conn {
-            BackendConnection::Sqlite(conn) => {
-                queries::rounds::round_number_exists_sqlite(conn, area_id, round_number, exclude_id)
-            }
-            BackendConnection::Mysql(conn) => {
-                queries::rounds::round_number_exists_mysql(conn, area_id, round_number, exclude_id)
-            }
+            BackendConnection::Sqlite(conn) => queries::rounds::round_number_exists_sqlite(
+                conn,
+                round_group_id,
+                round_number,
+                exclude_id,
+            ),
+            BackendConnection::Mysql(conn) => queries::rounds::round_number_exists_mysql(
+                conn,
+                round_group_id,
+                round_number,
+                exclude_id,
+            ),
         }
     }
 
