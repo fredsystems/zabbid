@@ -5,6 +5,8 @@
 
 //! Test module for the API crate.
 
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 mod api_tests;
 mod authorization_tests;
 mod helpers;

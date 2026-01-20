@@ -194,10 +194,12 @@ pub fn persist_bootstrap_sqlite(
     match result.audit_event.action.name.as_str() {
         "CreateBidYear" => {
             // Extract canonical bid year metadata
-            let canonical: &CanonicalBidYear = result
-                .canonical_bid_year
-                .as_ref()
-                .expect("CreateBidYear must include canonical_bid_year");
+            let canonical: &CanonicalBidYear =
+                result.canonical_bid_year.as_ref().ok_or_else(|| {
+                    PersistenceError::Other(
+                        "CreateBidYear must include canonical_bid_year".to_string(),
+                    )
+                })?;
 
             // Format date as ISO 8601 string for storage
             let start_date_str: String = canonical.start_date().to_string();
@@ -253,7 +255,9 @@ pub fn persist_bootstrap_sqlite(
                     .audit_event
                     .bid_year
                     .as_ref()
-                    .expect("CreateArea must have bid_year")
+                    .ok_or_else(|| {
+                        PersistenceError::Other("CreateArea must have bid_year".to_string())
+                    })?
                     .year(),
             )?;
 
@@ -265,7 +269,9 @@ pub fn persist_bootstrap_sqlite(
                         .audit_event
                         .area
                         .as_ref()
-                        .expect("CreateArea must have area")
+                        .ok_or_else(|| {
+                            PersistenceError::Other("CreateArea must have area".to_string())
+                        })?
                         .id()),
                 ))
                 .execute(conn)?;
@@ -279,7 +285,9 @@ pub fn persist_bootstrap_sqlite(
                     .audit_event
                     .area
                     .as_ref()
-                    .expect("CreateArea must have area")
+                    .ok_or_else(|| {
+                        PersistenceError::Other("CreateArea must have area".to_string())
+                    })?
                     .id(),
                 "Inserted area into canonical table"
             );
@@ -295,16 +303,12 @@ pub fn persist_bootstrap_sqlite(
 
             // Create an initial empty snapshot for new areas
             let initial_state: State = State::new(
-                result
-                    .audit_event
-                    .bid_year
-                    .clone()
-                    .expect("CreateArea must have bid_year"),
-                result
-                    .audit_event
-                    .area
-                    .clone()
-                    .expect("CreateArea must have area"),
+                result.audit_event.bid_year.clone().ok_or_else(|| {
+                    PersistenceError::Other("CreateArea must have bid_year".to_string())
+                })?,
+                result.audit_event.area.clone().ok_or_else(|| {
+                    PersistenceError::Other("CreateArea must have area".to_string())
+                })?,
             );
             persist_state_snapshot_sqlite(conn, &initial_state, event_id)?;
             debug!(event_id, "Created initial empty snapshot for new area");
@@ -348,10 +352,12 @@ pub fn persist_bootstrap_mysql(
     match result.audit_event.action.name.as_str() {
         "CreateBidYear" => {
             // Extract canonical bid year metadata
-            let canonical: &CanonicalBidYear = result
-                .canonical_bid_year
-                .as_ref()
-                .expect("CreateBidYear must include canonical_bid_year");
+            let canonical: &CanonicalBidYear =
+                result.canonical_bid_year.as_ref().ok_or_else(|| {
+                    PersistenceError::Other(
+                        "CreateBidYear must include canonical_bid_year".to_string(),
+                    )
+                })?;
 
             // Format date as ISO 8601 string for storage
             let start_date_str: String = canonical.start_date().to_string();
@@ -407,7 +413,9 @@ pub fn persist_bootstrap_mysql(
                     .audit_event
                     .bid_year
                     .as_ref()
-                    .expect("CreateArea must have bid_year")
+                    .ok_or_else(|| {
+                        PersistenceError::Other("CreateArea must have bid_year".to_string())
+                    })?
                     .year(),
             )?;
 
@@ -419,7 +427,9 @@ pub fn persist_bootstrap_mysql(
                         .audit_event
                         .area
                         .as_ref()
-                        .expect("CreateArea must have area")
+                        .ok_or_else(|| {
+                            PersistenceError::Other("CreateArea must have area".to_string())
+                        })?
                         .id()),
                 ))
                 .execute(conn)?;
@@ -433,7 +443,9 @@ pub fn persist_bootstrap_mysql(
                     .audit_event
                     .area
                     .as_ref()
-                    .expect("CreateArea must have area")
+                    .ok_or_else(|| {
+                        PersistenceError::Other("CreateArea must have area".to_string())
+                    })?
                     .id(),
                 "Inserted area into canonical table"
             );
@@ -449,16 +461,12 @@ pub fn persist_bootstrap_mysql(
 
             // Create an initial empty snapshot for new areas
             let initial_state: State = State::new(
-                result
-                    .audit_event
-                    .bid_year
-                    .clone()
-                    .expect("CreateArea must have bid_year"),
-                result
-                    .audit_event
-                    .area
-                    .clone()
-                    .expect("CreateArea must have area"),
+                result.audit_event.bid_year.clone().ok_or_else(|| {
+                    PersistenceError::Other("CreateArea must have bid_year".to_string())
+                })?,
+                result.audit_event.area.clone().ok_or_else(|| {
+                    PersistenceError::Other("CreateArea must have area".to_string())
+                })?,
             );
             persist_state_snapshot_mysql(conn, &initial_state, event_id)?;
             debug!(event_id, "Created initial empty snapshot for new area");
@@ -754,7 +762,7 @@ fn build_canonical_records_and_snapshot(
             use std::time::{SystemTime, UNIX_EPOCH};
             let duration = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .expect("System time before UNIX epoch");
+                .map_err(|e| PersistenceError::Other(format!("SystemTime error: {e}")))?;
             format!("unix_{}", duration.as_secs())
         },
     };

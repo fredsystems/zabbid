@@ -2238,7 +2238,7 @@ pub fn bootstrap_login(
     // Generate a bootstrap token (simple, temporary)
     let timestamp: u128 = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
         .as_nanos();
     let bootstrap_token: String = format!("bootstrap_{timestamp}_{}", rand::random::<u64>());
 
@@ -4986,13 +4986,18 @@ pub fn list_round_groups(
 
     let round_group_infos: Vec<crate::request_response::RoundGroupInfo> = round_groups
         .into_iter()
-        .map(|rg| crate::request_response::RoundGroupInfo {
-            round_group_id: rg.round_group_id().expect("persisted round group has ID"),
-            bid_year_id,
-            name: rg.name().to_string(),
-            editing_enabled: rg.editing_enabled(),
+        .map(|rg| {
+            let round_group_id = rg.round_group_id().ok_or_else(|| ApiError::Internal {
+                message: String::from("persisted round group missing ID"),
+            })?;
+            Ok(crate::request_response::RoundGroupInfo {
+                round_group_id,
+                bid_year_id,
+                name: rg.name().to_string(),
+                editing_enabled: rg.editing_enabled(),
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, ApiError>>()?;
 
     Ok(crate::request_response::ListRoundGroupsResponse {
         bid_year_id,
@@ -5060,7 +5065,9 @@ pub fn update_round_group(
     let bid_year_id = existing_rg
         .bid_year()
         .bid_year_id()
-        .expect("persisted bid year has ID");
+        .ok_or_else(|| ApiError::Internal {
+            message: String::from("persisted bid year missing ID"),
+        })?;
 
     // Enforce lifecycle constraints
     let lifecycle_state_str: String =
@@ -5189,7 +5196,9 @@ pub fn delete_round_group(
     let bid_year_id = existing_rg
         .bid_year()
         .bid_year_id()
-        .expect("persisted bid year has ID");
+        .ok_or_else(|| ApiError::Internal {
+            message: String::from("persisted bid year missing ID"),
+        })?;
 
     // Enforce lifecycle constraints
     let lifecycle_state_str: String =
@@ -5304,7 +5313,9 @@ pub fn create_round(
     let bid_year_id = round_group
         .bid_year()
         .bid_year_id()
-        .expect("Round group must have bid_year_id");
+        .ok_or_else(|| ApiError::Internal {
+            message: String::from("persisted bid year missing ID"),
+        })?;
 
     // Enforce lifecycle constraints
     let lifecycle_state_str: String =
@@ -5439,21 +5450,29 @@ pub fn list_rounds(
 
     let round_infos: Vec<crate::request_response::RoundInfo> = rounds
         .into_iter()
-        .map(|r| crate::request_response::RoundInfo {
-            round_id: r.round_id().expect("persisted round has ID"),
-            round_group_id: r
-                .round_group()
-                .round_group_id()
-                .expect("persisted round group has ID"),
-            round_number: r.round_number(),
-            name: r.name().to_string(),
-            slots_per_day: r.slots_per_day(),
-            max_groups: r.max_groups(),
-            max_total_hours: r.max_total_hours(),
-            include_holidays: r.include_holidays(),
-            allow_overbid: r.allow_overbid(),
+        .map(|r| {
+            let round_id = r.round_id().ok_or_else(|| ApiError::Internal {
+                message: String::from("persisted round missing ID"),
+            })?;
+            let round_group_id =
+                r.round_group()
+                    .round_group_id()
+                    .ok_or_else(|| ApiError::Internal {
+                        message: String::from("persisted round group missing ID"),
+                    })?;
+            Ok(crate::request_response::RoundInfo {
+                round_id,
+                round_group_id,
+                name: r.name().to_string(),
+                round_number: r.round_number(),
+                slots_per_day: r.slots_per_day(),
+                max_groups: r.max_groups(),
+                max_total_hours: r.max_total_hours(),
+                include_holidays: r.include_holidays(),
+                allow_overbid: r.allow_overbid(),
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, ApiError>>()?;
 
     Ok(crate::request_response::ListRoundsResponse {
         round_group_id,
@@ -5521,7 +5540,9 @@ pub fn update_round(
     let round_group_id = existing_round
         .round_group()
         .round_group_id()
-        .expect("persisted round group has ID");
+        .ok_or_else(|| ApiError::Internal {
+            message: String::from("persisted round group missing ID"),
+        })?;
 
     // Get bid_year_id from the round group
     let round_group =
@@ -5534,7 +5555,9 @@ pub fn update_round(
     let bid_year_id = round_group
         .bid_year()
         .bid_year_id()
-        .expect("Round group must have bid_year_id");
+        .ok_or_else(|| ApiError::Internal {
+            message: String::from("persisted bid year missing ID"),
+        })?;
 
     // Enforce lifecycle constraints
     let lifecycle_state_str: String =
@@ -5679,7 +5702,9 @@ pub fn delete_round(
     let round_group_id = existing_round
         .round_group()
         .round_group_id()
-        .expect("persisted round group has ID");
+        .ok_or_else(|| ApiError::Internal {
+            message: String::from("persisted round group missing ID"),
+        })?;
     let round_group =
         persistence
             .get_round_group(round_group_id)
@@ -5690,7 +5715,9 @@ pub fn delete_round(
     let bid_year_id = round_group
         .bid_year()
         .bid_year_id()
-        .expect("Round group must have bid_year_id");
+        .ok_or_else(|| ApiError::Internal {
+            message: String::from("persisted bid year missing ID"),
+        })?;
 
     // Enforce lifecycle constraints
     let lifecycle_state_str: String =

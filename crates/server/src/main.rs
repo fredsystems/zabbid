@@ -9,7 +9,12 @@
     clippy::nursery,
     clippy::style,
     clippy::correctness,
-    clippy::all
+    clippy::all,
+    clippy::suspicious,
+    clippy::complexity,
+    clippy::perf,
+    clippy::unwrap_used,
+    clippy::expect_used
 )]
 #![allow(clippy::multiple_crate_versions)]
 
@@ -682,7 +687,10 @@ async fn handle_create_area(
         .audit_event
         .bid_year
         .as_ref()
-        .expect("CreateArea event must have bid year");
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: String::from("CreateArea event missing bid year"),
+        })?;
 
     let area_id: i64 = updated_metadata
         .areas
@@ -716,7 +724,10 @@ async fn handle_create_area(
         .iter()
         .find(|by| by.year() == bid_year_ref.year())
         .and_then(|by| by.bid_year_id())
-        .expect("Active bid year must have ID");
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: String::from("Active bid year missing ID"),
+        })?;
 
     Ok(Json(CreateAreaResponse {
         bid_year_id,
@@ -2356,13 +2367,17 @@ async fn handle_update_user(
     );
 
     // Broadcast live event
+    let bid_year_for_event = result
+        .audit_event
+        .bid_year
+        .as_ref()
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: String::from("UpdateUser event missing bid year"),
+        })?;
+
     app_state.live_events.broadcast(&LiveEvent::UserUpdated {
-        bid_year: result
-            .audit_event
-            .bid_year
-            .as_ref()
-            .expect("UpdateUser event must have bid year")
-            .year(),
+        bid_year: bid_year_for_event.year(),
         area: target_area_ref.area_code().to_string(),
         initials: req.initials.clone(),
     });
@@ -2729,6 +2744,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use axum::{

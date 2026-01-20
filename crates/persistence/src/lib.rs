@@ -76,7 +76,12 @@
     clippy::nursery,
     clippy::style,
     clippy::correctness,
-    clippy::all
+    clippy::all,
+    clippy::suspicious,
+    clippy::complexity,
+    clippy::perf,
+    clippy::unwrap_used,
+    clippy::expect_used
 )]
 #![allow(clippy::multiple_crate_versions)]
 

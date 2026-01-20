@@ -493,7 +493,7 @@ impl AuthenticationService {
         use std::time::{SystemTime, UNIX_EPOCH};
         let timestamp: u128 = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards")
+            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
             .as_nanos();
         format!("session_{timestamp}_{}", rand::random::<u64>())
     }
@@ -539,6 +539,7 @@ pub fn authenticate_stub(actor_id: String, role: Role) -> Result<AuthenticatedAc
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use zab_bid_persistence::SqlitePersistence;

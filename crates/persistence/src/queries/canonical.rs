@@ -117,7 +117,11 @@ pub fn get_bootstrap_metadata(conn: &mut _) -> Result<BootstrapMetadata, Persist
         .load::<(i64, i32)>(conn)?;
 
     for (bid_year_id, year_value) in bid_year_rows {
-        let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
+        let year: u16 = u16::try_from(year_value).map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "bid_year value out of u16 range: {year_value}"
+            ))
+        })?;
         metadata.bid_years.push(BidYear::with_id(bid_year_id, year));
     }
 
@@ -138,7 +142,11 @@ pub fn get_bootstrap_metadata(conn: &mut _) -> Result<BootstrapMetadata, Persist
         .load::<(i64, i64, i32, String, Option<String>, i32, Option<i64>)>(conn)?;
 
     for (area_id, bid_year_id_val, year_value, code, name, is_sys, rg_id) in area_rows {
-        let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
+        let year: u16 = u16::try_from(year_value).map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "bid_year value out of u16 range: {year_value}"
+            ))
+        })?;
         let bid_year: BidYear = BidYear::with_id(bid_year_id_val, year);
         let area: Area = Area::with_id(area_id, &code, name, is_sys != 0, rg_id);
         metadata.areas.push((bid_year, area));
@@ -179,7 +187,11 @@ pub fn list_bid_years(conn: &mut _) -> Result<Vec<CanonicalBidYear>, Persistence
 
     let mut bid_years_list: Vec<CanonicalBidYear> = Vec::new();
     for (year_value, start_date_str, num_pay_periods_value) in rows {
-        let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
+        let year: u16 = u16::try_from(year_value).map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "bid_year value out of u16 range: {year_value}"
+            ))
+        })?;
         let num_pay_periods: u8 = u8::try_from(num_pay_periods_value).map_err(|_| {
             PersistenceError::ReconstructionError(format!(
                 "Invalid num_pay_periods value: {num_pay_periods_value}"

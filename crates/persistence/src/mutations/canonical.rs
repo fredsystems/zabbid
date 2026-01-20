@@ -74,10 +74,7 @@ pub fn insert_new_user_sqlite(
             diesel_schema::users::initials.eq(user.initials.value()),
             diesel_schema::users::name.eq(&user.name),
             diesel_schema::users::user_type.eq(user.user_type.as_str()),
-            diesel_schema::users::crew.eq(user
-                .crew
-                .as_ref()
-                .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+            diesel_schema::users::crew.eq(user.crew.as_ref().map(|c| i32::from(c.number()))),
             diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
             diesel_schema::users::natca_bu_date.eq(natca_bu_date),
             diesel_schema::users::eod_faa_date.eq(eod_faa_date),
@@ -151,10 +148,7 @@ pub fn insert_new_user_mysql(
             diesel_schema::users::initials.eq(user.initials.value()),
             diesel_schema::users::name.eq(&user.name),
             diesel_schema::users::user_type.eq(user.user_type.as_str()),
-            diesel_schema::users::crew.eq(user
-                .crew
-                .as_ref()
-                .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+            diesel_schema::users::crew.eq(user.crew.as_ref().map(|c| i32::from(c.number()))),
             diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
             diesel_schema::users::natca_bu_date.eq(natca_bu_date),
             diesel_schema::users::eod_faa_date.eq(eod_faa_date),
@@ -231,10 +225,8 @@ pub fn sync_canonical_users_sqlite(
                     diesel_schema::users::initials.eq(user.initials.value()),
                     diesel_schema::users::name.eq(&user.name),
                     diesel_schema::users::user_type.eq(user.user_type.as_str()),
-                    diesel_schema::users::crew.eq(user
-                        .crew
-                        .as_ref()
-                        .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+                    diesel_schema::users::crew
+                        .eq(user.crew.as_ref().map(|c| i32::from(c.number()))),
                     diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
                     diesel_schema::users::natca_bu_date.eq(natca_bu_date),
                     diesel_schema::users::eod_faa_date.eq(eod_faa_date),
@@ -252,10 +244,8 @@ pub fn sync_canonical_users_sqlite(
                     diesel_schema::users::initials.eq(user.initials.value()),
                     diesel_schema::users::name.eq(&user.name),
                     diesel_schema::users::user_type.eq(user.user_type.as_str()),
-                    diesel_schema::users::crew.eq(user
-                        .crew
-                        .as_ref()
-                        .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+                    diesel_schema::users::crew
+                        .eq(user.crew.as_ref().map(|c| i32::from(c.number()))),
                     diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
                     diesel_schema::users::natca_bu_date.eq(natca_bu_date),
                     diesel_schema::users::eod_faa_date.eq(eod_faa_date),
@@ -327,10 +317,8 @@ pub fn sync_canonical_users_mysql(
                     diesel_schema::users::initials.eq(user.initials.value()),
                     diesel_schema::users::name.eq(&user.name),
                     diesel_schema::users::user_type.eq(user.user_type.as_str()),
-                    diesel_schema::users::crew.eq(user
-                        .crew
-                        .as_ref()
-                        .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+                    diesel_schema::users::crew
+                        .eq(user.crew.as_ref().map(|c| i32::from(c.number()))),
                     diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
                     diesel_schema::users::natca_bu_date.eq(natca_bu_date),
                     diesel_schema::users::eod_faa_date.eq(eod_faa_date),
@@ -348,10 +336,8 @@ pub fn sync_canonical_users_mysql(
                     diesel_schema::users::initials.eq(user.initials.value()),
                     diesel_schema::users::name.eq(&user.name),
                     diesel_schema::users::user_type.eq(user.user_type.as_str()),
-                    diesel_schema::users::crew.eq(user
-                        .crew
-                        .as_ref()
-                        .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+                    diesel_schema::users::crew
+                        .eq(user.crew.as_ref().map(|c| i32::from(c.number()))),
                     diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
                     diesel_schema::users::natca_bu_date.eq(natca_bu_date),
                     diesel_schema::users::eod_faa_date.eq(eod_faa_date),
