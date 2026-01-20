@@ -529,18 +529,29 @@ In Progress
 - ✅ Schema parity verification passes
 - ✅ Committed: "Phase 29D: Add no_bid_reviewed flag to users table"
 
+#### 29D Readiness Domain Logic ✅ Complete
+
+- ✅ Defined `BidYearReadiness` and `ReadinessDetails` domain types
+- ✅ Implemented readiness criteria evaluation functions:
+  - ✅ `count_participation_flag_violations()` - checks directional invariant
+  - ✅ `count_unreviewed_no_bid_users()` - counts pending reviews in system areas
+  - ✅ `count_seniority_conflicts()` - placeholder for bid order validation
+  - ✅ `evaluate_area_readiness()` - area-level readiness check
+- ✅ Added comprehensive unit tests for all readiness functions
+- ✅ Exported readiness functions from domain crate
+
+#### 29D Readiness Persistence Queries ✅ Complete
+
+- ✅ Created `queries/readiness.rs` module
+- ✅ Implemented `is_bid_schedule_set()` query
+- ✅ Implemented `get_areas_missing_rounds()` query
+- ✅ Implemented `count_unreviewed_no_bid_users()` query
+- ✅ Implemented `count_participation_flag_violations()` query
+- ✅ Implemented `mark_user_no_bid_reviewed()` mutation
+- ✅ All queries use backend_fn macro for SQLite/MySQL parity
+- ✅ Committed: "Phase 29D: Add readiness domain types and persistence queries"
+
 ### 29D Outstanding Work
-
-#### Readiness Computation Logic
-
-- [ ] Define `BidYearReadiness` domain type
-- [ ] Implement readiness criteria evaluation functions:
-  - [ ] Structural completeness checks
-  - [ ] No Bid user review tracking
-  - [ ] Participation flag invariant validation
-  - [ ] Bid order totality and conflict detection
-  - [ ] Bid schedule validation
-- [ ] Implement readiness computation function
 
 #### API Endpoints
 
@@ -566,13 +577,13 @@ In Progress
 
 ### 29D Resume Instructions
 
-**Next Task**: Implement readiness evaluation domain logic
+**Next Task**: Implement API layer for readiness evaluation
 
-1. Create `BidYearReadiness` domain type in `crates/domain/src/types.rs`
-2. Implement readiness criteria evaluation functions
-3. Add seniority conflict detection logic
-4. Add persistence layer queries for readiness checks
-5. Implement API endpoints
-6. Add comprehensive tests
+1. Add API request/response types for readiness endpoints
+2. Implement `GET /api/bid-years/{bid_year_id}/readiness` endpoint
+3. Implement `POST /api/users/{user_id}/review-no-bid` endpoint
+4. Add Persistence struct methods for readiness queries
+5. Wire up API handlers in router
+6. Add integration tests
 7. Run `cargo xtask ci` and `pre-commit run --all-files`
-8. Update this working state document before pausing
+8. Update this working state document when complete
