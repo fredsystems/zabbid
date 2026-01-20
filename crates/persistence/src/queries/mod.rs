@@ -28,6 +28,7 @@ pub mod audit;
 pub mod canonical;
 pub mod completeness;
 pub mod operators;
+pub mod readiness;
 pub mod rounds;
 pub mod state;
 
@@ -53,6 +54,13 @@ pub use completeness::{
     count_users_by_bid_year_and_area_sqlite, count_users_by_bid_year_mysql,
     count_users_by_bid_year_sqlite,
 };
+// Phase 29D: Readiness query re-exports commented out until API layer uses them
+// pub use readiness::{
+//     count_participation_flag_violations_mysql, count_participation_flag_violations_sqlite,
+//     count_unreviewed_no_bid_users_mysql, count_unreviewed_no_bid_users_sqlite,
+//     get_areas_missing_rounds_mysql, get_areas_missing_rounds_sqlite, is_bid_schedule_set_mysql,
+//     is_bid_schedule_set_sqlite, mark_user_no_bid_reviewed_mysql, mark_user_no_bid_reviewed_sqlite,
+// };
 #[allow(unused_imports)]
 pub use rounds::{
     count_rounds_using_group_mysql, count_rounds_using_group_sqlite, delete_round_group_mysql,

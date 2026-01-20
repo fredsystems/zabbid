@@ -21,11 +21,17 @@ mod bid_year;
 mod error;
 mod leave_accrual;
 mod leave_availability;
+mod readiness;
 mod types;
 mod validation;
 
 #[cfg(test)]
 mod tests;
+
+pub use readiness::{
+    count_participation_flag_violations, count_seniority_conflicts, count_unreviewed_no_bid_users,
+    evaluate_area_readiness,
+};
 
 // Re-export public types
 pub use bid_year::{CanonicalBidYear, PayPeriod};
@@ -35,7 +41,7 @@ pub use leave_accrual::{
 };
 pub use leave_availability::{LeaveAvailabilityResult, LeaveUsage, calculate_leave_availability};
 pub use types::{
-    Area, BidSchedule, BidYear, BidYearLifecycle, Crew, Initials, Round, RoundGroup, SeniorityData,
-    User, UserType,
+    Area, BidSchedule, BidYear, BidYearLifecycle, BidYearReadiness, Crew, Initials,
+    ReadinessDetails, Round, RoundGroup, SeniorityData, User, UserType,
 };
 pub use validation::{validate_bid_year, validate_initials_unique, validate_user_fields};

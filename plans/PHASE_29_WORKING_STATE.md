@@ -477,3 +477,102 @@ None
 1. Proceed to Sub-Phase 29D (Readiness Evaluation)
 2. Update PHASE_29_WORKING_STATE.md before pausing
 3. Continue execution per Phase Planning & Execution Protocol
+
+---
+
+## Phase 29D — Readiness Evaluation (In Progress)
+
+### 29D Current Status
+
+In Progress
+
+### Last Updated
+
+2026-01-20
+
+### Completed Work
+
+#### 29D Database Schema ✅ Complete
+
+- ✅ Added `no_bid_reviewed` column to users table
+- ✅ Created SQLite migration (up.sql with ALTER TABLE, down.sql with table recreation)
+- ✅ Created MySQL migration (up.sql with ALTER TABLE, down.sql with DROP COLUMN)
+- ✅ Schema parity verification passes
+
+#### 29D Domain Types ✅ Complete
+
+- ✅ Added `no_bid_reviewed: bool` field to `User` struct
+- ✅ Updated `User::new()` constructor to accept `no_bid_reviewed` parameter
+- ✅ Updated `User::with_id()` constructor to accept `no_bid_reviewed` parameter
+- ✅ Updated all test helper functions to provide `no_bid_reviewed` parameter
+
+#### 29D Persistence Layer ✅ Complete
+
+- ✅ Updated `diesel_schema.rs` with `no_bid_reviewed` column
+- ✅ Updated `list_users()` query to select `no_bid_reviewed`
+- ✅ Updated `list_users_canonical()` query to select `no_bid_reviewed`
+- ✅ Updated `UserRow` struct in state queries to include `no_bid_reviewed`
+- ✅ Updated all `User::with_id()` calls to pass `no_bid_reviewed`
+
+#### 29D API Layer ✅ Complete
+
+- ✅ Added `no_bid_reviewed` field to `UserInfo` response type
+- ✅ Updated `list_users` handler to include `no_bid_reviewed` in response
+- ✅ Updated CSV preview to provide `no_bid_reviewed` parameter
+
+#### 29D Build & CI ✅ Complete
+
+- ✅ `cargo build` passes
+- ✅ `cargo test` passes (all tests updated)
+- ✅ `cargo xtask ci` passes
+- ✅ `pre-commit run --all-files` passes
+- ✅ Schema parity verification passes
+- ✅ Committed: "Phase 29D: Add no_bid_reviewed flag to users table"
+
+### 29D Outstanding Work
+
+#### Readiness Computation Logic
+
+- [ ] Define `BidYearReadiness` domain type
+- [ ] Implement readiness criteria evaluation functions:
+  - [ ] Structural completeness checks
+  - [ ] No Bid user review tracking
+  - [ ] Participation flag invariant validation
+  - [ ] Bid order totality and conflict detection
+  - [ ] Bid schedule validation
+- [ ] Implement readiness computation function
+
+#### API Endpoints
+
+- [ ] Implement `GET /api/bid-years/{bid_year_id}/readiness` endpoint
+- [ ] Implement `POST /api/users/{user_id}/review-no-bid` endpoint
+- [ ] Define readiness response types
+
+#### Tests
+
+- [ ] Unit tests for readiness criteria
+- [ ] Unit tests for seniority conflict detection
+- [ ] Unit tests for No Bid review tracking
+- [ ] Integration tests for readiness endpoint
+- [ ] Integration tests for review-no-bid endpoint
+
+### 29D Known Issues
+
+- None at this time
+
+### 29D Stop-and-Ask Items
+
+- None at this time
+
+### 29D Resume Instructions
+
+**Next Task**: Implement readiness evaluation domain logic
+
+1. Create `BidYearReadiness` domain type in `crates/domain/src/types.rs`
+2. Implement readiness criteria evaluation functions
+3. Add seniority conflict detection logic
+4. Add persistence layer queries for readiness checks
+5. Implement API endpoints
+6. Add comprehensive tests
+7. Run `cargo xtask ci` and `pre-commit run --all-files`
+8. Update this working state document before pausing

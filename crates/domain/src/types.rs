@@ -1112,3 +1112,76 @@ impl Round {
         Ok(())
     }
 }
+
+/// Phase 29D: Readiness evaluation result for a bid year.
+///
+/// Readiness is computed, not stored. It represents whether a bid year
+/// is structurally complete and ready for confirmation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BidYearReadiness {
+    /// The bid year ID being evaluated.
+    pub bid_year_id: i64,
+    /// The bid year value (for display).
+    pub year: u16,
+    /// Overall readiness flag.
+    pub is_ready: bool,
+    /// List of all unsatisfied criteria (empty if ready).
+    pub blocking_reasons: Vec<String>,
+    /// Detailed breakdown per criterion.
+    pub details: ReadinessDetails,
+}
+
+/// Phase 29D: Detailed breakdown of readiness criteria.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadinessDetails {
+    /// Areas that exist but have no rounds configured.
+    pub areas_missing_rounds: Vec<String>,
+    /// Number of users in No Bid area who have not been reviewed.
+    pub no_bid_users_pending_review: usize,
+    /// Number of users violating participation flag invariant.
+    pub participation_flag_violations: usize,
+    /// Number of seniority conflicts detected.
+    pub seniority_conflicts: usize,
+    /// Whether bid schedule is set and valid.
+    pub bid_schedule_set: bool,
+}
+
+impl BidYearReadiness {
+    /// Creates a new readiness evaluation result.
+    #[must_use]
+    pub const fn new(
+        bid_year_id: i64,
+        year: u16,
+        is_ready: bool,
+        blocking_reasons: Vec<String>,
+        details: ReadinessDetails,
+    ) -> Self {
+        Self {
+            bid_year_id,
+            year,
+            is_ready,
+            blocking_reasons,
+            details,
+        }
+    }
+}
+
+impl ReadinessDetails {
+    /// Creates a new readiness details structure.
+    #[must_use]
+    pub const fn new(
+        areas_missing_rounds: Vec<String>,
+        no_bid_users_pending_review: usize,
+        participation_flag_violations: usize,
+        seniority_conflicts: usize,
+        bid_schedule_set: bool,
+    ) -> Self {
+        Self {
+            areas_missing_rounds,
+            no_bid_users_pending_review,
+            participation_flag_violations,
+            seniority_conflicts,
+            bid_schedule_set,
+        }
+    }
+}
