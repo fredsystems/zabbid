@@ -105,6 +105,23 @@ pub struct RegisterUserResponse {
     pub event_id: i64,
 }
 
+/// Bid schedule information for a bid year.
+///
+/// Phase 29C: Defines when and how bidding occurs.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BidScheduleInfo {
+    /// IANA timezone identifier (e.g., `"America/New_York"`)
+    pub timezone: String,
+    /// Bid start date (ISO 8601 format)
+    pub start_date: String,
+    /// Daily bid window start time (HH:MM:SS format)
+    pub window_start_time: String,
+    /// Daily bid window end time (HH:MM:SS format)
+    pub window_end_time: String,
+    /// Number of bidders per area per day
+    pub bidders_per_day: u32,
+}
+
 /// Canonical bid year information.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BidYearInfo {
@@ -128,6 +145,9 @@ pub struct BidYearInfo {
     pub label: Option<String>,
     /// Optional notes for operational context.
     pub notes: Option<String>,
+    /// Optional bid schedule configuration.
+    /// Phase 29C: Present if bid schedule has been configured.
+    pub bid_schedule: Option<BidScheduleInfo>,
 }
 
 /// API response for listing bid years.
@@ -1252,6 +1272,49 @@ pub struct UpdateBidYearMetadataResponse {
     pub notes: Option<String>,
     /// A success message.
     pub message: String,
+}
+
+/// API request to set the bid schedule for a bid year.
+///
+/// Phase 29C: All fields must be provided together.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct SetBidScheduleRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// IANA timezone identifier (e.g., `"America/New_York"`).
+    pub timezone: String,
+    /// Bid start date (ISO 8601 format, must be a Monday).
+    pub start_date: String,
+    /// Daily bid window start time (HH:MM:SS format).
+    pub window_start_time: String,
+    /// Daily bid window end time (HH:MM:SS format).
+    pub window_end_time: String,
+    /// Number of bidders per area per day (must be > 0).
+    pub bidders_per_day: u32,
+}
+
+/// API response for setting bid schedule.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SetBidScheduleResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The year value.
+    pub year: u16,
+    /// The configured bid schedule.
+    pub bid_schedule: BidScheduleInfo,
+    /// A success message.
+    pub message: String,
+}
+
+/// API response for getting bid schedule.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GetBidScheduleResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The year value.
+    pub year: u16,
+    /// The bid schedule if configured, None otherwise.
+    pub bid_schedule: Option<BidScheduleInfo>,
 }
 
 /// API request to override a user's area assignment.

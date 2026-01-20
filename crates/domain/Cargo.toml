@@ -10,6 +10,7 @@ readme.workspace = true
 description = "Domain types and rule validation for the ZAB Bidding System"
 
 [dependencies]
+chrono-tz.workspace = true
 serde.workspace = true
 time.workspace = true
 

@@ -13,8 +13,8 @@ use zab_bid::{
 };
 use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
 use zab_bid_domain::{
-    Area, BidYear, CanonicalBidYear, Crew, DomainError, Initials, LeaveAccrualResult,
-    LeaveAvailabilityResult, LeaveUsage, RoundGroup, SeniorityData, UserType,
+    Area, BidSchedule, BidYear, BidYearLifecycle, CanonicalBidYear, Crew, DomainError, Initials,
+    LeaveAccrualResult, LeaveAvailabilityResult, LeaveUsage, RoundGroup, SeniorityData, UserType,
     calculate_leave_accrual, calculate_leave_availability,
 };
 use zab_bid_persistence::{OperatorData, SqlitePersistence};
@@ -24,27 +24,28 @@ use crate::csv_preview::{CsvRowResult, preview_csv_users as preview_csv_users_im
 use crate::error::{ApiError, AuthError, translate_core_error, translate_domain_error};
 use crate::password_policy::PasswordPolicy;
 use crate::request_response::{
-    AreaCompletenessInfo, BidYearCompletenessInfo, BidYearInfo, BlockingReason,
+    AreaCompletenessInfo, BidScheduleInfo, BidYearCompletenessInfo, BidYearInfo, BlockingReason,
     ChangePasswordRequest, ChangePasswordResponse, CreateAreaRequest, CreateBidYearRequest,
     CreateOperatorRequest, CreateOperatorResponse, CsvImportRowResult, CsvImportRowStatus,
     CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
     DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
-    GetActiveBidYearResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse,
-    GlobalCapabilities, ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest,
-    ListAreasResponse, ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse,
-    LoginRequest, LoginResponse, OperatorCapabilities, OperatorInfo, OverrideAreaAssignmentRequest,
-    OverrideAreaAssignmentResponse, OverrideBidOrderRequest, OverrideBidOrderResponse,
-    OverrideBidWindowRequest, OverrideBidWindowResponse, OverrideEligibilityRequest,
-    OverrideEligibilityResponse, PreviewCsvUsersRequest, PreviewCsvUsersResponse,
-    RegisterUserRequest, ResetPasswordRequest, ResetPasswordResponse, SetActiveBidYearRequest,
-    SetActiveBidYearResponse, SetExpectedAreaCountRequest, SetExpectedAreaCountResponse,
-    SetExpectedUserCountRequest, SetExpectedUserCountResponse, TransitionToBiddingActiveRequest,
-    TransitionToBiddingActiveResponse, TransitionToBiddingClosedRequest,
-    TransitionToBiddingClosedResponse, TransitionToBootstrapCompleteRequest,
-    TransitionToBootstrapCompleteResponse, TransitionToCanonicalizedRequest,
-    TransitionToCanonicalizedResponse, UpdateAreaRequest, UpdateAreaResponse,
-    UpdateBidYearMetadataRequest, UpdateBidYearMetadataResponse, UpdateUserRequest,
-    UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
+    GetActiveBidYearResponse, GetBidScheduleResponse, GetBootstrapCompletenessResponse,
+    GetLeaveAvailabilityResponse, GlobalCapabilities, ImportCsvUsersRequest,
+    ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
+    ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse, OperatorCapabilities,
+    OperatorInfo, OverrideAreaAssignmentRequest, OverrideAreaAssignmentResponse,
+    OverrideBidOrderRequest, OverrideBidOrderResponse, OverrideBidWindowRequest,
+    OverrideBidWindowResponse, OverrideEligibilityRequest, OverrideEligibilityResponse,
+    PreviewCsvUsersRequest, PreviewCsvUsersResponse, RegisterUserRequest, ResetPasswordRequest,
+    ResetPasswordResponse, SetActiveBidYearRequest, SetActiveBidYearResponse,
+    SetBidScheduleRequest, SetBidScheduleResponse, SetExpectedAreaCountRequest,
+    SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
+    TransitionToBiddingActiveRequest, TransitionToBiddingActiveResponse,
+    TransitionToBiddingClosedRequest, TransitionToBiddingClosedResponse,
+    TransitionToBootstrapCompleteRequest, TransitionToBootstrapCompleteResponse,
+    TransitionToCanonicalizedRequest, TransitionToCanonicalizedResponse, UpdateAreaRequest,
+    UpdateAreaResponse, UpdateBidYearMetadataRequest, UpdateBidYearMetadataResponse,
+    UpdateUserRequest, UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
 };
 use zab_bid_persistence::PersistenceError;
 
@@ -537,6 +538,31 @@ pub fn list_bid_years(
                 .get_bid_year_metadata(bid_year_id)
                 .unwrap_or((None, None));
 
+            // Fetch bid schedule from persistence
+            let bid_schedule = persistence.get_bid_schedule(bid_year_id).ok().and_then(
+                |(tz, sd, wst, wet, bpd)| {
+                    // Only construct BidScheduleInfo if all fields are present
+                    if let (
+                        Some(timezone),
+                        Some(start_date),
+                        Some(window_start_time),
+                        Some(window_end_time),
+                        Some(bidders_per_day),
+                    ) = (tz, sd, wst, wet, bpd)
+                    {
+                        Some(BidScheduleInfo {
+                            timezone,
+                            start_date,
+                            window_start_time,
+                            window_end_time,
+                            bidders_per_day: bidders_per_day.cast_unsigned(),
+                        })
+                    } else {
+                        None
+                    }
+                },
+            );
+
             Ok(BidYearInfo {
                 bid_year_id,
                 year: c.year(),
@@ -548,6 +574,7 @@ pub fn list_bid_years(
                 lifecycle_state,
                 label,
                 notes,
+                bid_schedule,
             })
         })
         .collect();
@@ -2997,6 +3024,280 @@ pub fn update_bid_year_metadata(
         label: request.label.clone(),
         notes: request.notes.clone(),
         message: format!("Metadata updated for bid year {year}"),
+    })
+}
+
+/// Sets the bid schedule for a bid year.
+///
+/// Phase 29C: Configures when and how bidding occurs.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+/// * `request` - The set bid schedule request
+/// * `authenticated_actor` - The authenticated operator
+/// * `operator` - The operator data
+/// * `cause` - The cause of this action
+///
+/// # Returns
+///
+/// * `Ok(SetBidScheduleResponse)` if the bid schedule was set successfully
+/// * `Err(ApiError)` if validation fails or the bid year is locked
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The operator is not an admin
+/// - The bid year is in a locked lifecycle state
+/// - Validation of the bid schedule fails
+/// - Database operations fail
+#[allow(dead_code, clippy::too_many_lines)]
+pub fn set_bid_schedule(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    request: &SetBidScheduleRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<SetBidScheduleResponse, ApiError> {
+    const TIME_FORMAT: &[time::format_description::FormatItem<'_>] =
+        time::macros::format_description!("[hour]:[minute]:[second]");
+
+    // Enforce authorization - only admins can set bid schedule
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("set bid schedule"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Retrieve the bid year
+    let bid_year: &zab_bid_domain::BidYear = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.bid_year_id() == Some(request.bid_year_id))
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("BidYear"),
+            message: format!("Bid year with ID {} not found", request.bid_year_id),
+        })?;
+
+    let year: u16 = bid_year.year();
+
+    // Check lifecycle state - bid schedule is only editable in Draft and BootstrapComplete
+    let lifecycle_state: BidYearLifecycle = persistence
+        .get_lifecycle_state(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get lifecycle state: {e}"),
+        })
+        .and_then(|s| {
+            s.parse::<BidYearLifecycle>()
+                .map_err(translate_domain_error)
+        })?;
+
+    if lifecycle_state.is_locked() {
+        return Err(ApiError::InvalidInput {
+            field: String::from("lifecycle_state"),
+            message: format!("Cannot modify bid schedule: bid year is in {lifecycle_state} state"),
+        });
+    }
+
+    // Parse and validate the bid schedule fields
+    let start_date: time::Date = time::Date::parse(
+        &request.start_date,
+        &time::format_description::well_known::Iso8601::DEFAULT,
+    )
+    .map_err(|_| ApiError::InvalidInput {
+        field: String::from("start_date"),
+        message: format!("Invalid date format: {}", request.start_date),
+    })?;
+
+    let window_start_time: time::Time = time::Time::parse(&request.window_start_time, TIME_FORMAT)
+        .map_err(|_| ApiError::InvalidInput {
+            field: String::from("window_start_time"),
+            message: format!("Invalid time format: {}", request.window_start_time),
+        })?;
+
+    let window_end_time: time::Time = time::Time::parse(&request.window_end_time, TIME_FORMAT)
+        .map_err(|_| ApiError::InvalidInput {
+            field: String::from("window_end_time"),
+            message: format!("Invalid time format: {}", request.window_end_time),
+        })?;
+
+    // Create and validate BidSchedule domain object
+    let _bid_schedule: BidSchedule = BidSchedule::new(
+        request.timezone.clone(),
+        start_date,
+        window_start_time,
+        window_end_time,
+        request.bidders_per_day,
+    )
+    .map_err(translate_domain_error)?;
+
+    // Retrieve old bid schedule for audit
+    let old_schedule = persistence.get_bid_schedule(request.bid_year_id).ok();
+
+    // Update the bid schedule in the database
+    persistence
+        .update_bid_schedule(
+            request.bid_year_id,
+            Some(&request.timezone),
+            Some(&request.start_date),
+            Some(&request.window_start_time),
+            Some(&request.window_end_time),
+            Some(request.bidders_per_day.cast_signed()),
+        )
+        .map_err(|e| match e {
+            PersistenceError::NotFound(_) => ApiError::ResourceNotFound {
+                resource_type: String::from("BidYear"),
+                message: format!("Bid year with ID {} not found", request.bid_year_id),
+            },
+            _ => ApiError::Internal {
+                message: format!("Failed to update bid schedule: {e}"),
+            },
+        })?;
+
+    // Create audit event
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
+    let action: Action = Action {
+        name: String::from("SetBidSchedule"),
+        details: Some(format!(
+            "Set bid schedule for bid year {year}: timezone={}, start_date={}, window={}–{}, bidders_per_day={}",
+            request.timezone,
+            request.start_date,
+            request.window_start_time,
+            request.window_end_time,
+            request.bidders_per_day
+        )),
+    };
+
+    let before_snapshot: String = if let Some((tz, sd, wst, wet, bpd)) = old_schedule {
+        format!(
+            r#"{{"timezone":{},"start_date":{},"window_start_time":{},"window_end_time":{},"bidders_per_day":{}}}"#,
+            tz.as_ref()
+                .map_or_else(|| "null".to_string(), |s| format!("\"{s}\"")),
+            sd.as_ref()
+                .map_or_else(|| "null".to_string(), |s| format!("\"{s}\"")),
+            wst.as_ref()
+                .map_or_else(|| "null".to_string(), |s| format!("\"{s}\"")),
+            wet.as_ref()
+                .map_or_else(|| "null".to_string(), |s| format!("\"{s}\"")),
+            bpd.map_or_else(|| "null".to_string(), |v| v.to_string())
+        )
+    } else {
+        String::from("null")
+    };
+
+    let after_snapshot: String = format!(
+        r#"{{"timezone":"{}","start_date":"{}","window_start_time":"{}","window_end_time":"{}","bidders_per_day":{}}}"#,
+        request.timezone,
+        request.start_date,
+        request.window_start_time,
+        request.window_end_time,
+        request.bidders_per_day
+    );
+
+    let before: StateSnapshot = StateSnapshot::new(before_snapshot);
+    let after: StateSnapshot = StateSnapshot::new(after_snapshot);
+
+    let audit_event: AuditEvent = AuditEvent::new_global(actor, cause, action, before, after);
+
+    // Persist audit event
+    persistence
+        .persist_audit_event(&audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    Ok(SetBidScheduleResponse {
+        bid_year_id: request.bid_year_id,
+        year,
+        bid_schedule: BidScheduleInfo {
+            timezone: request.timezone.clone(),
+            start_date: request.start_date.clone(),
+            window_start_time: request.window_start_time.clone(),
+            window_end_time: request.window_end_time.clone(),
+            bidders_per_day: request.bidders_per_day,
+        },
+        message: format!("Bid schedule set for bid year {year}"),
+    })
+}
+
+/// Gets the bid schedule for a bid year.
+///
+/// Phase 29C: Returns the configured bid schedule or None if not set.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+/// * `bid_year_id` - The canonical bid year ID
+///
+/// # Returns
+///
+/// * `Ok(GetBidScheduleResponse)` containing the bid schedule (if configured)
+/// * `Err(ApiError)` if the bid year doesn't exist
+///
+/// # Errors
+///
+/// Returns an error if the bid year is not found.
+#[allow(dead_code)]
+pub fn get_bid_schedule(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    bid_year_id: i64,
+) -> Result<GetBidScheduleResponse, ApiError> {
+    // Retrieve the bid year
+    let bid_year: &zab_bid_domain::BidYear = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.bid_year_id() == Some(bid_year_id))
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("BidYear"),
+            message: format!("Bid year with ID {bid_year_id} not found"),
+        })?;
+
+    let year: u16 = bid_year.year();
+
+    // Fetch bid schedule from persistence
+    let bid_schedule = persistence
+        .get_bid_schedule(bid_year_id)
+        .map_err(|e| match e {
+            PersistenceError::NotFound(_) => ApiError::ResourceNotFound {
+                resource_type: String::from("BidYear"),
+                message: format!("Bid year with ID {bid_year_id} not found"),
+            },
+            _ => ApiError::Internal {
+                message: format!("Failed to get bid schedule: {e}"),
+            },
+        })
+        .ok()
+        .and_then(|(tz, sd, wst, wet, bpd)| {
+            // Only construct BidScheduleInfo if all fields are present
+            if let (
+                Some(timezone),
+                Some(start_date),
+                Some(window_start_time),
+                Some(window_end_time),
+                Some(bidders_per_day),
+            ) = (tz, sd, wst, wet, bpd)
+            {
+                Some(BidScheduleInfo {
+                    timezone,
+                    start_date,
+                    window_start_time,
+                    window_end_time,
+                    bidders_per_day: bidders_per_day.cast_unsigned(),
+                })
+            } else {
+                None
+            }
+        });
+
+    Ok(GetBidScheduleResponse {
+        bid_year_id,
+        year,
+        bid_schedule,
     })
 }
 

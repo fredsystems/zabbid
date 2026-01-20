@@ -444,6 +444,34 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
                 "Cannot delete round group {round_group_id}: referenced by {round_count} round(s)"
             ),
         },
+        DomainError::InvalidTimezone(tz) => ApiError::InvalidInput {
+            field: String::from("timezone"),
+            message: format!("Invalid timezone identifier: '{tz}'"),
+        },
+        DomainError::BidStartDateNotMonday(date) => ApiError::InvalidInput {
+            field: String::from("start_date"),
+            message: format!(
+                "Bid start date must be a Monday, but {date} is a {}",
+                date.weekday()
+            ),
+        },
+        DomainError::BidStartDateNotFuture {
+            start_date,
+            reference_date,
+        } => ApiError::InvalidInput {
+            field: String::from("start_date"),
+            message: format!(
+                "Bid start date {start_date} must be in the future (after {reference_date})"
+            ),
+        },
+        DomainError::InvalidBidWindowTimes { start, end } => ApiError::InvalidInput {
+            field: String::from("bid_window"),
+            message: format!("Bid window start time ({start}) must be before end time ({end})"),
+        },
+        DomainError::InvalidBiddersPerDay(count) => ApiError::InvalidInput {
+            field: String::from("bidders_per_day"),
+            message: format!("Bidders per day must be greater than 0, got {count}"),
+        },
     }
 }
 

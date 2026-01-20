@@ -272,6 +272,31 @@ pub enum DomainError {
         /// Number of rounds referencing this group.
         round_count: usize,
     },
+    /// Invalid timezone identifier.
+    /// Phase 29C
+    InvalidTimezone(String),
+    /// Bid start date is not a Monday.
+    /// Phase 29C
+    BidStartDateNotMonday(time::Date),
+    /// Bid start date is not in the future.
+    /// Phase 29C
+    BidStartDateNotFuture {
+        /// The bid start date.
+        start_date: time::Date,
+        /// The reference date (typically "today").
+        reference_date: time::Date,
+    },
+    /// Invalid bid window times.
+    /// Phase 29C
+    InvalidBidWindowTimes {
+        /// Window start time.
+        start: time::Time,
+        /// Window end time.
+        end: time::Time,
+    },
+    /// Invalid bidders per day count.
+    /// Phase 29C
+    InvalidBiddersPerDay(u32),
 }
 
 impl std::fmt::Display for DomainError {
@@ -514,6 +539,34 @@ impl std::fmt::Display for DomainError {
                     f,
                     "Cannot delete round group {round_group_id}: referenced by {round_count} round(s)"
                 )
+            }
+            Self::InvalidTimezone(tz) => {
+                write!(f, "Invalid timezone identifier: '{tz}'")
+            }
+            Self::BidStartDateNotMonday(date) => {
+                write!(
+                    f,
+                    "Bid start date must be a Monday, but {date} is a {}",
+                    date.weekday()
+                )
+            }
+            Self::BidStartDateNotFuture {
+                start_date,
+                reference_date,
+            } => {
+                write!(
+                    f,
+                    "Bid start date {start_date} must be in the future (after {reference_date})"
+                )
+            }
+            Self::InvalidBidWindowTimes { start, end } => {
+                write!(
+                    f,
+                    "Bid window start time ({start}) must be before end time ({end})"
+                )
+            }
+            Self::InvalidBiddersPerDay(count) => {
+                write!(f, "Bidders per day must be greater than 0, got {count}")
             }
         }
     }

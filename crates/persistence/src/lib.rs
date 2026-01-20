@@ -1677,6 +1677,78 @@ impl Persistence {
         }
     }
 
+    /// Retrieves the bid schedule for a bid year.
+    ///
+    /// Phase 29C: Returns bid schedule fields if set, or None values if not configured.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bid year doesn't exist or the database cannot be queried.
+    pub fn get_bid_schedule(
+        &mut self,
+        bid_year_id: i64,
+    ) -> Result<mutations::bootstrap::BidScheduleFields, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::bootstrap::get_bid_schedule_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::bootstrap::get_bid_schedule_mysql(conn, bid_year_id)
+            }
+        }
+    }
+
+    /// Updates the bid schedule for a bid year.
+    ///
+    /// Phase 29C: Sets all bid schedule fields atomically.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `timezone` - IANA timezone identifier
+    /// * `start_date` - Bid start date (ISO 8601 format)
+    /// * `window_start_time` - Daily window start time (HH:MM:SS format)
+    /// * `window_end_time` - Daily window end time (HH:MM:SS format)
+    /// * `bidders_per_day` - Number of bidders per area per day
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be updated or the bid year doesn't exist.
+    pub fn update_bid_schedule(
+        &mut self,
+        bid_year_id: i64,
+        timezone: Option<&str>,
+        start_date: Option<&str>,
+        window_start_time: Option<&str>,
+        window_end_time: Option<&str>,
+        bidders_per_day: Option<i32>,
+    ) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => mutations::bootstrap::update_bid_schedule_sqlite(
+                conn,
+                bid_year_id,
+                timezone,
+                start_date,
+                window_start_time,
+                window_end_time,
+                bidders_per_day,
+            ),
+            BackendConnection::Mysql(conn) => mutations::bootstrap::update_bid_schedule_mysql(
+                conn,
+                bid_year_id,
+                timezone,
+                start_date,
+                window_start_time,
+                window_end_time,
+                bidders_per_day,
+            ),
+        }
+    }
+
     /// Queries whether any bid year is in the `BiddingActive` lifecycle state.
     ///
     /// # Returns

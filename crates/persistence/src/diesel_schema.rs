@@ -46,6 +46,11 @@ diesel::table! {
         lifecycle_state -> Text,
         label -> Nullable<Text>,
         notes -> Nullable<Text>,
+        bid_timezone -> Nullable<Text>,
+        bid_start_date -> Nullable<Text>,
+        bid_window_start_time -> Nullable<Text>,
+        bid_window_end_time -> Nullable<Text>,
+        bidders_per_area_per_day -> Nullable<Integer>,
     }
 }
 

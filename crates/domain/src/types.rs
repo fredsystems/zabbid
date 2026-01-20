@@ -166,6 +166,152 @@ impl BidYear {
     }
 }
 
+/// Represents the bid schedule configuration for a bid year.
+///
+/// Phase 29C: The bid schedule defines when and how bidding occurs.
+///
+/// All bid times are wall-clock times in the declared timezone.
+/// DST transitions do not shift labels, only duration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BidSchedule {
+    /// IANA timezone identifier (e.g., `"America/New_York"`)
+    timezone: String,
+    /// Bid start date (must be a Monday, must be in the future at confirmation)
+    start_date: time::Date,
+    /// Daily bid window start time (wall-clock)
+    window_start_time: time::Time,
+    /// Daily bid window end time (wall-clock)
+    window_end_time: time::Time,
+    /// Number of bidders per area per day
+    bidders_per_day: u32,
+}
+
+impl BidSchedule {
+    /// Creates a new `BidSchedule`.
+    ///
+    /// # Arguments
+    ///
+    /// * `timezone` - IANA timezone identifier
+    /// * `start_date` - Bid start date
+    /// * `window_start_time` - Daily bid window start time
+    /// * `window_end_time` - Daily bid window end time
+    /// * `bidders_per_day` - Number of bidders per area per day
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if validation fails
+    pub fn new(
+        timezone: String,
+        start_date: time::Date,
+        window_start_time: time::Time,
+        window_end_time: time::Time,
+        bidders_per_day: u32,
+    ) -> Result<Self, DomainError> {
+        let schedule = Self {
+            timezone,
+            start_date,
+            window_start_time,
+            window_end_time,
+            bidders_per_day,
+        };
+        schedule.validate()?;
+        Ok(schedule)
+    }
+
+    /// Validates the bid schedule according to domain rules.
+    ///
+    /// # Validation Rules
+    ///
+    /// - Timezone must be a valid IANA identifier
+    /// - Start date must be a Monday
+    /// - Window start time must be before window end time
+    /// - Bidders per day must be > 0
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any validation rule is violated
+    pub fn validate(&self) -> Result<(), DomainError> {
+        // Validate timezone
+        self.timezone
+            .parse::<chrono_tz::Tz>()
+            .map_err(|_| DomainError::InvalidTimezone(self.timezone.clone()))?;
+
+        // Validate start date is a Monday
+        if self.start_date.weekday() != time::Weekday::Monday {
+            return Err(DomainError::BidStartDateNotMonday(self.start_date));
+        }
+
+        // Validate window times
+        if self.window_start_time >= self.window_end_time {
+            return Err(DomainError::InvalidBidWindowTimes {
+                start: self.window_start_time,
+                end: self.window_end_time,
+            });
+        }
+
+        // Validate bidders per day
+        if self.bidders_per_day == 0 {
+            return Err(DomainError::InvalidBiddersPerDay(0));
+        }
+
+        Ok(())
+    }
+
+    /// Returns the timezone identifier.
+    #[must_use]
+    pub fn timezone(&self) -> &str {
+        &self.timezone
+    }
+
+    /// Returns the bid start date.
+    #[must_use]
+    pub const fn start_date(&self) -> time::Date {
+        self.start_date
+    }
+
+    /// Returns the daily bid window start time.
+    #[must_use]
+    pub const fn window_start_time(&self) -> time::Time {
+        self.window_start_time
+    }
+
+    /// Returns the daily bid window end time.
+    #[must_use]
+    pub const fn window_end_time(&self) -> time::Time {
+        self.window_end_time
+    }
+
+    /// Returns the number of bidders per area per day.
+    #[must_use]
+    pub const fn bidders_per_day(&self) -> u32 {
+        self.bidders_per_day
+    }
+
+    /// Validates that the start date is in the future relative to a given reference date.
+    ///
+    /// This is used during confirmation to ensure the bid schedule has not already passed.
+    ///
+    /// # Arguments
+    ///
+    /// * `reference_date` - The date to compare against (typically "today")
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the start date is not in the future
+    pub fn validate_future_start_date(
+        &self,
+        reference_date: time::Date,
+    ) -> Result<(), DomainError> {
+        if self.start_date <= reference_date {
+            return Err(DomainError::BidStartDateNotFuture {
+                start_date: self.start_date,
+                reference_date,
+            });
+        }
+        Ok(())
+    }
+}
+
 /// Represents a user's initials.
 ///
 /// Initials are the sole identifier for a user within a bid year.

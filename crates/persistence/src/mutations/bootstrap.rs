@@ -38,6 +38,17 @@ use crate::mutations::canonical::{
 };
 use crate::queries::canonical::{lookup_bid_year_id_mysql, lookup_bid_year_id_sqlite};
 
+/// Type alias for bid schedule fields returned from database queries.
+///
+/// Phase 29C: Represents the tuple of nullable bid schedule fields.
+pub type BidScheduleFields = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<i32>,
+);
+
 /// Result of persisting a transition.
 ///
 /// Contains the event ID assigned to the audit event, and optionally the
@@ -631,6 +642,95 @@ pub fn update_bid_year_metadata(
     }
 
     debug!(bid_year_id, "Updated bid year metadata");
+    Ok(())
+}
+}
+
+backend_fn! {
+/// Gets the bid schedule for a bid year.
+///
+/// Phase 29C: Returns bid schedule fields if set, or None values if not configured.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The bid year ID
+///
+/// # Errors
+///
+/// Returns an error if the bid year doesn't exist or the database cannot be queried.
+pub fn get_bid_schedule(
+    conn: &mut _,
+    bid_year_id: i64,
+) -> Result<BidScheduleFields, PersistenceError> {
+    use diesel::prelude::*;
+
+    let result: Result<BidScheduleFields, _> = diesel_schema::bid_years::table
+        .select((
+            diesel_schema::bid_years::bid_timezone,
+            diesel_schema::bid_years::bid_start_date,
+            diesel_schema::bid_years::bid_window_start_time,
+            diesel_schema::bid_years::bid_window_end_time,
+            diesel_schema::bid_years::bidders_per_area_per_day,
+        ))
+        .filter(diesel_schema::bid_years::bid_year_id.eq(bid_year_id))
+        .first::<BidScheduleFields>(conn);
+
+    match result {
+        Ok(data) => Ok(data),
+        Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
+            "Bid year with ID {bid_year_id} not found"
+        ))),
+        Err(e) => Err(e.into()),
+    }
+}
+}
+
+backend_fn! {
+/// Updates the bid schedule for a bid year.
+///
+/// Phase 29C: Sets all bid schedule fields atomically.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The bid year ID
+/// * `timezone` - IANA timezone identifier
+/// * `start_date` - Bid start date (ISO 8601 format)
+/// * `window_start_time` - Daily window start time (HH:MM:SS format)
+/// * `window_end_time` - Daily window end time (HH:MM:SS format)
+/// * `bidders_per_day` - Number of bidders per area per day
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be updated or the bid year doesn't exist.
+pub fn update_bid_schedule(
+    conn: &mut _,
+    bid_year_id: i64,
+    timezone: Option<&str>,
+    start_date: Option<&str>,
+    window_start_time: Option<&str>,
+    window_end_time: Option<&str>,
+    bidders_per_day: Option<i32>,
+) -> Result<(), PersistenceError> {
+    let rows_affected: usize = diesel::update(diesel_schema::bid_years::table)
+        .filter(diesel_schema::bid_years::bid_year_id.eq(bid_year_id))
+        .set((
+            diesel_schema::bid_years::bid_timezone.eq(timezone),
+            diesel_schema::bid_years::bid_start_date.eq(start_date),
+            diesel_schema::bid_years::bid_window_start_time.eq(window_start_time),
+            diesel_schema::bid_years::bid_window_end_time.eq(window_end_time),
+            diesel_schema::bid_years::bidders_per_area_per_day.eq(bidders_per_day),
+        ))
+        .execute(conn)?;
+
+    if rows_affected == 0 {
+        return Err(PersistenceError::NotFound(format!(
+            "Bid year with ID {bid_year_id} not found"
+        )));
+    }
+
+    debug!(bid_year_id, "Updated bid schedule");
     Ok(())
 }
 }
