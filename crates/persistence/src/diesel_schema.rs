@@ -79,6 +79,17 @@ diesel::table! {
 }
 
 diesel::table! {
+    bid_windows (bid_window_id) {
+        bid_window_id -> BigInt,
+        bid_year_id -> BigInt,
+        area_id -> BigInt,
+        user_id -> BigInt,
+        window_start_datetime -> Text,
+        window_end_datetime -> Text,
+    }
+}
+
+diesel::table! {
     canonical_bid_windows (id) {
         id -> BigInt,
         bid_year_id -> BigInt,
@@ -191,6 +202,9 @@ diesel::joinable!(canonical_area_membership -> areas (area_id));
 diesel::joinable!(canonical_area_membership -> audit_events (audit_event_id));
 diesel::joinable!(canonical_area_membership -> bid_years (bid_year_id));
 diesel::joinable!(canonical_area_membership -> users (user_id));
+diesel::joinable!(bid_windows -> areas (area_id));
+diesel::joinable!(bid_windows -> bid_years (bid_year_id));
+diesel::joinable!(bid_windows -> users (user_id));
 diesel::joinable!(canonical_bid_order -> audit_events (audit_event_id));
 diesel::joinable!(canonical_bid_order -> bid_years (bid_year_id));
 diesel::joinable!(canonical_bid_order -> users (user_id));
@@ -213,6 +227,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     areas,
     audit_events,
     bid_years,
+    bid_windows,
     canonical_area_membership,
     canonical_bid_order,
     canonical_bid_windows,

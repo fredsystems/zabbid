@@ -307,6 +307,20 @@ pub enum DomainError {
         /// Description of the conflict.
         reason: String,
     },
+    /// Invalid bid start date.
+    /// Phase 29E
+    InvalidBidStartDate {
+        /// The date string that failed validation.
+        date: String,
+        /// Description of the validation error.
+        reason: String,
+    },
+    /// Invalid bid schedule configuration.
+    /// Phase 29E
+    InvalidBidSchedule {
+        /// Description of the validation error.
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for DomainError {
@@ -587,6 +601,12 @@ impl std::fmt::Display for DomainError {
                     f,
                     "Seniority conflict between '{user1_initials}' and '{user2_initials}': {reason}"
                 )
+            }
+            Self::InvalidBidStartDate { date, reason } => {
+                write!(f, "Invalid bid start date '{date}': {reason}")
+            }
+            Self::InvalidBidSchedule { reason } => {
+                write!(f, "Invalid bid schedule: {reason}")
             }
         }
     }

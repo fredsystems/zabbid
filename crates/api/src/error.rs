@@ -482,6 +482,14 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
                 "Seniority conflict between '{user1_initials}' and '{user2_initials}': {reason}"
             ),
         },
+        DomainError::InvalidBidStartDate { date, reason } => ApiError::InvalidInput {
+            field: String::from("bid_start_date"),
+            message: format!("Invalid bid start date '{date}': {reason}"),
+        },
+        DomainError::InvalidBidSchedule { reason } => ApiError::InvalidInput {
+            field: String::from("bid_schedule"),
+            message: format!("Invalid bid schedule: {reason}"),
+        },
     }
 }
 
