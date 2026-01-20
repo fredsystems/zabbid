@@ -9,11 +9,11 @@
 
 - Status: In Progress
 - Last Updated: 2026-01-20
-- Reason: Sub-Phase 29B semantic correction complete, continuing with remaining sub-phases
+- Reason: Sub-Phase 29C complete, continuing with remaining sub-phases
 
 ## Active Sub-Phase
 
-- Sub-Phase: 29B — Round Groups and Rounds
+- Sub-Phase: 29C — Bid Schedule Declaration
 - State: Complete
 
 ## Completed Sub-Phases
@@ -21,12 +21,13 @@
 - [x] Planning Pass — Sub-phase documents created
 - [x] 29A — User Participation Flags
 - [x] 29B — Round Groups and Rounds (including semantic correction)
+- [x] 29C — Bid Schedule Declaration
 
 ## Planned Sub-Phases
 
 - [x] 29A — User Participation Flags
 - [x] 29B — Round Groups and Rounds (COMPLETE)
-- [ ] 29C — Bid Schedule Declaration
+- [x] 29C — Bid Schedule Declaration (COMPLETE)
 - [ ] 29D — Readiness Evaluation
 - [ ] 29E — Confirmation and Bid Order Freezing
 - [ ] 29F — Bid Status Tracking Structure
@@ -224,12 +225,11 @@ All work completed and committed (commit 089ee7e).
 
 ### Current Sub-Phase
 
-- Sub-Phase 29B semantic correction: ✅ COMPLETE
-- Next: Sub-Phase 29C (Bid Schedule Declaration)
+- Sub-Phase 29C: ✅ COMPLETE
+- Next: Sub-Phase 29D (Readiness Evaluation)
 
 ### Future Sub-Phases
 
-- Execute Sub-Phase 29C (Bid Schedule Declaration)
 - Execute Sub-Phase 29D (Readiness Evaluation)
 - Execute Sub-Phase 29E (Confirmation and Bid Order Freezing)
 - Execute Sub-Phase 29F (Bid Status Tracking Structure)
@@ -238,7 +238,7 @@ All work completed and committed (commit 089ee7e).
 
 ## Known Failures / Breakages
 
-**Sub-Phase 29B COMPLETE** (commit 089ee7e):
+**Sub-Phases 29A, 29B, and 29C COMPLETE**:
 
 - ✅ Database schema corrected via migrations (SQLite & MySQL)
 - ✅ Domain layer corrected (129 tests passing)
@@ -310,8 +310,11 @@ None
 
 ### Reference Documents
 
-- Completed sub-phase: `plans/PHASE_29/PHASE_29B.md`
-- Next sub-phase: `plans/PHASE_29/PHASE_29C.md`
+- Completed sub-phases:
+  - `plans/PHASE_29/PHASE_29A.md`
+  - `plans/PHASE_29/PHASE_29B.md`
+  - `plans/PHASE_29/PHASE_29C.md`
+- Next sub-phase: `plans/PHASE_29/PHASE_29D.md`
 - Architectural rules: `AGENTS.md`
 - Execution protocol: `plans/PHASE_EXECUTION.md`
 
@@ -335,6 +338,142 @@ None
 
 **Next Steps**:
 
-1. Proceed to Sub-Phase 29C (Bid Schedule Declaration)
+1. Proceed to Sub-Phase 29D (Readiness Evaluation)
+2. Update PHASE_29_WORKING_STATE.md before pausing
+3. Continue execution per Phase Planning & Execution Protocol
+
+---
+
+### Sub-Phase 29C (Implementation Complete)
+
+#### 29C Database Schema ✅ Complete
+
+- Created SQLite migration `2026-01-20-120000-0000_add_bid_schedule_to_bid_years/up.sql`
+- Created SQLite migration `2026-01-20-120000-0000_add_bid_schedule_to_bid_years/down.sql`
+- Created MySQL migration `2026-01-20-120000-0000_add_bid_schedule_to_bid_years/up.sql`
+- Created MySQL migration `2026-01-20-120000-0000_add_bid_schedule_to_bid_years/down.sql`
+- Added bid schedule fields to `bid_years` table:
+  - `bid_timezone` (TEXT/VARCHAR)
+  - `bid_start_date` (TEXT/VARCHAR)
+  - `bid_window_start_time` (TEXT/VARCHAR)
+  - `bid_window_end_time` (TEXT/VARCHAR)
+  - `bidders_per_area_per_day` (INTEGER/INT)
+- All fields nullable until confirmation
+- Schema verification passes: `cargo xtask verify-migrations`
+
+#### 29C Domain Types ✅ Complete
+
+- Added `BidSchedule` struct in `domain/src/types.rs`
+- Added `chrono-tz` dependency for timezone validation
+- Implemented validation methods:
+  - Timezone validation (IANA identifier)
+  - Start date must be Monday
+  - Window times: start < end
+  - Bidders per day > 0
+  - Future date validation (relative to reference date)
+- Added domain error variants:
+  - `InvalidTimezone`
+  - `BidStartDateNotMonday`
+  - `BidStartDateNotFuture`
+  - `InvalidBidWindowTimes`
+  - `InvalidBiddersPerDay`
+- All 129 domain tests pass
+
+#### 29C Persistence Layer ✅ Complete
+
+- Updated Diesel schema to include new bid_years fields
+- Created `BidScheduleFields` type alias to simplify return types
+- Added `get_bid_schedule()` backend function
+- Added `update_bid_schedule()` backend function
+- Exposed functions in `Persistence` API
+- All 125 persistence tests pass
+
+#### 29C API Layer ✅ Complete
+
+- Added `BidScheduleInfo` struct to request_response.rs
+- Updated `BidYearInfo` to include optional `bid_schedule` field
+- Created `SetBidScheduleRequest` type
+- Created `SetBidScheduleResponse` type
+- Created `GetBidScheduleResponse` type
+- Implemented `set_bid_schedule()` handler:
+  - Admin-only authorization
+  - Lifecycle constraint enforcement (Draft/BootstrapComplete only)
+  - Full validation (timezone, date, times, capacity)
+  - Audit event creation
+- Implemented `get_bid_schedule()` handler
+- Updated `list_bid_years()` to populate bid_schedule field
+- Added error translations for all bid schedule validation errors
+- Handlers marked with `#[allow(dead_code)]` pending route wiring
+
+#### 29C Build & CI ✅ Complete
+
+- All tests pass: `cargo test --lib` (125 persistence + 129 domain)
+- Full CI passes: `cargo xtask ci`
+- Pre-commit hooks pass: `pre-commit run --all-files`
+- Schema parity verified: `cargo xtask verify-migrations`
+- All clippy warnings resolved
+- All files tracked in git
+
+#### Completion Checklist — ALL MET ✅
+
+**Schema & Migrations**:
+
+- [x] Migrations created for both SQLite and MySQL
+- [x] Schema verification passes
+- [x] All bid schedule fields added to bid_years table
+- [x] All fields nullable until confirmation
+
+**Domain Layer**:
+
+- [x] BidSchedule type created
+- [x] Timezone validation implemented (IANA identifiers)
+- [x] Start date validation (Monday, future at confirmation)
+- [x] Daily window validation (start < end)
+- [x] Bidders per day validation (> 0)
+- [x] All error variants added
+- [x] All domain tests pass
+
+**Persistence Layer**:
+
+- [x] Persistence functions created (get/update)
+- [x] Type alias for complex return types
+- [x] Backend-agnostic wrapper functions
+- [x] All persistence tests pass
+
+**API Layer**:
+
+- [x] Request/response types created
+- [x] set_bid_schedule handler implemented
+- [x] get_bid_schedule handler implemented
+- [x] list_bid_years updated to include bid_schedule
+- [x] Lifecycle constraints enforced
+- [x] Error translations added
+- [x] Handlers marked dead_code (routes not wired yet)
+
+**Validation**:
+
+- [x] All tests pass (cargo test --lib)
+- [x] cargo xtask ci passes
+- [x] pre-commit run --all-files passes
+- [x] Schema parity verified
+- [x] All files added to git
+
+---
+
+## Phase 29C Complete - 2026-01-20
+
+**What Was Completed**:
+
+- ✅ Database migrations (SQLite and MySQL)
+- ✅ BidSchedule domain type with full validation
+- ✅ Persistence layer (get/update bid schedule)
+- ✅ API handlers (set/get bid schedule)
+- ✅ API response types updated (BidYearInfo includes bid_schedule)
+- ✅ All validation passing (cargo xtask ci, pre-commit, schema parity)
+- ✅ Lifecycle constraints enforced (editable in Draft/BootstrapComplete only)
+
+**Next Steps**:
+
+1. Proceed to Sub-Phase 29D (Readiness Evaluation)
 2. Update PHASE_29_WORKING_STATE.md before pausing
 3. Continue execution per Phase Planning & Execution Protocol
