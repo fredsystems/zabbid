@@ -1332,6 +1332,208 @@ pub struct OverrideBidWindowRequest {
 pub struct OverrideBidWindowResponse {
     /// The audit event ID.
     pub audit_event_id: i64,
-    /// Success message.
+    /// A success message.
+    pub message: String,
+}
+
+// ============================================================================
+// Phase 29B: Round Groups and Rounds
+// ============================================================================
+
+/// API request to create a new round group.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CreateRoundGroupRequest {
+    /// The name of the round group (must be unique within bid year).
+    pub name: String,
+    /// Whether editing is enabled for this round group.
+    pub editing_enabled: bool,
+}
+
+/// API response for a successful round group creation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CreateRoundGroupResponse {
+    /// The canonical round group identifier.
+    pub round_group_id: i64,
+    /// The bid year ID this round group belongs to.
+    pub bid_year_id: i64,
+    /// The round group name.
+    pub name: String,
+    /// Whether editing is enabled.
+    pub editing_enabled: bool,
+    /// A success message.
+    pub message: String,
+}
+
+/// API request to update a round group.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateRoundGroupRequest {
+    /// The round group ID to update.
+    pub round_group_id: i64,
+    /// The new name (must be unique within bid year).
+    pub name: String,
+    /// Whether editing is enabled.
+    pub editing_enabled: bool,
+}
+
+/// API response for a successful round group update.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateRoundGroupResponse {
+    /// The canonical round group identifier.
+    pub round_group_id: i64,
+    /// The bid year ID this round group belongs to.
+    pub bid_year_id: i64,
+    /// The updated round group name.
+    pub name: String,
+    /// Whether editing is enabled.
+    pub editing_enabled: bool,
+    /// A success message.
+    pub message: String,
+}
+
+/// API response for round group list.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RoundGroupInfo {
+    /// The canonical round group identifier.
+    pub round_group_id: i64,
+    /// The bid year ID this round group belongs to.
+    pub bid_year_id: i64,
+    /// The round group name.
+    pub name: String,
+    /// Whether editing is enabled.
+    pub editing_enabled: bool,
+}
+
+/// API response for listing round groups.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ListRoundGroupsResponse {
+    /// The bid year ID.
+    pub bid_year_id: i64,
+    /// All round groups for this bid year.
+    pub round_groups: Vec<RoundGroupInfo>,
+}
+
+/// API response for deleting a round group.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeleteRoundGroupResponse {
+    /// A success message.
+    pub message: String,
+}
+
+/// API request to create a new round.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CreateRoundRequest {
+    /// The round group ID that defines this round's configuration.
+    pub round_group_id: i64,
+    /// The round number (must be unique within area).
+    pub round_number: u32,
+    /// The display name for this round.
+    pub name: String,
+    /// Maximum number of slots per day.
+    pub slots_per_day: u32,
+    /// Maximum number of groups.
+    pub max_groups: u32,
+    /// Maximum total hours.
+    pub max_total_hours: u32,
+    /// Whether holidays are included in groups.
+    pub include_holidays: bool,
+    /// Whether overbidding is allowed.
+    pub allow_overbid: bool,
+}
+
+/// API response for a successful round creation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CreateRoundResponse {
+    /// The canonical round identifier.
+    pub round_id: i64,
+    /// The area ID this round belongs to.
+    pub area_id: i64,
+    /// The round group ID.
+    pub round_group_id: i64,
+    /// The round number.
+    pub round_number: u32,
+    /// The display name.
+    pub name: String,
+    /// A success message.
+    pub message: String,
+}
+
+/// API request to update a round.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateRoundRequest {
+    /// The round ID to update.
+    pub round_id: i64,
+    /// The round group ID.
+    pub round_group_id: i64,
+    /// The round number (must be unique within area).
+    pub round_number: u32,
+    /// The display name.
+    pub name: String,
+    /// Maximum number of slots per day.
+    pub slots_per_day: u32,
+    /// Maximum number of groups.
+    pub max_groups: u32,
+    /// Maximum total hours.
+    pub max_total_hours: u32,
+    /// Whether holidays are included in groups.
+    pub include_holidays: bool,
+    /// Whether overbidding is allowed.
+    pub allow_overbid: bool,
+}
+
+/// API response for a successful round update.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateRoundResponse {
+    /// The canonical round identifier.
+    pub round_id: i64,
+    /// The area ID this round belongs to.
+    pub area_id: i64,
+    /// The round group ID.
+    pub round_group_id: i64,
+    /// The round number.
+    pub round_number: u32,
+    /// The display name.
+    pub name: String,
+    /// A success message.
+    pub message: String,
+}
+
+/// API response for round list.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RoundInfo {
+    /// The canonical round identifier.
+    pub round_id: i64,
+    /// The area ID this round belongs to.
+    pub area_id: i64,
+    /// The round group ID.
+    pub round_group_id: i64,
+    /// The round number.
+    pub round_number: u32,
+    /// The display name.
+    pub name: String,
+    /// Maximum number of slots per day.
+    pub slots_per_day: u32,
+    /// Maximum number of groups.
+    pub max_groups: u32,
+    /// Maximum total hours.
+    pub max_total_hours: u32,
+    /// Whether holidays are included in groups.
+    pub include_holidays: bool,
+    /// Whether overbidding is allowed.
+    pub allow_overbid: bool,
+}
+
+/// API response for listing rounds.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ListRoundsResponse {
+    /// The area ID.
+    pub area_id: i64,
+    /// All rounds for this area.
+    pub rounds: Vec<RoundInfo>,
+}
+
+/// API response for deleting a round.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeleteRoundResponse {
+    /// A success message.
     pub message: String,
 }

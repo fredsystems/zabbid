@@ -86,7 +86,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_audit::AuditEvent;
-use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials, User};
+use zab_bid_domain::{Area, BidYear, CanonicalBidYear, Initials, Round, RoundGroup, User};
 
 /// Atomic counter for generating unique in-memory database names.
 ///
@@ -2200,6 +2200,386 @@ impl Persistence {
                     bid_year_id,
                     user_id,
                 )
+            }
+        }
+    }
+
+    // ========================================================================
+    // Phase 29B: Round Groups and Rounds
+    // ========================================================================
+
+    /// Lists all round groups for a bid year.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The bid year ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub fn list_round_groups(
+        &mut self,
+        bid_year_id: i64,
+    ) -> Result<Vec<RoundGroup>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::rounds::list_round_groups_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::rounds::list_round_groups_mysql(conn, bid_year_id)
+            }
+        }
+    }
+
+    /// Gets a single round group by ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `round_group_id` - The round group ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the round group does not exist or the query fails.
+    pub fn get_round_group(&mut self, round_group_id: i64) -> Result<RoundGroup, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::rounds::get_round_group_sqlite(conn, round_group_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::rounds::get_round_group_mysql(conn, round_group_id)
+            }
+        }
+    }
+
+    /// Inserts a new round group.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The bid year ID
+    /// * `name` - The round group name
+    /// * `editing_enabled` - Whether editing is enabled
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the insert fails.
+    pub fn insert_round_group(
+        &mut self,
+        bid_year_id: i64,
+        name: &str,
+        editing_enabled: bool,
+    ) -> Result<i64, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::rounds::insert_round_group_sqlite(conn, bid_year_id, name, editing_enabled)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::rounds::insert_round_group_mysql(conn, bid_year_id, name, editing_enabled)
+            }
+        }
+    }
+
+    /// Updates an existing round group.
+    ///
+    /// # Arguments
+    ///
+    /// * `round_group_id` - The round group ID
+    /// * `name` - The new name
+    /// * `editing_enabled` - The new `editing_enabled` value
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the update fails.
+    pub fn update_round_group(
+        &mut self,
+        round_group_id: i64,
+        name: &str,
+        editing_enabled: bool,
+    ) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::rounds::update_round_group_sqlite(
+                conn,
+                round_group_id,
+                name,
+                editing_enabled,
+            ),
+            BackendConnection::Mysql(conn) => queries::rounds::update_round_group_mysql(
+                conn,
+                round_group_id,
+                name,
+                editing_enabled,
+            ),
+        }
+    }
+
+    /// Deletes a round group.
+    ///
+    /// # Arguments
+    ///
+    /// * `round_group_id` - The round group ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the delete fails.
+    pub fn delete_round_group(&mut self, round_group_id: i64) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::rounds::delete_round_group_sqlite(conn, round_group_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::rounds::delete_round_group_mysql(conn, round_group_id)
+            }
+        }
+    }
+
+    /// Checks if a round group is referenced by any rounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `round_group_id` - The round group ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query fails.
+    pub fn count_rounds_using_group(
+        &mut self,
+        round_group_id: i64,
+    ) -> Result<usize, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::rounds::count_rounds_using_group_sqlite(conn, round_group_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::rounds::count_rounds_using_group_mysql(conn, round_group_id)
+            }
+        }
+    }
+
+    /// Checks if a round group name exists within a bid year.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The bid year ID
+    /// * `name` - The round group name
+    /// * `exclude_id` - Optional round group ID to exclude from the check
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query fails.
+    pub fn round_group_name_exists(
+        &mut self,
+        bid_year_id: i64,
+        name: &str,
+        exclude_id: Option<i64>,
+    ) -> Result<bool, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::rounds::round_group_name_exists_sqlite(conn, bid_year_id, name, exclude_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::rounds::round_group_name_exists_mysql(conn, bid_year_id, name, exclude_id)
+            }
+        }
+    }
+
+    /// Lists all rounds for a given area.
+    ///
+    /// # Arguments
+    ///
+    /// * `area_id` - The area ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query fails.
+    pub fn list_rounds(&mut self, area_id: i64) -> Result<Vec<Round>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::rounds::list_rounds_sqlite(conn, area_id),
+            BackendConnection::Mysql(conn) => queries::rounds::list_rounds_mysql(conn, area_id),
+        }
+    }
+
+    /// Gets a single round by ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `round_id` - The round ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the round does not exist or the query fails.
+    pub fn get_round(&mut self, round_id: i64) -> Result<Round, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::rounds::get_round_sqlite(conn, round_id),
+            BackendConnection::Mysql(conn) => queries::rounds::get_round_mysql(conn, round_id),
+        }
+    }
+
+    /// Inserts a new round.
+    ///
+    /// # Arguments
+    ///
+    /// * `area_id` - The area ID
+    /// * `round_group_id` - The round group ID
+    /// * `round_number` - The round number
+    /// * `name` - The round name
+    /// * `slots_per_day` - Slots per day
+    /// * `max_groups` - Maximum groups
+    /// * `max_total_hours` - Maximum total hours
+    /// * `include_holidays` - Whether holidays are included
+    /// * `allow_overbid` - Whether overbidding is allowed
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the insert fails.
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_round(
+        &mut self,
+        area_id: i64,
+        round_group_id: i64,
+        round_number: u32,
+        name: &str,
+        slots_per_day: u32,
+        max_groups: u32,
+        max_total_hours: u32,
+        include_holidays: bool,
+        allow_overbid: bool,
+    ) -> Result<i64, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::rounds::insert_round_sqlite(
+                conn,
+                area_id,
+                round_group_id,
+                round_number,
+                name,
+                slots_per_day,
+                max_groups,
+                max_total_hours,
+                include_holidays,
+                allow_overbid,
+            ),
+            BackendConnection::Mysql(conn) => queries::rounds::insert_round_mysql(
+                conn,
+                area_id,
+                round_group_id,
+                round_number,
+                name,
+                slots_per_day,
+                max_groups,
+                max_total_hours,
+                include_holidays,
+                allow_overbid,
+            ),
+        }
+    }
+
+    /// Updates an existing round.
+    ///
+    /// # Arguments
+    ///
+    /// * `round_id` - The round ID
+    /// * `name` - The new name
+    /// * `slots_per_day` - The new `slots_per_day`
+    /// * `max_groups` - The new `max_groups`
+    /// * `max_total_hours` - The new `max_total_hours`
+    /// * `include_holidays` - The new `include_holidays`
+    /// * `allow_overbid` - The new `allow_overbid`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the update fails.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_round(
+        &mut self,
+        round_id: i64,
+        name: &str,
+        slots_per_day: u32,
+        max_groups: u32,
+        max_total_hours: u32,
+        include_holidays: bool,
+        allow_overbid: bool,
+    ) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::rounds::update_round_sqlite(
+                conn,
+                round_id,
+                name,
+                slots_per_day,
+                max_groups,
+                max_total_hours,
+                include_holidays,
+                allow_overbid,
+            ),
+            BackendConnection::Mysql(conn) => queries::rounds::update_round_mysql(
+                conn,
+                round_id,
+                name,
+                slots_per_day,
+                max_groups,
+                max_total_hours,
+                include_holidays,
+                allow_overbid,
+            ),
+        }
+    }
+
+    /// Deletes a round.
+    ///
+    /// # Arguments
+    ///
+    /// * `round_id` - The round ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the delete fails.
+    pub fn delete_round(&mut self, round_id: i64) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => queries::rounds::delete_round_sqlite(conn, round_id),
+            BackendConnection::Mysql(conn) => queries::rounds::delete_round_mysql(conn, round_id),
+        }
+    }
+
+    /// Checks if a round number exists within an area.
+    ///
+    /// # Arguments
+    ///
+    /// * `area_id` - The area ID
+    /// * `round_number` - The round number
+    /// * `exclude_id` - Optional round ID to exclude from the check
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query fails.
+    pub fn round_number_exists(
+        &mut self,
+        area_id: i64,
+        round_number: u32,
+        exclude_id: Option<i64>,
+    ) -> Result<bool, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::rounds::round_number_exists_sqlite(conn, area_id, round_number, exclude_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::rounds::round_number_exists_mysql(conn, area_id, round_number, exclude_id)
+            }
+        }
+    }
+
+    /// Gets an area by its canonical ID, returning both the Area and its `bid_year_id`.
+    ///
+    /// # Arguments
+    ///
+    /// * `area_id` - The canonical area ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the area does not exist or the query fails.
+    pub fn get_area_by_id(&mut self, area_id: i64) -> Result<(Area, i64), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::canonical::get_area_by_id_sqlite(conn, area_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::canonical::get_area_by_id_mysql(conn, area_id)
             }
         }
     }

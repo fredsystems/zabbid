@@ -3,7 +3,9 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use crate::{Area, BidYear, Crew, DomainError, Initials, SeniorityData, User, UserType};
+use crate::{
+    Area, BidYear, Crew, DomainError, Initials, Round, RoundGroup, SeniorityData, User, UserType,
+};
 
 fn create_test_seniority_data() -> SeniorityData {
     SeniorityData::new(
@@ -299,4 +301,302 @@ fn test_crew_boundary_values() {
     assert!(crew7.is_ok());
     assert_eq!(crew1.unwrap().number(), 1);
     assert_eq!(crew7.unwrap().number(), 7);
+}
+
+// ============================================================================
+// Phase 29B: Round and RoundGroup Validation Tests
+// ============================================================================
+
+/// Helper to create a test bid year
+fn create_test_bid_year() -> BidYear {
+    BidYear::new(2026)
+}
+
+/// Helper to create a test area
+fn create_test_area() -> Area {
+    Area::new("North")
+}
+
+/// Helper to create a test round group
+fn create_test_round_group() -> RoundGroup {
+    RoundGroup::new(create_test_bid_year(), String::from("Regular Round"), true)
+}
+
+/// Helper to create a test round
+fn create_test_round() -> Round {
+    Round::new(
+        create_test_area(),
+        create_test_round_group(),
+        1,
+        String::from("Round 1"),
+        10,    // slots_per_day
+        5,     // max_groups
+        80,    // max_total_hours
+        false, // include_holidays
+        false, // allow_overbid
+    )
+}
+
+// RoundGroup validation tests
+
+#[test]
+fn test_round_group_validate_constraints_accepts_valid_name() {
+    let round_group = create_test_round_group();
+    assert!(round_group.validate_constraints().is_ok());
+}
+
+#[test]
+fn test_round_group_validate_constraints_rejects_empty_name() {
+    let round_group = RoundGroup::new(create_test_bid_year(), String::new(), true);
+    let result = round_group.validate_constraints();
+    assert!(matches!(
+        result,
+        Err(DomainError::InvalidRoundConfiguration { .. })
+    ));
+    if let Err(DomainError::InvalidRoundConfiguration { reason }) = result {
+        assert!(reason.contains("name cannot be empty"));
+    }
+}
+
+#[test]
+fn test_round_group_validate_constraints_rejects_whitespace_only_name() {
+    let round_group = RoundGroup::new(create_test_bid_year(), String::from("   "), true);
+    let result = round_group.validate_constraints();
+    assert!(matches!(
+        result,
+        Err(DomainError::InvalidRoundConfiguration { .. })
+    ));
+    if let Err(DomainError::InvalidRoundConfiguration { reason }) = result {
+        assert!(reason.contains("name cannot be empty"));
+    }
+}
+
+#[test]
+fn test_round_group_validate_constraints_accepts_name_with_leading_trailing_whitespace() {
+    let round_group = RoundGroup::new(create_test_bid_year(), String::from("  Valid Name  "), true);
+    // Name with whitespace around actual content should pass
+    // (trimming is done in validation, not storage)
+    assert!(round_group.validate_constraints().is_ok());
+}
+
+// Round validation tests
+
+#[test]
+fn test_round_validate_constraints_accepts_valid_configuration() {
+    let round = create_test_round();
+    assert!(round.validate_constraints().is_ok());
+}
+
+#[test]
+fn test_round_validate_constraints_rejects_zero_slots_per_day() {
+    let round = Round::new(
+        create_test_area(),
+        create_test_round_group(),
+        1,
+        String::from("Round 1"),
+        0, // slots_per_day = 0
+        5,
+        80,
+        false,
+        false,
+    );
+    let result = round.validate_constraints();
+    assert!(matches!(
+        result,
+        Err(DomainError::InvalidRoundConfiguration { .. })
+    ));
+    if let Err(DomainError::InvalidRoundConfiguration { reason }) = result {
+        assert!(reason.contains("slots_per_day must be greater than 0"));
+    }
+}
+
+#[test]
+fn test_round_validate_constraints_rejects_zero_max_groups() {
+    let round = Round::new(
+        create_test_area(),
+        create_test_round_group(),
+        1,
+        String::from("Round 1"),
+        10,
+        0, // max_groups = 0
+        80,
+        false,
+        false,
+    );
+    let result = round.validate_constraints();
+    assert!(matches!(
+        result,
+        Err(DomainError::InvalidRoundConfiguration { .. })
+    ));
+    if let Err(DomainError::InvalidRoundConfiguration { reason }) = result {
+        assert!(reason.contains("max_groups must be greater than 0"));
+    }
+}
+
+#[test]
+fn test_round_validate_constraints_rejects_zero_max_total_hours() {
+    let round = Round::new(
+        create_test_area(),
+        create_test_round_group(),
+        1,
+        String::from("Round 1"),
+        10,
+        5,
+        0, // max_total_hours = 0
+        false,
+        false,
+    );
+    let result = round.validate_constraints();
+    assert!(matches!(
+        result,
+        Err(DomainError::InvalidRoundConfiguration { .. })
+    ));
+    if let Err(DomainError::InvalidRoundConfiguration { reason }) = result {
+        assert!(reason.contains("max_total_hours must be greater than 0"));
+    }
+}
+
+#[test]
+fn test_round_validate_constraints_rejects_empty_name() {
+    let round = Round::new(
+        create_test_area(),
+        create_test_round_group(),
+        1,
+        String::new(),
+        10,
+        5,
+        80,
+        false,
+        false,
+    );
+    let result = round.validate_constraints();
+    assert!(matches!(
+        result,
+        Err(DomainError::InvalidRoundConfiguration { .. })
+    ));
+    if let Err(DomainError::InvalidRoundConfiguration { reason }) = result {
+        assert!(reason.contains("name cannot be empty"));
+    }
+}
+
+#[test]
+fn test_round_validate_constraints_rejects_whitespace_only_name() {
+    let round = Round::new(
+        create_test_area(),
+        create_test_round_group(),
+        1,
+        String::from("   "),
+        10,
+        5,
+        80,
+        false,
+        false,
+    );
+    let result = round.validate_constraints();
+    assert!(matches!(
+        result,
+        Err(DomainError::InvalidRoundConfiguration { .. })
+    ));
+    if let Err(DomainError::InvalidRoundConfiguration { reason }) = result {
+        assert!(reason.contains("name cannot be empty"));
+    }
+}
+
+#[test]
+fn test_round_validate_constraints_accepts_minimum_valid_values() {
+    let round = Round::new(
+        create_test_area(),
+        create_test_round_group(),
+        1,
+        String::from("Minimal Round"),
+        1, // slots_per_day = 1 (minimum valid)
+        1, // max_groups = 1 (minimum valid)
+        1, // max_total_hours = 1 (minimum valid)
+        false,
+        false,
+    );
+    assert!(round.validate_constraints().is_ok());
+}
+
+#[test]
+fn test_round_validate_not_system_area_accepts_regular_area() {
+    let round = create_test_round();
+    assert!(round.validate_not_system_area().is_ok());
+}
+
+#[test]
+fn test_round_validate_not_system_area_rejects_system_area() {
+    // Create a system area using the with_id constructor
+    let system_area = Area::with_id(
+        1,
+        "NO_BID",
+        Some(String::from("No Bid")),
+        true, // is_system_area
+    );
+
+    let round = Round::new(
+        system_area,
+        create_test_round_group(),
+        1,
+        String::from("Invalid Round"),
+        10,
+        5,
+        80,
+        false,
+        false,
+    );
+
+    let result = round.validate_not_system_area();
+    assert!(matches!(
+        result,
+        Err(DomainError::CannotCreateRoundForSystemArea { .. })
+    ));
+    if let Err(DomainError::CannotCreateRoundForSystemArea { area_code }) = result {
+        assert_eq!(area_code, "NO_BID");
+    }
+}
+
+#[test]
+fn test_round_with_overbid_allowed() {
+    let round = Round::new(
+        create_test_area(),
+        create_test_round_group(),
+        1,
+        String::from("Carryover Round"),
+        10,
+        5,
+        80,
+        false,
+        true, // allow_overbid = true
+    );
+    assert!(round.allow_overbid());
+    assert!(round.validate_constraints().is_ok());
+}
+
+#[test]
+fn test_round_with_holidays_included() {
+    let round = Round::new(
+        create_test_area(),
+        create_test_round_group(),
+        1,
+        String::from("Holiday Round"),
+        10,
+        5,
+        80,
+        true, // include_holidays = true
+        false,
+    );
+    assert!(round.include_holidays());
+    assert!(round.validate_constraints().is_ok());
+}
+
+#[test]
+fn test_round_group_with_editing_disabled() {
+    let round_group = RoundGroup::new(
+        create_test_bid_year(),
+        String::from("Locked Round Group"),
+        false, // editing_enabled = false
+    );
+    assert!(!round_group.editing_enabled());
+    assert!(round_group.validate_constraints().is_ok());
 }

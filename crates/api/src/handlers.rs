@@ -14,8 +14,8 @@ use zab_bid::{
 use zab_bid_audit::{Action, Actor, AuditEvent, Cause, StateSnapshot};
 use zab_bid_domain::{
     Area, BidYear, CanonicalBidYear, Crew, DomainError, Initials, LeaveAccrualResult,
-    LeaveAvailabilityResult, LeaveUsage, SeniorityData, UserType, calculate_leave_accrual,
-    calculate_leave_availability,
+    LeaveAvailabilityResult, LeaveUsage, RoundGroup, SeniorityData, UserType,
+    calculate_leave_accrual, calculate_leave_availability,
 };
 use zab_bid_persistence::{OperatorData, SqlitePersistence};
 
@@ -4831,3 +4831,925 @@ pub fn update_user_participation(
 // - test_update_area_denied_for_system_area
 // - test_update_area_requires_admin
 // - test_update_area_creates_audit_event
+
+// ============================================================================
+// Phase 29B: Round Groups and Rounds
+// ============================================================================
+
+/// Creates a new round group for a bid year.
+///
+/// Round groups are editable in `Draft` and `BootstrapComplete` states.
+/// After canonicalization, round configuration becomes immutable (or requires override).
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `bid_year_id` - The bid year ID this round group belongs to
+/// * `request` - The round group creation request
+/// * `authenticated_actor` - The authenticated actor performing the operation
+///
+/// # Returns
+///
+/// * `Ok(CreateRoundGroupResponse)` on success
+/// * `Err(ApiError)` on validation failure or lifecycle constraint violation
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Actor is not authorized (Admin role required)
+/// - Lifecycle state does not allow round group creation
+/// - Round group name already exists in bid year
+/// - Validation fails
+#[allow(dead_code)]
+pub fn create_round_group(
+    persistence: &mut SqlitePersistence,
+    bid_year_id: i64,
+    request: &crate::request_response::CreateRoundGroupRequest,
+    authenticated_actor: &AuthenticatedActor,
+) -> Result<crate::request_response::CreateRoundGroupResponse, ApiError> {
+    use zab_bid_domain::BidYearLifecycle;
+
+    // Enforce authorization - only admins can manage round groups
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("create_round_group"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Enforce lifecycle constraints: only allow in Draft or BootstrapComplete
+    let lifecycle_state_str: String =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    let lifecycle_state: BidYearLifecycle = lifecycle_state_str
+        .parse()
+        .map_err(translate_domain_error)?;
+
+    if !matches!(
+        lifecycle_state,
+        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
+    ) {
+        return Err(ApiError::DomainRuleViolation {
+            rule: String::from("round_group_lifecycle"),
+            message: format!(
+                "Cannot create round group in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+            ),
+        });
+    }
+
+    // Validate round group name is not empty
+    if request.name.trim().is_empty() {
+        return Err(ApiError::InvalidInput {
+            field: String::from("name"),
+            message: String::from("Round group name cannot be empty"),
+        });
+    }
+
+    // Check for duplicate name
+    let name_exists = persistence
+        .round_group_name_exists(bid_year_id, &request.name, None)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to check round group name: {e}"),
+        })?;
+
+    if name_exists {
+        return Err(translate_domain_error(
+            DomainError::DuplicateRoundGroupName {
+                bid_year: 0, // We don't have the year value here, but error translation handles it
+                name: request.name.clone(),
+            },
+        ));
+    }
+
+    // Insert the round group
+    let round_group_id = persistence
+        .insert_round_group(bid_year_id, &request.name, request.editing_enabled)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to insert round group: {e}"),
+        })?;
+
+    Ok(crate::request_response::CreateRoundGroupResponse {
+        round_group_id,
+        bid_year_id,
+        name: request.name.clone(),
+        editing_enabled: request.editing_enabled,
+        message: format!("Created round group '{}'", request.name),
+    })
+}
+
+/// Lists all round groups for a bid year.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `bid_year_id` - The bid year ID
+/// * `authenticated_actor` - The authenticated actor performing the operation
+///
+/// # Returns
+///
+/// * `Ok(ListRoundGroupsResponse)` on success
+/// * `Err(ApiError)` on query failure
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Actor is not authorized (Admin role required)
+/// - Database query fails
+///
+/// # Panics
+///
+/// Panics if a persisted round group does not have an ID.
+#[allow(dead_code)]
+pub fn list_round_groups(
+    persistence: &mut SqlitePersistence,
+    bid_year_id: i64,
+    authenticated_actor: &AuthenticatedActor,
+) -> Result<crate::request_response::ListRoundGroupsResponse, ApiError> {
+    // Enforce authorization - only admins can view round groups
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("list_round_groups"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    let round_groups: Vec<RoundGroup> =
+        persistence
+            .list_round_groups(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to list round groups: {e}"),
+            })?;
+
+    let round_group_infos: Vec<crate::request_response::RoundGroupInfo> = round_groups
+        .into_iter()
+        .map(|rg| crate::request_response::RoundGroupInfo {
+            round_group_id: rg.round_group_id().expect("persisted round group has ID"),
+            bid_year_id,
+            name: rg.name().to_string(),
+            editing_enabled: rg.editing_enabled(),
+        })
+        .collect();
+
+    Ok(crate::request_response::ListRoundGroupsResponse {
+        bid_year_id,
+        round_groups: round_group_infos,
+    })
+}
+
+/// Updates an existing round group.
+///
+/// Round groups are editable in `Draft` and `BootstrapComplete` states.
+/// After canonicalization, round configuration becomes immutable (or requires override).
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The round group update request
+/// * `authenticated_actor` - The authenticated actor performing the operation
+///
+/// # Returns
+///
+/// * `Ok(UpdateRoundGroupResponse)` on success
+/// * `Err(ApiError)` on validation failure or lifecycle constraint violation
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Actor is not authorized (Admin role required)
+/// - Round group does not exist
+/// - Lifecycle state does not allow updates
+/// - Round group name already exists (duplicate)
+///
+/// # Panics
+///
+/// Panics if the persisted round group's bid year does not have an ID.
+#[allow(dead_code)]
+pub fn update_round_group(
+    persistence: &mut SqlitePersistence,
+    request: &crate::request_response::UpdateRoundGroupRequest,
+    authenticated_actor: &AuthenticatedActor,
+) -> Result<crate::request_response::UpdateRoundGroupResponse, ApiError> {
+    use zab_bid_domain::BidYearLifecycle;
+
+    // Enforce authorization - only admins can manage round groups
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("update_round_group"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Get the existing round group to find its bid_year_id
+    let existing_rg: RoundGroup = persistence
+        .get_round_group(request.round_group_id)
+        .map_err(|e| match e {
+            PersistenceError::NotFound(_) => {
+                translate_domain_error(DomainError::RoundGroupNotFound {
+                    round_group_id: request.round_group_id,
+                })
+            }
+            _ => ApiError::Internal {
+                message: format!("Failed to get round group: {e}"),
+            },
+        })?;
+
+    let bid_year_id = existing_rg
+        .bid_year()
+        .bid_year_id()
+        .expect("persisted bid year has ID");
+
+    // Enforce lifecycle constraints
+    let lifecycle_state_str: String =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    let lifecycle_state: BidYearLifecycle = lifecycle_state_str
+        .parse()
+        .map_err(translate_domain_error)?;
+
+    if !matches!(
+        lifecycle_state,
+        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
+    ) {
+        return Err(ApiError::DomainRuleViolation {
+            rule: String::from("round_group_lifecycle"),
+            message: format!(
+                "Cannot update round group in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+            ),
+        });
+    }
+
+    // Validate round group name is not empty
+    if request.name.trim().is_empty() {
+        return Err(ApiError::InvalidInput {
+            field: String::from("name"),
+            message: String::from("Round group name cannot be empty"),
+        });
+    }
+
+    // Check for duplicate name (excluding this round group)
+    let name_exists = persistence
+        .round_group_name_exists(bid_year_id, &request.name, Some(request.round_group_id))
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to check round group name: {e}"),
+        })?;
+
+    if name_exists {
+        return Err(translate_domain_error(
+            DomainError::DuplicateRoundGroupName {
+                bid_year: 0,
+                name: request.name.clone(),
+            },
+        ));
+    }
+
+    // Update the round group
+    persistence
+        .update_round_group(
+            request.round_group_id,
+            &request.name,
+            request.editing_enabled,
+        )
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to update round group: {e}"),
+        })?;
+
+    Ok(crate::request_response::UpdateRoundGroupResponse {
+        round_group_id: request.round_group_id,
+        bid_year_id,
+        name: request.name.clone(),
+        editing_enabled: request.editing_enabled,
+        message: format!("Updated round group '{}'", request.name),
+    })
+}
+
+/// Deletes a round group.
+///
+/// Round groups can only be deleted if no rounds reference them.
+/// Deletion is only allowed in `Draft` and `BootstrapComplete` states.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `round_group_id` - The round group ID to delete
+/// * `authenticated_actor` - The authenticated actor performing the operation
+///
+/// # Returns
+///
+/// * `Ok(DeleteRoundGroupResponse)` on success
+/// * `Err(ApiError)` on validation failure or lifecycle constraint violation
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Actor is not authorized (Admin role required)
+/// - Round group does not exist
+/// - Lifecycle state does not allow deletion
+/// - Round group is referenced by rounds
+///
+/// # Panics
+///
+/// Panics if the persisted round group's bid year does not have an ID.
+#[allow(dead_code)]
+pub fn delete_round_group(
+    persistence: &mut SqlitePersistence,
+    round_group_id: i64,
+    authenticated_actor: &AuthenticatedActor,
+) -> Result<crate::request_response::DeleteRoundGroupResponse, ApiError> {
+    use zab_bid_domain::BidYearLifecycle;
+
+    // Enforce authorization - only admins can manage round groups
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("delete_round_group"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Get the existing round group to find its bid_year_id
+    let existing_rg: RoundGroup =
+        persistence
+            .get_round_group(round_group_id)
+            .map_err(|e| match e {
+                PersistenceError::NotFound(_) => {
+                    translate_domain_error(DomainError::RoundGroupNotFound { round_group_id })
+                }
+                _ => ApiError::Internal {
+                    message: format!("Failed to get round group: {e}"),
+                },
+            })?;
+
+    let bid_year_id = existing_rg
+        .bid_year()
+        .bid_year_id()
+        .expect("persisted bid year has ID");
+
+    // Enforce lifecycle constraints
+    let lifecycle_state_str: String =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    let lifecycle_state: BidYearLifecycle = lifecycle_state_str
+        .parse()
+        .map_err(translate_domain_error)?;
+
+    if !matches!(
+        lifecycle_state,
+        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
+    ) {
+        return Err(ApiError::DomainRuleViolation {
+            rule: String::from("round_group_lifecycle"),
+            message: format!(
+                "Cannot delete round group in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+            ),
+        });
+    }
+
+    // Check if round group is in use
+    let round_count = persistence
+        .count_rounds_using_group(round_group_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to check round group usage: {e}"),
+        })?;
+
+    if round_count > 0 {
+        return Err(translate_domain_error(DomainError::RoundGroupInUse {
+            round_group_id,
+            round_count,
+        }));
+    }
+
+    // Delete the round group
+    persistence
+        .delete_round_group(round_group_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to delete round group: {e}"),
+        })?;
+
+    Ok(crate::request_response::DeleteRoundGroupResponse {
+        message: format!("Deleted round group '{}'", existing_rg.name()),
+    })
+}
+
+/// Creates a new round for an area.
+///
+/// Rounds are editable in `Draft` and `BootstrapComplete` states.
+/// After canonicalization, round configuration becomes immutable (or requires override).
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `area_id` - The area ID this round belongs to
+/// * `request` - The round creation request
+/// * `authenticated_actor` - The authenticated actor performing the operation
+///
+/// # Returns
+///
+/// * `Ok(CreateRoundResponse)` on success
+/// * `Err(ApiError)` on validation failure or lifecycle constraint violation
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Actor is not authorized (Admin role required)
+/// - Area does not exist or is a system area
+/// - Lifecycle state does not allow round creation
+/// - Round number already exists in area
+/// - Round group does not exist
+/// - Validation fails (`slots_per_day`, `max_groups`, `max_total_hours` must be > 0)
+#[allow(dead_code)]
+#[allow(clippy::too_many_lines)]
+pub fn create_round(
+    persistence: &mut SqlitePersistence,
+    area_id: i64,
+    request: &crate::request_response::CreateRoundRequest,
+    authenticated_actor: &AuthenticatedActor,
+) -> Result<crate::request_response::CreateRoundResponse, ApiError> {
+    use zab_bid_domain::BidYearLifecycle;
+
+    // Enforce authorization - only admins can manage rounds
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("create_round"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Get area to validate it exists and get bid_year_id
+    let (area, bid_year_id) = persistence.get_area_by_id(area_id).map_err(|e| match e {
+        PersistenceError::NotFound(_) => ApiError::ResourceNotFound {
+            resource_type: String::from("Area"),
+            message: format!("Area with ID {area_id} not found"),
+        },
+        _ => ApiError::Internal {
+            message: format!("Failed to get area: {e}"),
+        },
+    })?;
+
+    // Check if area is a system area
+    if area.is_system_area() {
+        return Err(translate_domain_error(
+            DomainError::CannotCreateRoundForSystemArea {
+                area_code: area.area_code().to_string(),
+            },
+        ));
+    }
+
+    // Enforce lifecycle constraints
+    let lifecycle_state_str: String =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    let lifecycle_state: BidYearLifecycle = lifecycle_state_str
+        .parse()
+        .map_err(translate_domain_error)?;
+
+    if !matches!(
+        lifecycle_state,
+        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
+    ) {
+        return Err(ApiError::DomainRuleViolation {
+            rule: String::from("round_lifecycle"),
+            message: format!(
+                "Cannot create round in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+            ),
+        });
+    }
+
+    // Validate round configuration
+    if request.slots_per_day == 0 {
+        return Err(ApiError::InvalidInput {
+            field: String::from("slots_per_day"),
+            message: String::from("slots_per_day must be greater than 0"),
+        });
+    }
+    if request.max_groups == 0 {
+        return Err(ApiError::InvalidInput {
+            field: String::from("max_groups"),
+            message: String::from("max_groups must be greater than 0"),
+        });
+    }
+    if request.max_total_hours == 0 {
+        return Err(ApiError::InvalidInput {
+            field: String::from("max_total_hours"),
+            message: String::from("max_total_hours must be greater than 0"),
+        });
+    }
+    if request.name.trim().is_empty() {
+        return Err(ApiError::InvalidInput {
+            field: String::from("name"),
+            message: String::from("Round name cannot be empty"),
+        });
+    }
+
+    // Check for duplicate round number
+    let round_number_exists = persistence
+        .round_number_exists(area_id, request.round_number, None)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to check round number: {e}"),
+        })?;
+
+    if round_number_exists {
+        return Err(translate_domain_error(DomainError::DuplicateRoundNumber {
+            area_code: area.area_code().to_string(),
+            round_number: request.round_number,
+        }));
+    }
+
+    // Verify round group exists
+    let _round_group = persistence
+        .get_round_group(request.round_group_id)
+        .map_err(|e| match e {
+            PersistenceError::NotFound(_) => {
+                translate_domain_error(DomainError::RoundGroupNotFound {
+                    round_group_id: request.round_group_id,
+                })
+            }
+            _ => ApiError::Internal {
+                message: format!("Failed to get round group: {e}"),
+            },
+        })?;
+
+    // Insert the round
+    let round_id = persistence
+        .insert_round(
+            area_id,
+            request.round_group_id,
+            request.round_number,
+            &request.name,
+            request.slots_per_day,
+            request.max_groups,
+            request.max_total_hours,
+            request.include_holidays,
+            request.allow_overbid,
+        )
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to insert round: {e}"),
+        })?;
+
+    Ok(crate::request_response::CreateRoundResponse {
+        round_id,
+        area_id,
+        round_group_id: request.round_group_id,
+        round_number: request.round_number,
+        name: request.name.clone(),
+        message: format!("Created round {} '{}'", request.round_number, request.name),
+    })
+}
+
+/// Lists all rounds for an area.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `area_id` - The area ID
+/// * `authenticated_actor` - The authenticated actor performing the operation
+///
+/// # Returns
+///
+/// * `Ok(ListRoundsResponse)` on success
+/// * `Err(ApiError)` on query failure
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Actor is not authorized (Admin role required)
+/// - Database query fails
+///
+/// # Panics
+///
+/// Panics if a persisted round or its round group does not have an ID.
+#[allow(dead_code)]
+pub fn list_rounds(
+    persistence: &mut SqlitePersistence,
+    area_id: i64,
+    authenticated_actor: &AuthenticatedActor,
+) -> Result<crate::request_response::ListRoundsResponse, ApiError> {
+    // Enforce authorization - only admins can view rounds
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("list_rounds"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    let rounds = persistence
+        .list_rounds(area_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to list rounds: {e}"),
+        })?;
+
+    let round_infos: Vec<crate::request_response::RoundInfo> = rounds
+        .into_iter()
+        .map(|r| crate::request_response::RoundInfo {
+            round_id: r.round_id().expect("persisted round has ID"),
+            area_id,
+            round_group_id: r
+                .round_group()
+                .round_group_id()
+                .expect("persisted round group has ID"),
+            round_number: r.round_number(),
+            name: r.name().to_string(),
+            slots_per_day: r.slots_per_day(),
+            max_groups: r.max_groups(),
+            max_total_hours: r.max_total_hours(),
+            include_holidays: r.include_holidays(),
+            allow_overbid: r.allow_overbid(),
+        })
+        .collect();
+
+    Ok(crate::request_response::ListRoundsResponse {
+        area_id,
+        rounds: round_infos,
+    })
+}
+
+/// Updates an existing round.
+///
+/// Rounds are editable in `Draft` and `BootstrapComplete` states.
+/// After canonicalization, round configuration becomes immutable (or requires override).
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `request` - The round update request
+/// * `authenticated_actor` - The authenticated actor performing the operation
+///
+/// # Returns
+///
+/// * `Ok(UpdateRoundResponse)` on success
+/// * `Err(ApiError)` on validation failure or lifecycle constraint violation
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Actor is not authorized (Admin role required)
+/// - Round does not exist
+/// - Lifecycle state does not allow updates
+/// - Round number already exists (duplicate)
+/// - Validation fails
+///
+/// # Panics
+///
+/// Panics if the persisted round's area does not have an ID.
+#[allow(dead_code)]
+#[allow(clippy::too_many_lines)]
+pub fn update_round(
+    persistence: &mut SqlitePersistence,
+    request: &crate::request_response::UpdateRoundRequest,
+    authenticated_actor: &AuthenticatedActor,
+) -> Result<crate::request_response::UpdateRoundResponse, ApiError> {
+    use zab_bid_domain::BidYearLifecycle;
+
+    // Enforce authorization - only admins can manage rounds
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("update_round"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Get the existing round to find its area_id and bid_year_id
+    let existing_round = persistence
+        .get_round(request.round_id)
+        .map_err(|e| match e {
+            PersistenceError::NotFound(_) => translate_domain_error(DomainError::RoundNotFound {
+                round_id: request.round_id,
+            }),
+            _ => ApiError::Internal {
+                message: format!("Failed to get round: {e}"),
+            },
+        })?;
+
+    let area_id = existing_round
+        .area()
+        .area_id()
+        .expect("persisted area has ID");
+
+    // Get bid_year_id from the database since Area doesn't have it
+    let (_area, bid_year_id) =
+        persistence
+            .get_area_by_id(area_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get area for round: {e}"),
+            })?;
+
+    // Enforce lifecycle constraints
+    let lifecycle_state_str: String =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    let lifecycle_state: BidYearLifecycle = lifecycle_state_str
+        .parse()
+        .map_err(translate_domain_error)?;
+
+    if !matches!(
+        lifecycle_state,
+        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
+    ) {
+        return Err(ApiError::DomainRuleViolation {
+            rule: String::from("round_lifecycle"),
+            message: format!(
+                "Cannot update round in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+            ),
+        });
+    }
+
+    // Validate round configuration
+    if request.slots_per_day == 0 {
+        return Err(ApiError::InvalidInput {
+            field: String::from("slots_per_day"),
+            message: String::from("slots_per_day must be greater than 0"),
+        });
+    }
+    if request.max_groups == 0 {
+        return Err(ApiError::InvalidInput {
+            field: String::from("max_groups"),
+            message: String::from("max_groups must be greater than 0"),
+        });
+    }
+    if request.max_total_hours == 0 {
+        return Err(ApiError::InvalidInput {
+            field: String::from("max_total_hours"),
+            message: String::from("max_total_hours must be greater than 0"),
+        });
+    }
+    if request.name.trim().is_empty() {
+        return Err(ApiError::InvalidInput {
+            field: String::from("name"),
+            message: String::from("Round name cannot be empty"),
+        });
+    }
+
+    // Check for duplicate round number (excluding this round)
+    let round_number_exists = persistence
+        .round_number_exists(area_id, request.round_number, Some(request.round_id))
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to check round number: {e}"),
+        })?;
+
+    if round_number_exists {
+        return Err(translate_domain_error(DomainError::DuplicateRoundNumber {
+            area_code: existing_round.area().area_code().to_string(),
+            round_number: request.round_number,
+        }));
+    }
+
+    // Verify round group exists
+    let _round_group = persistence
+        .get_round_group(request.round_group_id)
+        .map_err(|e| match e {
+            PersistenceError::NotFound(_) => {
+                translate_domain_error(DomainError::RoundGroupNotFound {
+                    round_group_id: request.round_group_id,
+                })
+            }
+            _ => ApiError::Internal {
+                message: format!("Failed to get round group: {e}"),
+            },
+        })?;
+
+    // Update the round
+    persistence
+        .update_round(
+            request.round_id,
+            &request.name,
+            request.slots_per_day,
+            request.max_groups,
+            request.max_total_hours,
+            request.include_holidays,
+            request.allow_overbid,
+        )
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to update round: {e}"),
+        })?;
+
+    Ok(crate::request_response::UpdateRoundResponse {
+        round_id: request.round_id,
+        area_id,
+        round_group_id: request.round_group_id,
+        round_number: request.round_number,
+        name: request.name.clone(),
+        message: format!("Updated round {} '{}'", request.round_number, request.name),
+    })
+}
+
+/// Deletes a round.
+///
+/// Rounds can be deleted only in `Draft` and `BootstrapComplete` states.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `round_id` - The round ID to delete
+/// * `authenticated_actor` - The authenticated actor performing the operation
+///
+/// # Returns
+///
+/// * `Ok(DeleteRoundResponse)` on success
+/// * `Err(ApiError)` on validation failure or lifecycle constraint violation
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Actor is not authorized (Admin role required)
+/// - Round does not exist
+/// - Lifecycle state does not allow updates
+/// - Round is referenced by other entities
+///
+/// # Panics
+///
+/// Panics if the persisted round's area does not have an ID.
+#[allow(dead_code)]
+pub fn delete_round(
+    persistence: &mut SqlitePersistence,
+    round_id: i64,
+    authenticated_actor: &AuthenticatedActor,
+) -> Result<crate::request_response::DeleteRoundResponse, ApiError> {
+    use zab_bid_domain::BidYearLifecycle;
+
+    // Enforce authorization - only admins can manage rounds
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("delete_round"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Get the existing round to find its bid_year_id
+    let existing_round = persistence.get_round(round_id).map_err(|e| match e {
+        PersistenceError::NotFound(_) => {
+            translate_domain_error(DomainError::RoundNotFound { round_id })
+        }
+        _ => ApiError::Internal {
+            message: format!("Failed to get round: {e}"),
+        },
+    })?;
+
+    // Get bid_year_id from the database since Area doesn't have it
+    let area_id = existing_round
+        .area()
+        .area_id()
+        .expect("persisted area has ID");
+    let (_area, bid_year_id) =
+        persistence
+            .get_area_by_id(area_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get area for round: {e}"),
+            })?;
+
+    // Enforce lifecycle constraints
+    let lifecycle_state_str: String =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    let lifecycle_state: BidYearLifecycle = lifecycle_state_str
+        .parse()
+        .map_err(translate_domain_error)?;
+
+    if !matches!(
+        lifecycle_state,
+        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
+    ) {
+        return Err(ApiError::DomainRuleViolation {
+            rule: String::from("round_lifecycle"),
+            message: format!(
+                "Cannot delete round in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+            ),
+        });
+    }
+
+    // Delete the round
+    persistence
+        .delete_round(round_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to delete round: {e}"),
+        })?;
+
+    Ok(crate::request_response::DeleteRoundResponse {
+        message: format!(
+            "Deleted round {} '{}'",
+            existing_round.round_number(),
+            existing_round.name()
+        ),
+    })
+}

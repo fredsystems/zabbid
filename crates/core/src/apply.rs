@@ -880,5 +880,14 @@ pub fn apply(
             // Override commands work directly with persistence, not through apply()
             unreachable!("apply called with override command")
         }
+        Command::CreateRoundGroup { .. }
+        | Command::UpdateRoundGroup { .. }
+        | Command::DeleteRoundGroup { .. }
+        | Command::CreateRound { .. }
+        | Command::UpdateRound { .. }
+        | Command::DeleteRound { .. } => {
+            // Round configuration commands are managed directly in API layer, not through apply()
+            unreachable!("apply called with round configuration command")
+        }
     }
 }

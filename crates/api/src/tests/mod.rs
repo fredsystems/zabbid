@@ -10,3 +10,4 @@ mod authorization_tests;
 mod helpers;
 mod operator_tests;
 mod password_tests;
+mod round_tests;
