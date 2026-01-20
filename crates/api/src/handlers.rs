@@ -25,29 +25,30 @@ use crate::csv_preview::{CsvRowResult, preview_csv_users as preview_csv_users_im
 use crate::error::{ApiError, AuthError, translate_core_error, translate_domain_error};
 use crate::password_policy::PasswordPolicy;
 use crate::request_response::{
-    AreaCompletenessInfo, BidScheduleInfo, BidYearCompletenessInfo, BidYearInfo, BlockingReason,
-    ChangePasswordRequest, ChangePasswordResponse, CreateAreaRequest, CreateBidYearRequest,
-    CreateOperatorRequest, CreateOperatorResponse, CsvImportRowResult, CsvImportRowStatus,
-    CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
+    AreaCompletenessInfo, BidOrderPositionInfo, BidScheduleInfo, BidYearCompletenessInfo,
+    BidYearInfo, BlockingReason, ChangePasswordRequest, ChangePasswordResponse, CreateAreaRequest,
+    CreateBidYearRequest, CreateOperatorRequest, CreateOperatorResponse, CsvImportRowResult,
+    CsvImportRowStatus, CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
     DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
-    GetActiveBidYearResponse, GetBidScheduleResponse, GetBidYearReadinessResponse,
-    GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse, GlobalCapabilities,
-    ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse,
-    ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse,
-    OperatorCapabilities, OperatorInfo, OverrideAreaAssignmentRequest,
+    GetActiveBidYearResponse, GetBidOrderPreviewResponse, GetBidScheduleResponse,
+    GetBidYearReadinessResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse,
+    GlobalCapabilities, ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest,
+    ListAreasResponse, ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse,
+    LoginRequest, LoginResponse, OperatorCapabilities, OperatorInfo, OverrideAreaAssignmentRequest,
     OverrideAreaAssignmentResponse, OverrideBidOrderRequest, OverrideBidOrderResponse,
     OverrideBidWindowRequest, OverrideBidWindowResponse, OverrideEligibilityRequest,
     OverrideEligibilityResponse, PreviewCsvUsersRequest, PreviewCsvUsersResponse,
     ReadinessDetailsInfo, RegisterUserRequest, ResetPasswordRequest, ResetPasswordResponse,
-    ReviewNoBidUserResponse, SetActiveBidYearRequest, SetActiveBidYearResponse,
-    SetBidScheduleRequest, SetBidScheduleResponse, SetExpectedAreaCountRequest,
-    SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
-    TransitionToBiddingActiveRequest, TransitionToBiddingActiveResponse,
-    TransitionToBiddingClosedRequest, TransitionToBiddingClosedResponse,
-    TransitionToBootstrapCompleteRequest, TransitionToBootstrapCompleteResponse,
-    TransitionToCanonicalizedRequest, TransitionToCanonicalizedResponse, UpdateAreaRequest,
-    UpdateAreaResponse, UpdateBidYearMetadataRequest, UpdateBidYearMetadataResponse,
-    UpdateUserRequest, UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
+    ReviewNoBidUserResponse, SeniorityInputsInfo, SetActiveBidYearRequest,
+    SetActiveBidYearResponse, SetBidScheduleRequest, SetBidScheduleResponse,
+    SetExpectedAreaCountRequest, SetExpectedAreaCountResponse, SetExpectedUserCountRequest,
+    SetExpectedUserCountResponse, TransitionToBiddingActiveRequest,
+    TransitionToBiddingActiveResponse, TransitionToBiddingClosedRequest,
+    TransitionToBiddingClosedResponse, TransitionToBootstrapCompleteRequest,
+    TransitionToBootstrapCompleteResponse, TransitionToCanonicalizedRequest,
+    TransitionToCanonicalizedResponse, UpdateAreaRequest, UpdateAreaResponse,
+    UpdateBidYearMetadataRequest, UpdateBidYearMetadataResponse, UpdateUserRequest,
+    UpdateUserResponse, UserCapabilities, UserInfo, WhoAmIResponse,
 };
 use zab_bid_persistence::PersistenceError;
 
@@ -6063,6 +6064,97 @@ pub fn delete_round(
     })
 }
 
+/// Detects seniority conflicts by computing bid order for all non-system areas.
+///
+/// # Returns
+///
+/// A tuple of (`conflict_count`, `detailed_conflict_messages`).
+fn detect_seniority_conflicts(
+    persistence: &mut SqlitePersistence,
+    bid_year_id: i64,
+) -> Result<(usize, Vec<String>), ApiError> {
+    let users_by_area = persistence
+        .get_users_by_area_for_conflict_detection(bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get users for conflict detection: {e}"),
+        })?;
+
+    let mut seniority_conflicts: usize = 0;
+    let mut conflict_areas: Vec<String> = Vec::new();
+
+    for (area_id, area_code, users) in users_by_area {
+        // Attempt to compute bid order for this area
+        match zab_bid_domain::compute_bid_order(&users) {
+            Ok(_) => {
+                // No conflict in this area
+            }
+            Err(zab_bid_domain::DomainError::SeniorityConflict {
+                user1_initials,
+                user2_initials,
+                reason,
+            }) => {
+                seniority_conflicts += 1;
+                conflict_areas.push(format!(
+                    "Area '{area_code}': seniority conflict between '{user1_initials}' and '{user2_initials}' ({reason})"
+                ));
+            }
+            Err(e) => {
+                return Err(ApiError::Internal {
+                    message: format!(
+                        "Unexpected error computing bid order for area '{area_code}' (ID {area_id}): {e}"
+                    ),
+                });
+            }
+        }
+    }
+
+    Ok((seniority_conflicts, conflict_areas))
+}
+
+/// Builds the list of blocking reasons for bid year readiness.
+fn build_blocking_reasons(
+    areas_missing_rounds: &[String],
+    no_bid_users_pending_review: usize,
+    participation_flag_violations: usize,
+    seniority_conflicts: usize,
+    conflict_details: &[String],
+    bid_schedule_set: bool,
+) -> Vec<String> {
+    let mut blocking_reasons: Vec<String> = Vec::new();
+
+    for area_code in areas_missing_rounds {
+        blocking_reasons.push(format!("Area '{area_code}' has no rounds configured"));
+    }
+
+    if no_bid_users_pending_review > 0 {
+        blocking_reasons.push(format!(
+            "{no_bid_users_pending_review} users in No Bid area have not been reviewed"
+        ));
+    }
+
+    if participation_flag_violations > 0 {
+        blocking_reasons.push(format!(
+            "{participation_flag_violations} users violate participation flag invariant"
+        ));
+    }
+
+    if seniority_conflicts > 0 {
+        blocking_reasons.push(format!(
+            "{seniority_conflicts} seniority conflict(s) detected"
+        ));
+        // Add detailed conflict information
+        for conflict_detail in conflict_details {
+            blocking_reasons.push(conflict_detail.clone());
+        }
+    }
+
+    if !bid_schedule_set {
+        blocking_reasons.push(String::from("Bid schedule is not set"));
+    }
+
+    blocking_reasons
+}
+
 /// Gets the readiness status for a bid year.
 ///
 /// Evaluates all readiness criteria and returns a structured response
@@ -6071,6 +6163,7 @@ pub fn delete_round(
 /// # Arguments
 ///
 /// * `persistence` - The persistence layer
+/// * `metadata` - Bootstrap metadata
 /// * `bid_year_id` - The canonical bid year ID
 ///
 /// # Returns
@@ -6082,6 +6175,7 @@ pub fn delete_round(
 /// Returns an error if:
 /// - The bid year does not exist
 /// - Database queries fail
+/// - Seniority conflict detection fails
 #[allow(dead_code)] // Phase 29D: Will be used when wired up in server
 pub fn get_bid_year_readiness(
     persistence: &mut SqlitePersistence,
@@ -6145,38 +6239,19 @@ pub fn get_bid_year_readiness(
                 message: format!("Failed to check bid schedule status: {e}"),
             })?;
 
-    // TODO Phase 29D: Implement seniority conflict detection
-    // For now, assume no conflicts
-    let seniority_conflicts: usize = 0;
+    // Detect seniority conflicts
+    let (seniority_conflicts, conflict_areas) =
+        detect_seniority_conflicts(persistence, bid_year_id)?;
 
     // Build blocking reasons
-    let mut blocking_reasons: Vec<String> = Vec::new();
-
-    for area_code in &areas_missing_rounds {
-        blocking_reasons.push(format!("Area '{area_code}' has no rounds configured"));
-    }
-
-    if no_bid_users_pending_review_usize > 0 {
-        blocking_reasons.push(format!(
-            "{no_bid_users_pending_review_usize} users in No Bid area have not been reviewed"
-        ));
-    }
-
-    if participation_flag_violations_usize > 0 {
-        blocking_reasons.push(format!(
-            "{participation_flag_violations_usize} users violate participation flag invariant"
-        ));
-    }
-
-    if seniority_conflicts > 0 {
-        blocking_reasons.push(format!(
-            "{seniority_conflicts} seniority conflicts detected"
-        ));
-    }
-
-    if !bid_schedule_set {
-        blocking_reasons.push(String::from("Bid schedule is not set"));
-    }
+    let blocking_reasons = build_blocking_reasons(
+        &areas_missing_rounds,
+        no_bid_users_pending_review_usize,
+        participation_flag_violations_usize,
+        seniority_conflicts,
+        &conflict_areas,
+        bid_schedule_set,
+    );
 
     let is_ready: bool = blocking_reasons.is_empty();
 
@@ -6241,5 +6316,125 @@ pub fn review_no_bid_user(
     Ok(ReviewNoBidUserResponse {
         user_id,
         message: format!("User {user_id} marked as reviewed"),
+    })
+}
+
+/// Gets a preview of the derived bid order for an area.
+///
+/// This is a read-only preview endpoint that shows what the bid order will be
+/// when frozen at confirmation. No persistence or audit events are generated.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - Bootstrap metadata
+/// * `bid_year_id` - The canonical bid year ID
+/// * `area_id` - The canonical area ID
+///
+/// # Returns
+///
+/// An ordered list of users with their positions and seniority inputs.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The bid year does not exist
+/// - The area does not exist
+/// - Database queries fail
+/// - Seniority conflicts are detected (unresolved ties)
+/// - Area is a system area (no bid order applies)
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub fn get_bid_order_preview(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    bid_year_id: i64,
+    area_id: i64,
+) -> Result<GetBidOrderPreviewResponse, ApiError> {
+    // Validate bid year exists
+    metadata
+        .bid_years
+        .iter()
+        .find(|by| by.bid_year_id() == Some(bid_year_id))
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("BidYear"),
+            message: format!("Bid year with ID {bid_year_id} not found"),
+        })?;
+
+    // Validate area exists and get area code
+    let (_, area) = metadata
+        .areas
+        .iter()
+        .find(|(_by, a)| a.area_id() == Some(area_id))
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("Area"),
+            message: format!("Area with ID {area_id} not found in bid year {bid_year_id}"),
+        })?;
+
+    let area_code = area.area_code().to_string();
+
+    // Reject system areas
+    if area.is_system_area() {
+        return Err(ApiError::InvalidInput {
+            field: String::from("area_id"),
+            message: format!("Cannot compute bid order for system area '{area_code}'"),
+        });
+    }
+
+    // Get all users grouped by area for this bid year
+    let users_by_area = persistence
+        .get_users_by_area_for_conflict_detection(bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get users for bid year {bid_year_id}: {e}"),
+        })?;
+
+    // Find the specific area we're interested in
+    let users = users_by_area
+        .into_iter()
+        .find(|(aid, _, _)| *aid == area_id)
+        .map(|(_, _, users)| users)
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("Area"),
+            message: format!("No users found for area {area_id}"),
+        })?;
+
+    // Compute bid order
+    let bid_order = zab_bid_domain::compute_bid_order(&users).map_err(|e| match e {
+        zab_bid_domain::DomainError::SeniorityConflict {
+            user1_initials,
+            user2_initials,
+            reason,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("seniority_total_ordering"),
+            message: format!(
+                "Seniority conflict in area '{area_code}': '{user1_initials}' and '{user2_initials}' ({reason})"
+            ),
+        },
+        _ => ApiError::Internal {
+            message: format!("Failed to compute bid order for area '{area_code}': {e}"),
+        },
+    })?;
+
+    // Convert to API response type
+    let positions: Vec<BidOrderPositionInfo> = bid_order
+        .into_iter()
+        .map(|pos| BidOrderPositionInfo {
+            position: pos.position,
+            user_id: pos.user_id,
+            initials: pos.initials,
+            seniority_inputs: SeniorityInputsInfo {
+                cumulative_natca_bu_date: pos.seniority_inputs.cumulative_natca_bu_date,
+                natca_bu_date: pos.seniority_inputs.natca_bu_date,
+                eod_faa_date: pos.seniority_inputs.eod_faa_date,
+                service_computation_date: pos.seniority_inputs.service_computation_date,
+                lottery_value: pos.seniority_inputs.lottery_value,
+            },
+        })
+        .collect();
+
+    Ok(GetBidOrderPreviewResponse {
+        bid_year_id,
+        area_id,
+        area_code,
+        positions,
     })
 }

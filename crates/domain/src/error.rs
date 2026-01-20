@@ -297,6 +297,16 @@ pub enum DomainError {
     /// Invalid bidders per day count.
     /// Phase 29C
     InvalidBiddersPerDay(u32),
+    /// Seniority conflict - two users have identical seniority after all tie-breakers.
+    /// Phase 29D
+    SeniorityConflict {
+        /// First user's initials.
+        user1_initials: String,
+        /// Second user's initials.
+        user2_initials: String,
+        /// Description of the conflict.
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for DomainError {
@@ -566,7 +576,17 @@ impl std::fmt::Display for DomainError {
                 )
             }
             Self::InvalidBiddersPerDay(count) => {
-                write!(f, "Bidders per day must be greater than 0, got {count}")
+                write!(f, "Invalid bidders per day: {count} (must be > 0)")
+            }
+            Self::SeniorityConflict {
+                user1_initials,
+                user2_initials,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "Seniority conflict between '{user1_initials}' and '{user2_initials}': {reason}"
+                )
             }
         }
     }

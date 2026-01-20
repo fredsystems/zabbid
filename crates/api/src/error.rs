@@ -472,6 +472,16 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
             field: String::from("bidders_per_day"),
             message: format!("Bidders per day must be greater than 0, got {count}"),
         },
+        DomainError::SeniorityConflict {
+            user1_initials,
+            user2_initials,
+            reason,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("seniority_total_ordering"),
+            message: format!(
+                "Seniority conflict between '{user1_initials}' and '{user2_initials}': {reason}"
+            ),
+        },
     }
 }
 

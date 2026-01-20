@@ -17,6 +17,7 @@
     clippy::expect_used
 )]
 
+mod bid_order;
 mod bid_year;
 mod error;
 mod leave_accrual;
@@ -28,6 +29,7 @@ mod validation;
 #[cfg(test)]
 mod tests;
 
+pub use bid_order::{BidOrderPosition, SeniorityInputs, compute_bid_order};
 pub use readiness::{
     count_participation_flag_violations, count_seniority_conflicts, count_unreviewed_no_bid_users,
     evaluate_area_readiness,

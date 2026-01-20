@@ -10,6 +10,7 @@
 //!
 //! Readiness is **computed**, not stored. It's a pure function of current state.
 
+use crate::bid_order::compute_bid_order;
 use crate::types::User;
 
 /// Validates participation flag directional invariant for all users.
@@ -58,24 +59,33 @@ pub fn count_unreviewed_no_bid_users(users: &[User], is_system_area: bool) -> us
 ///
 /// Phase 29D: Seniority conflicts are a blocking error. There is no manual resolution path.
 ///
+/// This function attempts to compute the full bid order for the given users.
+/// If bid order computation fails due to an unresolved seniority tie, it returns 1.
+/// Otherwise, it returns 0.
+///
 /// # Arguments
 ///
-/// * `users` - All users (typically non-excluded users only)
+/// * `users` - All users in the area (excluded users are filtered during computation)
 ///
 /// # Returns
 ///
-/// Number of conflicts detected (0 if no conflicts).
+/// Number of conflicts detected:
+/// - `0` if bid order can be computed without conflicts
+/// - `1` if a seniority conflict exists
 ///
-/// # Implementation Note
+/// # Note
 ///
-/// This is a placeholder. Full bid order computation with seniority tie-breaking
-/// is out of scope for Phase 29D initial implementation.
-/// For now, we assume no conflicts.
+/// This function returns a count for consistency with other readiness functions,
+/// but the actual conflict is binary (exists or doesn't exist).
 #[must_use]
-pub const fn count_seniority_conflicts(_users: &[User]) -> usize {
-    // TODO: Phase 29D - Implement full bid order computation
-    // For now, return 0 (no conflicts)
-    0
+pub fn count_seniority_conflicts(users: &[User]) -> usize {
+    // Attempt to compute bid order
+    // If computation succeeds, there are no conflicts
+    // If computation fails, there is a conflict
+    match compute_bid_order(users) {
+        Ok(_) => 0,
+        Err(_) => 1, // Conflict detected
+    }
 }
 
 /// Evaluates readiness for a single area.

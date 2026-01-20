@@ -182,3 +182,139 @@ pub fn mark_user_no_bid_reviewed(
     Ok(())
 }
 }
+
+backend_fn! {
+/// Gets all users grouped by area for bid order conflict detection.
+///
+/// Returns users in non-system areas only, for seniority conflict checking.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+///
+/// # Returns
+///
+/// Vector of tuples containing (`area_id`, `area_code`, users in that area).
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be queried.
+pub fn get_users_by_area_for_conflict_detection(
+    conn: &mut _,
+    bid_year_id: i64,
+) -> Result<Vec<(i64, String, Vec<zab_bid_domain::User>)>, PersistenceError> {
+    use crate::diesel_schema::{areas, users};
+    use num_traits::cast::ToPrimitive;
+    use zab_bid_domain::{Area, BidYear, Crew, Initials, SeniorityData, User, UserType};
+
+    // Get all non-system areas
+    let areas_list: Vec<(i64, String)> = areas::table
+        .filter(areas::bid_year_id.eq(bid_year_id))
+        .filter(areas::is_system_area.eq(0))
+        .select((areas::area_id, areas::area_code))
+        .load(conn)?;
+
+    let mut result = Vec::new();
+
+    for (area_id, area_code) in areas_list {
+        // Get users for this area
+        type UserRow = (
+            i64,    // user_id
+            String, // initials
+            String, // name
+            String, // user_type
+            Option<i32>, // crew_number
+            String, // cumulative_natca_bu_date
+            String, // natca_bu_date
+            String, // eod_faa_date
+            String, // service_computation_date
+            Option<i32>, // lottery_value
+            i32,    // excluded_from_bidding
+            i32,    // excluded_from_leave_calculation
+            i32,    // no_bid_reviewed
+        );
+
+        let user_rows: Vec<UserRow> = users::table
+            .filter(users::bid_year_id.eq(bid_year_id))
+            .filter(users::area_id.eq(area_id))
+            .select((
+                users::user_id,
+                users::initials,
+                users::name,
+                users::user_type,
+                users::crew,
+                users::cumulative_natca_bu_date,
+                users::natca_bu_date,
+                users::eod_faa_date,
+                users::service_computation_date,
+                users::lottery_value,
+                users::excluded_from_bidding,
+                users::excluded_from_leave_calculation,
+                users::no_bid_reviewed,
+            ))
+            .load(conn)?;
+
+        let mut users_for_area = Vec::new();
+
+        for (
+            user_id,
+            initials,
+            name,
+            user_type_str,
+            crew,
+            cumulative_natca,
+            natca_bu,
+            eod_faa,
+            scd,
+            lottery,
+            excluded_bidding,
+            excluded_leave,
+            reviewed,
+        ) in user_rows
+        {
+            let user_type = UserType::parse(&user_type_str)
+                .map_err(|e| PersistenceError::Other(format!("Invalid user type: {e}")))?;
+
+            let crew_opt = crew
+                .map(|n| {
+                    n.to_u8().ok_or_else(|| {
+                        PersistenceError::Other(format!("Crew number {n} out of range for u8"))
+                    })
+                })
+                .transpose()?
+                .map(Crew::new)
+                .transpose()
+                .map_err(|e| PersistenceError::Other(format!("Invalid crew: {e}")))?;
+
+            let seniority_data = SeniorityData::new(
+                cumulative_natca,
+                natca_bu,
+                eod_faa,
+                scd,
+                lottery.map(i32::cast_unsigned),
+            );
+
+            let user = User::with_id(
+                user_id,
+                BidYear::new(2026), // Placeholder - not used for conflict detection
+                Initials::new(&initials),
+                name,
+                Area::new(&area_code),
+                user_type,
+                crew_opt,
+                seniority_data,
+                excluded_bidding != 0,
+                excluded_leave != 0,
+                reviewed != 0,
+            );
+
+            users_for_area.push(user);
+        }
+
+        result.push((area_id, area_code, users_for_area));
+    }
+
+    Ok(result)
+}
+}

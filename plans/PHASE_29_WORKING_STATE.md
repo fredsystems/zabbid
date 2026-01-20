@@ -585,40 +585,35 @@ In Progress
 
 ### 29D Stop-and-Ask Items
 
-#### STOP: Seniority Conflict Detection Requires Clarification
+#### RESOLVED: Seniority Conflict Detection Complete ✅
 
-Phase 29D requires implementing seniority conflict detection as a readiness criterion.
-However, the actual bid order computation logic does not exist yet (appears to be in Phase 29E).
+**Resolution (2026-01-20):**
 
-**Current State:**
+Authorization granted to implement full bid order computation immediately.
+Structural gap has been corrected.
 
-- Seniority conflict detection is stubbed in domain layer (returns 0)
-- API handler uses the stubbed function
-- All other readiness criteria are fully implemented
+**Implementation:**
 
-**Question:**
+- Real seniority conflict detection via `compute_bid_order()`
+- Strict 5-tier seniority ordering enforced
+- Any unresolved tie is a domain violation
+- No manual resolution path (by design)
 
-How should seniority conflicts be detected without full bid order computation?
+**Status:**
 
-**Options:**
-
-1. **Defer to Phase 29E**: Accept the stub for now, implement conflict detection when bid order computation is added in Phase 29E
-2. **Implement partial detection**: Check for duplicate seniority dates without full ordering logic
-3. **Implement full computation now**: Bring forward bid order computation from Phase 29E to Phase 29D
-
-**Recommendation:**
-
-Option 1 seems most aligned with phase boundaries, but requires confirmation that readiness evaluation can initially accept the stub.
-
-**Phase Document Quote (PHASE_29D.md):**
-
-> "This sub-phase must implement **seniority conflict detection**."
-
-This appears to be a firm requirement, suggesting we may need Option 2 or 3.
+- ✅ Seniority conflict detection fully implemented
+- ✅ All tests pass
+- ⚠️ Clippy errors remain (function too long, needs refactoring)
+- ⚠️ Derived bid order preview API not yet added (required)
 
 ### 29D Resume Instructions
 
-#### PAUSED: Awaiting Guidance on Seniority Conflict Detection
+#### SENIORITY CONFLICT DETECTION: COMPLETE ✅
+
+**Structural Gap Corrected (2026-01-20):**
+
+The stubbed seniority conflict detection has been replaced with real bid order computation.
+This work was completed per authorization to resolve the structural gap before proceeding.
 
 **What's Complete:**
 
@@ -626,20 +621,59 @@ This appears to be a firm requirement, suggesting we may need Option 2 or 3.
 - ✅ Domain types and logic
 - ✅ Persistence queries
 - ✅ API layer (handlers and response types)
-- ✅ All readiness criteria EXCEPT seniority conflict detection
-- ✅ Build, CI, and pre-commit all pass
+- ✅ **Real seniority conflict detection via bid order computation**
+- ✅ Bid order computation module with strict 5-tier seniority rules
+- ✅ SeniorityConflict error variant and handling
+- ✅ Tests for all tie-breaking scenarios
 
-**What Requires Decision:**
+**Completed Work - Seniority Conflict Detection:**
 
-- ⚠️ Seniority conflict detection is stubbed (see Stop-and-Ask Items above)
+1. **Domain Layer (`crates/domain/src/bid_order.rs`):**
+   - Created `compute_bid_order()` function (strict total ordering)
+   - Implements authoritative 5-tier seniority rules:
+     1. Cumulative NATCA BU date (earliest wins)
+     2. NATCA BU date (earliest wins)
+     3. EOD/FAA date (earliest wins)
+     4. Service Computation Date (earliest wins)
+     5. Lottery value (lowest wins, deterministic)
+   - Added `BidOrderPosition` and `SeniorityInputs` types
+   - Added `SeniorityConflict` domain error variant
+   - Comprehensive tests for all tie-breaking rules
 
-**To Resume After Decision:**
+2. **Persistence Layer:**
+   - Added `get_users_by_area_for_conflict_detection()` query
+   - Groups users by area for conflict checking
+   - SQLite and MySQL backend support
 
-1. Implement seniority conflict detection based on user guidance
-2. Add integration tests for readiness endpoint
-3. Add integration tests for review-no-bid endpoint
-4. Wire up endpoints in server layer (may be Phase 29E scope)
+3. **API Layer:**
+   - Updated `get_bid_year_readiness()` to use real computation
+   - Replaces TODO stub with actual bid order computation per area
+   - Detailed conflict reporting (area, users involved, reason)
+   - Added `SeniorityConflict` error translation
 
-**Last Commit:**
+4. **Readiness Module:**
+   - `count_seniority_conflicts()` now invokes real computation
+   - Returns 0 if bid order computes successfully
+   - Returns 1 if unresolved tie detected
+
+**Outstanding Work:**
+
+- [ ] Add derived bid order preview API endpoint (NEW REQUIREMENT)
+- [ ] Fix clippy error: `get_bid_year_readiness()` too long (split function)
+- [ ] Add integration tests for readiness endpoint
+- [ ] Add integration tests for review-no-bid endpoint
+- [ ] Wire up endpoints in server layer (may be Phase 29E scope)
+- [ ] Update Phase 29 planning documents to reflect corrections
+
+**Last Commits:**
 
 - "Phase 29D: Implement readiness evaluation API layer"
+- "Phase 29D: Implement real seniority conflict detection via bid order computation"
+
+**Next Agent Must:**
+
+1. Fix clippy error in `get_bid_year_readiness()` (function too long - split into helpers)
+2. Add derived bid order preview API endpoint (GET /api/bid-years/{id}/areas/{id}/bid-order-preview)
+3. Update all Phase 29 planning documents per authorization
+4. Ensure Phase 29E uses the same `compute_bid_order()` logic for freezing
+5. Run full CI and commit all changes

@@ -2797,4 +2797,39 @@ impl Persistence {
             }
         }
     }
+
+    /// Gets all users grouped by area for seniority conflict detection.
+    ///
+    /// Returns users in non-system areas only.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    ///
+    /// # Returns
+    ///
+    /// Vector of tuples containing (`area_id`, `area_code`, users in that area).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn get_users_by_area_for_conflict_detection(
+        &mut self,
+        bid_year_id: i64,
+    ) -> Result<Vec<(i64, String, Vec<zab_bid_domain::User>)>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::readiness::get_users_by_area_for_conflict_detection_sqlite(
+                    conn,
+                    bid_year_id,
+                )
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::readiness::get_users_by_area_for_conflict_detection_mysql(
+                    conn,
+                    bid_year_id,
+                )
+            }
+        }
+    }
 }

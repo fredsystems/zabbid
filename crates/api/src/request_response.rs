@@ -1638,3 +1638,50 @@ pub struct ReviewNoBidUserResponse {
     /// Success message.
     pub message: String,
 }
+
+/// API response for bid order preview.
+///
+/// This is a read-only preview of the derived bid order that will be frozen at confirmation.
+/// No persistence or audit events are generated.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub struct GetBidOrderPreviewResponse {
+    /// The bid year ID.
+    pub bid_year_id: i64,
+    /// The area ID.
+    pub area_id: i64,
+    /// The area code (for display).
+    pub area_code: String,
+    /// Ordered list of users in bid order (1-based positions).
+    pub positions: Vec<BidOrderPositionInfo>,
+}
+
+/// Information about a user's position in the derived bid order.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub struct BidOrderPositionInfo {
+    /// The 1-based position in the bid order (1 = first to bid).
+    pub position: usize,
+    /// The user's canonical ID.
+    pub user_id: i64,
+    /// The user's initials (for display).
+    pub initials: String,
+    /// Seniority inputs used for ordering (for transparency).
+    pub seniority_inputs: SeniorityInputsInfo,
+}
+
+/// Seniority inputs used for bid order computation (API representation).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub struct SeniorityInputsInfo {
+    /// Cumulative NATCA bargaining unit date.
+    pub cumulative_natca_bu_date: String,
+    /// NATCA bargaining unit date.
+    pub natca_bu_date: String,
+    /// Entry on Duty / FAA date.
+    pub eod_faa_date: String,
+    /// Service Computation Date.
+    pub service_computation_date: String,
+    /// Lottery value (deterministic tie-breaker).
+    pub lottery_value: Option<u32>,
+}

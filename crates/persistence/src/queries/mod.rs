@@ -60,7 +60,9 @@ pub use completeness::{
 pub use readiness::{
     count_participation_flag_violations_mysql, count_participation_flag_violations_sqlite,
     count_unreviewed_no_bid_users_mysql, count_unreviewed_no_bid_users_sqlite,
-    get_areas_missing_rounds_mysql, get_areas_missing_rounds_sqlite, is_bid_schedule_set_mysql,
+    get_areas_missing_rounds_mysql, get_areas_missing_rounds_sqlite,
+    get_users_by_area_for_conflict_detection_mysql,
+    get_users_by_area_for_conflict_detection_sqlite, is_bid_schedule_set_mysql,
     is_bid_schedule_set_sqlite, mark_user_no_bid_reviewed_mysql, mark_user_no_bid_reviewed_sqlite,
 };
 #[allow(unused_imports)]
