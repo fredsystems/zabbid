@@ -1596,3 +1596,45 @@ pub struct DeleteRoundResponse {
     /// A success message.
     pub message: String,
 }
+
+/// API response for bid year readiness evaluation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub struct GetBidYearReadinessResponse {
+    /// The bid year ID being evaluated.
+    pub bid_year_id: i64,
+    /// The bid year value (for display).
+    pub year: u16,
+    /// Overall readiness flag.
+    pub is_ready: bool,
+    /// List of all unsatisfied criteria (empty if ready).
+    pub blocking_reasons: Vec<String>,
+    /// Detailed breakdown per criterion.
+    pub details: ReadinessDetailsInfo,
+}
+
+/// Detailed readiness breakdown.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub struct ReadinessDetailsInfo {
+    /// Areas that exist but have no rounds configured.
+    pub areas_missing_rounds: Vec<String>,
+    /// Number of users in No Bid area who have not been reviewed.
+    pub no_bid_users_pending_review: usize,
+    /// Number of users violating participation flag invariant.
+    pub participation_flag_violations: usize,
+    /// Number of seniority conflicts detected.
+    pub seniority_conflicts: usize,
+    /// Whether bid schedule is set and valid.
+    pub bid_schedule_set: bool,
+}
+
+/// API response for reviewing a No Bid user.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub struct ReviewNoBidUserResponse {
+    /// The user ID that was reviewed.
+    pub user_id: i64,
+    /// Success message.
+    pub message: String,
+}

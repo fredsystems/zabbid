@@ -2666,4 +2666,135 @@ impl Persistence {
             }
         }
     }
+
+    // ========================================================================
+    // Phase 29D: Readiness Evaluation
+    // ========================================================================
+
+    /// Checks if a bid year has a valid bid schedule configured.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    ///
+    /// # Returns
+    ///
+    /// `true` if all bid schedule fields are set, `false` otherwise.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn is_bid_schedule_set(&mut self, bid_year_id: i64) -> Result<bool, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::readiness::is_bid_schedule_set_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::readiness::is_bid_schedule_set_mysql(conn, bid_year_id)
+            }
+        }
+    }
+
+    /// Gets non-system areas that have no rounds configured.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    ///
+    /// # Returns
+    ///
+    /// Vector of area codes for areas missing round configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn get_areas_missing_rounds(
+        &mut self,
+        bid_year_id: i64,
+    ) -> Result<Vec<String>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::readiness::get_areas_missing_rounds_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::readiness::get_areas_missing_rounds_mysql(conn, bid_year_id)
+            }
+        }
+    }
+
+    /// Counts users in system areas who have not been reviewed.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    ///
+    /// # Returns
+    ///
+    /// Count of unreviewed users in system areas (No Bid).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn count_unreviewed_no_bid_users(
+        &mut self,
+        bid_year_id: i64,
+    ) -> Result<i64, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::readiness::count_unreviewed_no_bid_users_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::readiness::count_unreviewed_no_bid_users_mysql(conn, bid_year_id)
+            }
+        }
+    }
+
+    /// Counts users violating the participation flag directional invariant.
+    ///
+    /// Invariant: `excluded_from_leave_calculation == true` ⇒ `excluded_from_bidding == true`
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    ///
+    /// # Returns
+    ///
+    /// Count of users violating the invariant.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn count_participation_flag_violations(
+        &mut self,
+        bid_year_id: i64,
+    ) -> Result<i64, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::readiness::count_participation_flag_violations_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::readiness::count_participation_flag_violations_mysql(conn, bid_year_id)
+            }
+        }
+    }
+
+    /// Marks a user in a system area as reviewed.
+    ///
+    /// # Arguments
+    ///
+    /// * `user_id` - The user's canonical ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be updated.
+    pub fn mark_user_no_bid_reviewed(&mut self, user_id: i64) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::readiness::mark_user_no_bid_reviewed_sqlite(conn, user_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::readiness::mark_user_no_bid_reviewed_mysql(conn, user_id)
+            }
+        }
+    }
 }

@@ -5,6 +5,7 @@
 
 //! API handler functions for state-changing and read-only operations.
 
+use num_traits::cast::ToPrimitive;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use zab_bid::{
@@ -29,15 +30,16 @@ use crate::request_response::{
     CreateOperatorRequest, CreateOperatorResponse, CsvImportRowResult, CsvImportRowStatus,
     CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
     DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
-    GetActiveBidYearResponse, GetBidScheduleResponse, GetBootstrapCompletenessResponse,
-    GetLeaveAvailabilityResponse, GlobalCapabilities, ImportCsvUsersRequest,
-    ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
-    ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse, OperatorCapabilities,
-    OperatorInfo, OverrideAreaAssignmentRequest, OverrideAreaAssignmentResponse,
-    OverrideBidOrderRequest, OverrideBidOrderResponse, OverrideBidWindowRequest,
-    OverrideBidWindowResponse, OverrideEligibilityRequest, OverrideEligibilityResponse,
-    PreviewCsvUsersRequest, PreviewCsvUsersResponse, RegisterUserRequest, ResetPasswordRequest,
-    ResetPasswordResponse, SetActiveBidYearRequest, SetActiveBidYearResponse,
+    GetActiveBidYearResponse, GetBidScheduleResponse, GetBidYearReadinessResponse,
+    GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse, GlobalCapabilities,
+    ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse,
+    ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse,
+    OperatorCapabilities, OperatorInfo, OverrideAreaAssignmentRequest,
+    OverrideAreaAssignmentResponse, OverrideBidOrderRequest, OverrideBidOrderResponse,
+    OverrideBidWindowRequest, OverrideBidWindowResponse, OverrideEligibilityRequest,
+    OverrideEligibilityResponse, PreviewCsvUsersRequest, PreviewCsvUsersResponse,
+    ReadinessDetailsInfo, RegisterUserRequest, ResetPasswordRequest, ResetPasswordResponse,
+    ReviewNoBidUserResponse, SetActiveBidYearRequest, SetActiveBidYearResponse,
     SetBidScheduleRequest, SetBidScheduleResponse, SetExpectedAreaCountRequest,
     SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
     TransitionToBiddingActiveRequest, TransitionToBiddingActiveResponse,
@@ -6058,5 +6060,186 @@ pub fn delete_round(
             existing_round.round_number(),
             existing_round.name()
         ),
+    })
+}
+
+/// Gets the readiness status for a bid year.
+///
+/// Evaluates all readiness criteria and returns a structured response
+/// indicating whether the bid year is ready for confirmation.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `bid_year_id` - The canonical bid year ID
+///
+/// # Returns
+///
+/// A structured readiness evaluation response.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The bid year does not exist
+/// - Database queries fail
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub fn get_bid_year_readiness(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    bid_year_id: i64,
+) -> Result<GetBidYearReadinessResponse, ApiError> {
+    // Get the bid year to validate it exists and get the year value
+    let bid_year_value: u16 = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.bid_year_id() == Some(bid_year_id))
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("BidYear"),
+            message: format!("Bid year with ID {bid_year_id} not found"),
+        })?
+        .year();
+
+    // Query readiness criteria from persistence
+    let areas_missing_rounds: Vec<String> = persistence
+        .get_areas_missing_rounds(bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get areas missing rounds: {e}"),
+        })?;
+
+    let no_bid_users_pending_review: i64 = persistence
+        .count_unreviewed_no_bid_users(bid_year_id)
+        .map_err(|e| ApiError::Internal {
+        message: format!("Failed to count unreviewed No Bid users: {e}"),
+    })?;
+
+    let participation_flag_violations: i64 = persistence
+        .count_participation_flag_violations(bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to count participation flag violations: {e}"),
+        })?;
+
+    // Convert database counts to usize for response
+    // Database counts are always non-negative, so we can safely cast
+    let no_bid_users_pending_review_usize: usize =
+        no_bid_users_pending_review.to_usize().ok_or_else(|| {
+            ApiError::Internal {
+                message: format!(
+                    "Failed to convert no_bid_users_pending_review count {no_bid_users_pending_review} to usize"
+                ),
+            }
+        })?;
+
+    let participation_flag_violations_usize: usize =
+        participation_flag_violations.to_usize().ok_or_else(|| {
+            ApiError::Internal {
+                message: format!(
+                    "Failed to convert participation_flag_violations count {participation_flag_violations} to usize"
+                ),
+            }
+        })?;
+
+    let bid_schedule_set: bool =
+        persistence
+            .is_bid_schedule_set(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to check bid schedule status: {e}"),
+            })?;
+
+    // TODO Phase 29D: Implement seniority conflict detection
+    // For now, assume no conflicts
+    let seniority_conflicts: usize = 0;
+
+    // Build blocking reasons
+    let mut blocking_reasons: Vec<String> = Vec::new();
+
+    for area_code in &areas_missing_rounds {
+        blocking_reasons.push(format!("Area '{area_code}' has no rounds configured"));
+    }
+
+    if no_bid_users_pending_review_usize > 0 {
+        blocking_reasons.push(format!(
+            "{no_bid_users_pending_review_usize} users in No Bid area have not been reviewed"
+        ));
+    }
+
+    if participation_flag_violations_usize > 0 {
+        blocking_reasons.push(format!(
+            "{participation_flag_violations_usize} users violate participation flag invariant"
+        ));
+    }
+
+    if seniority_conflicts > 0 {
+        blocking_reasons.push(format!(
+            "{seniority_conflicts} seniority conflicts detected"
+        ));
+    }
+
+    if !bid_schedule_set {
+        blocking_reasons.push(String::from("Bid schedule is not set"));
+    }
+
+    let is_ready: bool = blocking_reasons.is_empty();
+
+    Ok(GetBidYearReadinessResponse {
+        bid_year_id,
+        year: bid_year_value,
+        is_ready,
+        blocking_reasons,
+        details: ReadinessDetailsInfo {
+            areas_missing_rounds,
+            no_bid_users_pending_review: no_bid_users_pending_review_usize,
+            participation_flag_violations: participation_flag_violations_usize,
+            seniority_conflicts,
+            bid_schedule_set,
+        },
+    })
+}
+
+/// Marks a user in a system area as reviewed.
+///
+/// This endpoint is used to confirm that a user assigned to a system area
+/// (e.g., "No Bid") has been reviewed and their assignment is correct.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `user_id` - The user's canonical ID
+/// * `authenticated_actor` - The authenticated actor performing the action
+///
+/// # Returns
+///
+/// A success response confirming the review.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The user does not exist
+/// - The user is not in a system area
+/// - Authorization fails
+/// - Database update fails
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub fn review_no_bid_user(
+    persistence: &mut SqlitePersistence,
+    user_id: i64,
+    authenticated_actor: &AuthenticatedActor,
+) -> Result<ReviewNoBidUserResponse, ApiError> {
+    // Enforce authorization - only admins can review No Bid users
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("review_no_bid_user"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Mark the user as reviewed
+    persistence
+        .mark_user_no_bid_reviewed(user_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to mark user as reviewed: {e}"),
+        })?;
+
+    Ok(ReviewNoBidUserResponse {
+        user_id,
+        message: format!("User {user_id} marked as reviewed"),
     })
 }
