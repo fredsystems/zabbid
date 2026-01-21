@@ -36,27 +36,32 @@ use tokio::sync::Mutex;
 use tracing::{error, info};
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_api::{
-    ApiError, ApiResult, BootstrapStatusResponse, CreateAreaRequest, CreateAreaResponse,
-    CreateBidYearRequest, CreateBidYearResponse, CsvImportRowStatus, GetActiveBidYearResponse,
-    GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse, ImportCsvUsersRequest,
-    ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
-    ListUsersResponse, OverrideAreaAssignmentRequest, OverrideAreaAssignmentResponse,
-    PreviewCsvUsersRequest, PreviewCsvUsersResponse, RegisterUserRequest, RegisterUserResponse,
-    RegisterUserResult, SetActiveBidYearRequest, SetActiveBidYearResponse,
-    SetExpectedAreaCountRequest, SetExpectedAreaCountResponse, SetExpectedUserCountRequest,
-    SetExpectedUserCountResponse, TransitionToBiddingActiveRequest,
-    TransitionToBiddingActiveResponse, TransitionToBiddingClosedRequest,
-    TransitionToBiddingClosedResponse, TransitionToBootstrapCompleteRequest,
-    TransitionToBootstrapCompleteResponse, TransitionToCanonicalizedRequest,
-    TransitionToCanonicalizedResponse, UpdateAreaRequest, UpdateAreaResponse,
-    UpdateBidYearMetadataRequest, UpdateBidYearMetadataResponse, UpdateUserRequest,
-    UpdateUserResponse, checkpoint, create_area, create_bid_year, finalize, get_active_bid_year,
-    get_bootstrap_completeness, get_bootstrap_status, get_current_state, get_historical_state,
-    get_leave_availability, import_csv_users, list_areas, list_bid_years, list_users,
-    override_area_assignment, preview_csv_users, register_user, rollback, set_active_bid_year,
-    set_expected_area_count, set_expected_user_count, transition_to_bidding_active,
-    transition_to_bidding_closed, transition_to_bootstrap_complete, transition_to_canonicalized,
-    update_area, update_bid_year_metadata, update_user,
+    AdjustBidOrderRequest, AdjustBidOrderResponse, AdjustBidWindowRequest, AdjustBidWindowResponse,
+    ApiError, ApiResult, BidOrderAdjustment, BootstrapStatusResponse, CreateAreaRequest,
+    CreateAreaResponse, CreateBidYearRequest, CreateBidYearResponse, CsvImportRowStatus,
+    GetActiveBidYearResponse, GetBidScheduleResponse, GetBootstrapCompletenessResponse,
+    GetLeaveAvailabilityResponse, ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest,
+    ListAreasResponse, ListBidYearsResponse, ListUsersResponse, OverrideAreaAssignmentRequest,
+    OverrideAreaAssignmentResponse, PreviewCsvUsersRequest, PreviewCsvUsersResponse,
+    RecalculateBidWindowsRequest, RecalculateBidWindowsResponse, RegisterUserRequest,
+    RegisterUserResponse, RegisterUserResult, SetActiveBidYearRequest, SetActiveBidYearResponse,
+    SetBidScheduleRequest, SetBidScheduleResponse, SetExpectedAreaCountRequest,
+    SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
+    TransitionToBiddingActiveRequest, TransitionToBiddingActiveResponse,
+    TransitionToBiddingClosedRequest, TransitionToBiddingClosedResponse,
+    TransitionToBootstrapCompleteRequest, TransitionToBootstrapCompleteResponse,
+    TransitionToCanonicalizedRequest, TransitionToCanonicalizedResponse, UpdateAreaRequest,
+    UpdateAreaResponse, UpdateBidYearMetadataRequest, UpdateBidYearMetadataResponse,
+    UpdateUserParticipationRequest, UpdateUserParticipationResponse, UpdateUserRequest,
+    UpdateUserResponse, adjust_bid_order, adjust_bid_window, checkpoint, create_area,
+    create_bid_year, finalize, get_active_bid_year, get_bid_schedule, get_bootstrap_completeness,
+    get_bootstrap_status, get_current_state, get_historical_state, get_leave_availability,
+    import_csv_users, list_areas, list_bid_years, list_users, override_area_assignment,
+    preview_csv_users, recalculate_bid_windows, register_user, rollback, set_active_bid_year,
+    set_bid_schedule, set_expected_area_count, set_expected_user_count,
+    transition_to_bidding_active, transition_to_bidding_closed, transition_to_bootstrap_complete,
+    transition_to_canonicalized, update_area, update_bid_year_metadata, update_user,
+    update_user_participation,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, BidYearLifecycle, CanonicalBidYear, Initials};
@@ -2742,6 +2747,389 @@ struct BulkUpdateBidStatusApiRequest {
     notes: String,
 }
 
+/// Request for updating user participation flags (Phase 29A)
+#[derive(serde::Deserialize)]
+struct UpdateUserParticipationApiRequest {
+    user_id: i64,
+    excluded_from_bidding: bool,
+    excluded_from_leave_calculation: bool,
+}
+
+/// Request for setting bid schedule (Phase 29C)
+#[derive(serde::Deserialize)]
+struct SetBidScheduleApiRequest {
+    cause_id: String,
+    cause_description: String,
+    bid_year_id: i64,
+    timezone: String,
+    start_date: String,
+    window_start_time: String,
+    window_end_time: String,
+    bidders_per_day: i32,
+}
+
+/// Path parameter for getting bid schedule (Phase 29C)
+#[derive(serde::Deserialize)]
+struct BidYearIdPath {
+    bid_year_id: i64,
+}
+
+/// Request for adjusting bid order (Phase 29G)
+#[derive(serde::Deserialize)]
+struct AdjustBidOrderApiRequest {
+    bid_year_id: i64,
+    area_id: i64,
+    adjustments: Vec<BidOrderAdjustmentItem>,
+    reason: String,
+}
+
+#[derive(serde::Deserialize)]
+struct BidOrderAdjustmentItem {
+    user_id: i64,
+    new_order: i64,
+}
+
+/// Request for adjusting bid window (Phase 29G)
+#[derive(serde::Deserialize)]
+struct AdjustBidWindowApiRequest {
+    bid_year_id: i64,
+    area_id: i64,
+    user_id: i64,
+    round_id: i64,
+    new_window_start: String,
+    new_window_end: String,
+    reason: String,
+}
+
+/// Request for recalculating bid windows (Phase 29G)
+#[derive(serde::Deserialize)]
+struct RecalculateBidWindowsApiRequest {
+    bid_year_id: i64,
+    area_id: i64,
+    user_ids: Vec<i64>,
+    rounds: Vec<i64>,
+    reason: String,
+}
+
+/// Handler for POST `/users/participation` endpoint (Phase 29A).
+///
+/// Updates user participation flags. Admin only.
+async fn handle_update_user_participation(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<UpdateUserParticipationApiRequest>,
+) -> Result<Json<UpdateUserParticipationResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        user_id = req.user_id,
+        excluded_from_bidding = req.excluded_from_bidding,
+        excluded_from_leave_calculation = req.excluded_from_leave_calculation,
+        "Handling update_user_participation request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Get the active bid year
+    let active_year: u16 = persistence.get_active_bid_year().map_err(|e| HttpError {
+        status: StatusCode::BAD_REQUEST,
+        message: format!("Failed to get active bid year: {e}"),
+    })?;
+
+    // Find the bid year in metadata to get bid_year_id
+    let bid_year_id = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == active_year)
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Active bid year not found in metadata".to_string(),
+        })?;
+
+    // Get lifecycle state
+    let lifecycle_state: BidYearLifecycle = persistence
+        .get_lifecycle_state(bid_year_id)
+        .map_err(|e| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("Failed to get lifecycle state: {e}"),
+        })
+        .and_then(|s| {
+            s.parse::<BidYearLifecycle>().map_err(|_| HttpError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: "Invalid lifecycle state".to_string(),
+            })
+        })?;
+
+    // Build API request
+    let api_request = UpdateUserParticipationRequest {
+        user_id: req.user_id,
+        excluded_from_bidding: req.excluded_from_bidding,
+        excluded_from_leave_calculation: req.excluded_from_leave_calculation,
+    };
+
+    // Convert AuthenticatedActor to Actor
+    let audit_actor = zab_bid_audit::Actor::with_operator(
+        operator.login_name.clone(),
+        "operator".to_string(),
+        operator.operator_id,
+        operator.login_name.clone(),
+        operator.display_name.clone(),
+    );
+
+    // Execute command via API
+    let response = update_user_participation(
+        &metadata,
+        &mut persistence,
+        &api_request,
+        &audit_actor,
+        lifecycle_state,
+    )?;
+
+    drop(persistence);
+
+    info!(
+        user_id = response.user_id,
+        bid_year_id = response.bid_year_id,
+        "Successfully updated user participation flags"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/bid-schedule` endpoint (Phase 29C).
+///
+/// Sets the bid schedule for a bid year. Admin only.
+async fn handle_set_bid_schedule(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<SetBidScheduleApiRequest>,
+) -> Result<Json<SetBidScheduleResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year_id = req.bid_year_id,
+        timezone = %req.timezone,
+        start_date = %req.start_date,
+        "Handling set_bid_schedule request"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Build API request
+    let api_request = SetBidScheduleRequest {
+        bid_year_id: req.bid_year_id,
+        timezone: req.timezone,
+        start_date: req.start_date,
+        window_start_time: req.window_start_time,
+        window_end_time: req.window_end_time,
+        bidders_per_day: req.bidders_per_day.try_into().map_err(|_| HttpError {
+            status: StatusCode::BAD_REQUEST,
+            message: "bidders_per_day must be non-negative".to_string(),
+        })?,
+    };
+
+    // Execute command via API
+    let response = set_bid_schedule(
+        &mut persistence,
+        &metadata,
+        &api_request,
+        &actor,
+        &operator,
+        cause,
+    )?;
+
+    drop(persistence);
+
+    info!(
+        bid_year_id = response.bid_year_id,
+        "Successfully set bid schedule"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for GET `/bid-schedule/{bid_year_id}` endpoint (Phase 29C).
+///
+/// Retrieves the bid schedule for a bid year.
+async fn handle_get_bid_schedule(
+    AxumState(app_state): AxumState<AppState>,
+    axum::extract::Path(path): axum::extract::Path<BidYearIdPath>,
+) -> Result<Json<GetBidScheduleResponse>, HttpError> {
+    info!(
+        bid_year_id = path.bid_year_id,
+        "Handling get_bid_schedule request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Execute query via API
+    let response = get_bid_schedule(&mut persistence, &metadata, path.bid_year_id)?;
+
+    drop(persistence);
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/bid-order/adjust` endpoint (Phase 29G).
+///
+/// Adjusts bid order for multiple users. Admin only.
+async fn handle_adjust_bid_order(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<AdjustBidOrderApiRequest>,
+) -> Result<Json<AdjustBidOrderResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year_id = req.bid_year_id,
+        area_id = req.area_id,
+        num_adjustments = req.adjustments.len(),
+        "Handling adjust_bid_order request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    // Convert adjustments to API format
+    let adjustments: Vec<BidOrderAdjustment> = req
+        .adjustments
+        .into_iter()
+        .map(|adj| BidOrderAdjustment {
+            user_id: adj.user_id,
+            new_bid_order: adj.new_order.try_into().map_or(0, |v: i32| v),
+        })
+        .collect();
+
+    // Build API request
+    let api_request = AdjustBidOrderRequest {
+        adjustments,
+        reason: req.reason,
+    };
+
+    // Execute command via API
+    let response = adjust_bid_order(
+        &mut persistence,
+        req.bid_year_id,
+        req.area_id,
+        &api_request,
+        &actor,
+        &operator,
+    )?;
+
+    drop(persistence);
+
+    info!(
+        users_adjusted = response.users_adjusted,
+        audit_event_id = response.audit_event_id,
+        "Successfully adjusted bid order"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/bid-windows/adjust` endpoint (Phase 29G).
+///
+/// Adjusts a bid window for a specific user and round. Admin only.
+async fn handle_adjust_bid_window(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<AdjustBidWindowApiRequest>,
+) -> Result<Json<AdjustBidWindowResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year_id = req.bid_year_id,
+        area_id = req.area_id,
+        user_id = req.user_id,
+        round_id = req.round_id,
+        "Handling adjust_bid_window request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    // Build API request
+    let api_request = AdjustBidWindowRequest {
+        user_id: req.user_id,
+        round_id: req.round_id,
+        new_window_start: req.new_window_start,
+        new_window_end: req.new_window_end,
+        reason: req.reason,
+    };
+
+    // Execute command via API
+    let response = adjust_bid_window(
+        &mut persistence,
+        req.bid_year_id,
+        req.area_id,
+        &api_request,
+        &actor,
+        &operator,
+    )?;
+
+    drop(persistence);
+
+    info!(
+        audit_event_id = response.audit_event_id,
+        "Successfully adjusted bid window"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/bid-windows/recalculate` endpoint (Phase 29G).
+///
+/// Recalculates bid windows for specified users and rounds. Admin only.
+async fn handle_recalculate_bid_windows(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<RecalculateBidWindowsApiRequest>,
+) -> Result<Json<RecalculateBidWindowsResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year_id = req.bid_year_id,
+        area_id = req.area_id,
+        num_users = req.user_ids.len(),
+        num_rounds = req.rounds.len(),
+        "Handling recalculate_bid_windows request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    // Build API request
+    let api_request = RecalculateBidWindowsRequest {
+        user_ids: req.user_ids,
+        rounds: req.rounds,
+        reason: req.reason,
+    };
+
+    // Execute command via API
+    let response = recalculate_bid_windows(
+        &mut persistence,
+        req.bid_year_id,
+        req.area_id,
+        &api_request,
+        &actor,
+        &operator,
+    )?;
+
+    drop(persistence);
+
+    info!(
+        windows_recalculated = response.windows_recalculated,
+        audit_event_id = response.audit_event_id,
+        "Successfully recalculated bid windows"
+    );
+
+    Ok(Json(response))
+}
+
+#[allow(clippy::too_many_lines)]
 fn build_router(state: AppState) -> Router {
     let live_broadcaster = Arc::clone(&state.live_events);
 
@@ -2838,6 +3226,21 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/bid-status/bulk-update",
             post(handle_bulk_update_bid_status),
+        )
+        // Phase 29A: User participation flags
+        .route(
+            "/users/participation",
+            post(handle_update_user_participation),
+        )
+        // Phase 29C: Bid schedule
+        .route("/bid-schedule", post(handle_set_bid_schedule))
+        .route("/bid-schedule/{bid_year_id}", get(handle_get_bid_schedule))
+        // Phase 29G: Post-confirmation bid order adjustments
+        .route("/bid-order/adjust", post(handle_adjust_bid_order))
+        .route("/bid-windows/adjust", post(handle_adjust_bid_window))
+        .route(
+            "/bid-windows/recalculate",
+            post(handle_recalculate_bid_windows),
         )
         .with_state(state);
 

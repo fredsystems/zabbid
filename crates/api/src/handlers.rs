@@ -3309,7 +3309,6 @@ pub fn set_bid_schedule(
 /// # Errors
 ///
 /// Returns an error if the bid year is not found.
-#[allow(dead_code)]
 pub fn get_bid_schedule(
     persistence: &mut SqlitePersistence,
     metadata: &BootstrapMetadata,
@@ -5055,7 +5054,6 @@ pub fn override_bid_window(
 /// - Any bid order value is invalid
 /// - The lifecycle state is not Canonicalized or later
 /// - The database operation fails
-#[allow(dead_code)]
 pub fn adjust_bid_order(
     persistence: &mut SqlitePersistence,
     bid_year_id: i64,
@@ -5204,7 +5202,6 @@ pub fn adjust_bid_order(
 /// - The window start/end datetimes are invalid
 /// - The lifecycle state is not Canonicalized or later
 /// - The database operation fails
-#[allow(dead_code)]
 pub fn adjust_bid_window(
     persistence: &mut SqlitePersistence,
     bid_year_id: i64,
@@ -5304,7 +5301,6 @@ pub fn adjust_bid_window(
 }
 
 /// Internal helper for bid window adjustment implementation.
-#[allow(dead_code)]
 fn adjust_bid_window_impl(
     persistence: &mut SqlitePersistence,
     bid_year_id: i64,
@@ -5384,7 +5380,6 @@ fn adjust_bid_window_impl(
 /// - The reason is too short
 /// - The lifecycle state is not Canonicalized or later
 /// - The database operation fails
-#[allow(dead_code)]
 pub fn recalculate_bid_windows(
     persistence: &mut SqlitePersistence,
     bid_year_id: i64,
