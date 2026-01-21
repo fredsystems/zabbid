@@ -2,12 +2,21 @@
 
 ## Purpose
 
-Phase 30 delivers the **admin UI workflows** required to operate everything introduced in Phase 29 and provides **end-to-end validation** that the pre-bid system can be driven entirely through the UI without manual DB intervention.
+Phase 30 delivers the **administrative UI workflows** required to operate
+everything introduced in Phase 29 and provides **end-to-end validation**
+that the pre-bid system can be driven entirely through the UI without
+manual database intervention.
 
-This phase is explicitly the UI companion to Phase 29:
+This phase is the **UI and operability companion** to Phase 29:
 
-- Phase 29 introduced/locked down domain concepts, persistence, API, and lifecycle mechanics.
-- Phase 30 makes those concepts **usable**, **auditable**, and **verifiable** via the admin interface.
+- Phase 29 defined and enforced domain concepts, persistence, APIs, and lifecycle mechanics.
+- Phase 30 makes those concepts **usable**, **auditable**, and **verifiable**
+  by a real operator.
+
+This phase exists to answer one question conclusively:
+
+> Can a real human take the system from empty → confirmed ready to bid,
+> using only supported UI and API paths, without hacks?
 
 ---
 
@@ -16,13 +25,13 @@ This phase is explicitly the UI companion to Phase 29:
 By the end of Phase 30, an operator can:
 
 1. Complete bootstrap using a **structured, task-oriented UI**
-   (not a single, monolithic page).
+   (not a single monolithic page).
 
 2. Configure **per-area pre-bid requirements**, including:
-   - round group assignment
-   - round definitions and sequencing
-   - expected user counts
-   - participation and calculation flags
+   - round group selection
+   - round sequencing
+   - expected user counts (non-system areas only)
+   - participation and leave-calculation flags
 
 3. Review all **No Bid (system area) users** and explicitly confirm
    their disposition:
@@ -30,72 +39,95 @@ By the end of Phase 30, an operator can:
    - confirmed to remain in No Bid
 
 4. View and validate **bid order per area**, with the ability to:
+   - see deterministic ordering
    - detect blocking seniority conflicts
    - understand _why_ readiness is blocked
    - resolve issues by correcting inputs (not reordering)
 
-5. Declare the **bid schedule**, including:
+5. Manage users pre-canonicalization:
+   - Delete users
+   - Modify all metadata
+   - Reassign area
+
+6. Declare the **bid schedule**, including:
    - authoritative bid time zone
    - bid start date
    - daily bid window
    - bidders per area per day
-     using timezone-aware, DST-safe semantics.
+     using timezone-aware, DST-safe, wall-clock semantics.
 
-6. Confirm **“Ready to Bid”** through an explicit, irreversible UI action,
-   transitioning the system into the bidding lifecycle.
+7. Confirm **“Ready to Bid”** through an explicit, irreversible UI action
+   that transitions the system into the bidding lifecycle.
 
-7. After confirmation:
+8. After confirmation:
    - view the **frozen canonical bid order** and derived bid windows
    - perform **explicit, controlled administrative adjustments**
-     (where permitted by Phase 29), without waterfalling or implicit
-     reordering effects.
+     (where permitted by Phase 29),
+     without waterfalling or implicit reordering.
 
-### Phase 29 Alignment Note
+---
+
+## Phase 29 Alignment Note
 
 If any capability described above depends on Phase 29 scope and was
-_not_ implemented during Phase 29 execution, that gap **must be
-explicitly recorded** in the Phase 30 working state document, including:
+**not implemented** during Phase 29 execution, that gap **must be explicitly
+recorded** in the Phase 30 working state document, including:
 
 - the missing capability
-- the reason it was deferred
+- why it was deferred
 - any constraints this imposes on Phase 30 behavior
+- a clear **stop-and-await-guidance** marker
 
-This ensures auditability of scope decisions and prevents silent
-assumptions in the UI layer.
+Phase 30 **must not** silently paper over Phase 29 domain gaps or simulate
+missing behavior in the UI.
 
 ---
 
 ## Non-Negotiable UI Invariants
 
-### 1) Lifecycle-Driven Edit Locks
+### 1. Lifecycle-Driven Edit Locks
 
-- Before confirmation: all Phase 29 inputs are editable (except where already immutable by prior rules).
-- After confirmation: editing locks must engage everywhere per Phase 29 (structural edits forbidden).
-- The UI must not offer controls that will always be rejected by API due to lifecycle constraints.
+- Before confirmation:
+  - all Phase 29 inputs are editable (except where already immutable).
+- After confirmation:
+  - structural edit locks must engage everywhere.
+- The UI must not offer controls that will always be rejected by lifecycle rules.
 
-### 2) Bid Order: Read-only Proof + Post-Confirm Adjustments (if enabled)
+### 2. Bid Order Semantics
 
-- Pre-confirm: bid order is derived and viewable; no manual reordering.
-- At confirmation: bid order + computed bid windows are frozen.
-- Post-confirm: if Phase 29 introduced adjustment endpoints, UI must expose them explicitly as administrative actions with audit transparency.
+- Pre-confirm:
+  - bid order is **derived, read-only, and informational**.
+- At confirmation:
+  - bid order and bid windows are **frozen canonically**.
+- Post-confirm:
+  - only explicitly allowed administrative adjustments may be offered.
+  - no implicit reordering or waterfalling.
 
-### 3) No Bid Review Is a Required Gate
+### 3. No Bid Review Gate
 
-- If No Bid contains users, readiness must show as blocked until review is complete.
-- UI must provide review controls:
-  - move user to area, OR
-  - confirm user remains in No Bid
+- No Bid is a **system area**.
+- No Bid having **zero users is valid**.
+- No Bid must **never** block readiness due to expected counts.
+- If No Bid contains users:
+  - readiness is blocked until review is complete.
+- UI must provide:
+  - per-user confirmation to remain in No Bid, or
+  - reassignment to a competitive area.
 
-### 4) Participation Flags Are First-Class
+### 4. Participation Flags Are First-Class
 
-- Excluded-from-bidding and excluded-from-leave-calculation are visible and editable pre-confirm.
-- UI must enforce/communicate the directional invariant:
-  - excluded_from_leave_calculation => excluded_from_bidding
+- `excluded_from_bidding` and `excluded_from_leave_calculation` are:
+  - visible
+  - editable pre-confirm
+  - immutable post-confirm
+- UI must communicate and enforce the invariant:
+  - excluded_from_leave_calculation ⇒ excluded_from_bidding
 
-### 5) Timezone + DST Semantics Are “Wall Clock”
+### 5. Time Semantics Are Wall-Clock
 
-- UI must treat bid schedule times as wall-clock values in selected timezone.
-- UI must not imply elapsed-hour semantics across DST boundaries.
+- All bid schedule values are wall-clock values in the selected timezone.
+- UI must not imply elapsed-duration semantics across DST boundaries.
+- UI must not hide or simplify timezone implications.
 
 ---
 
@@ -103,134 +135,163 @@ assumptions in the UI layer.
 
 ### A. Admin Bootstrap UI Restructure
 
-Replace the “147 miles long” bootstrap page with a multi-step or multi-section workflow.
+Replace the single, long bootstrap page with a **structured workflow**.
 
-Required UX:
+Required sections (route-based or sectional):
 
-- A left-nav or stepper with clear progress:
-  1. Bid Year Setup
-  2. Areas Setup
-  3. Users Import / Add / Edit
-  4. No Bid Review
-  5. Round Groups + Rounds Setup
-  6. Area Assignment (exactly one round group per non-system area)
-  7. Bid Order View
-  8. Bid Schedule Declaration
-  9. Readiness Review + Confirm Ready to Bid
+1. Bid Year Setup
+2. Areas Setup
+3. Users Import / Add / Edit
+4. No Bid Review
+5. Round Groups + Rounds Setup
+6. Area → Round Group Assignment (exactly one per non-system area)
+7. Bid Order View
+8. Bid Schedule Declaration
+9. Readiness Review + Confirm Ready to Bid
 
-This can be one route with internal sections, or separate routes. Either is fine, but it must not be a single scrolling wall.
+The operator must always know:
+
+- where they are
+- what is blocking readiness
+- what remains to be done
+
+---
 
 ### B. Round Groups + Rounds UI
 
-Provide UIs to:
+Provide UI to:
 
-- create/edit round groups (and their rounds)
-- view round group contents (round sequence)
+- create and edit round groups
+- define round sequencing within a group
 - assign exactly one round group to each non-system area
-- show clear validation errors if assignment is missing or invalid
 
 Constraints:
 
-- system areas have no round group assignment
-- round config is immutable after confirmation
+- system areas have no round group
+- round configuration is immutable after confirmation
+- validation errors must be explicit and actionable
 
-### C. Bid Order UI (Read-only) + Conflict Visibility
+---
 
-Provide a viewable per-area bid order page:
+### C. Bid Order UI (Read-Only)
 
-- sortable/filterable by area
-- shows deterministic order, including tie-breaker metadata inputs (as display)
-- clearly shows whether order is “derived” or “frozen”
-- if conflicts can exist at readiness time, UI must show the conflict and the blocking reason
+Provide a per-area bid order view that:
+
+- shows deterministic ordering
+- displays tie-breaker inputs for transparency
+- clearly indicates whether the order is:
+  - derived (pre-confirm), or
+  - frozen (post-confirm)
 
 No manual reordering pre-confirm.
 
+---
+
 ### D. No Bid Review UI
 
-Provide a dedicated screen for No Bid user review:
+Provide a dedicated review screen that:
 
-- bulk filters
-- per-user “confirmed remains in No Bid” toggle OR “move to area” dropdown
-- shows readiness impact (“X users remain unreviewed”)
+- lists all users in No Bid
+- supports bulk filtering
+- allows:
+  - confirmation to remain in No Bid, or
+  - reassignment to a competitive area
+- shows readiness impact in real time
+
+---
 
 ### E. Bid Schedule Declaration UI
 
-Provide a UI to set:
+Provide UI to declare:
 
-- timezone (IANA)
-- start date (date only, Monday, future at time of confirm)
-- daily window start/end time (wall-clock)
+- bid time zone (IANA)
+- bid start date (date-only, Monday, future at confirm time)
+- daily bid window start/end (wall-clock)
 - bidders per area per day
 
 Rules:
 
-- values are required at confirmation
-- values are mutable prior to bidding commencement (per Phase 29 semantics)
-- every change should be auditable (UI should show “last changed” metadata if available)
+- all values required at confirmation
+- values mutable prior to bidding commencement
+- UI should surface audit metadata if available
 
-### F. Readiness Review UI + Confirmation Action
+---
+
+### F. Readiness Review + Confirmation UI
 
 Provide:
 
-- computed readiness state (“Domain-Ready” / “Blocked”)
-- explicit list of blockers (actionable)
-- confirmation UI action (irreversible)
+- a computed readiness state
+- explicit list of blockers
+- an irreversible confirmation action
 
 Confirmation must:
 
 - require deliberate acknowledgement
-- show a summary of critical frozen inputs at confirmation time
-- surface the irreversibility clearly
+- summarize frozen inputs
+- clearly communicate irreversibility
+
+---
 
 ### G. Post-Confirmation Views
 
 After confirmation:
 
-- show frozen bid order + bid windows (per area)
-- show bid status table (if created in Phase 29)
-- show which fields are locked
+- show frozen bid order and bid windows
+- show bid status table (if present from Phase 29)
+- visually indicate locked fields
 
-If Phase 29 includes “adjust bid order / windows” endpoints:
+If Phase 29 allows adjustments:
 
-- provide explicit administrative screens for them
-- require confirmation for adjustments
-- show that adjustments do not waterfall others automatically (gaps/overlaps permitted)
+- expose them explicitly
+- require confirmation
+- show that adjustments do not cascade implicitly
 
-### H. UI Validation & E2E Smoke Tests
+---
 
-Add end-to-end validation that:
+### H. End-to-End Validation & API Surface Audit
 
-- full bootstrap flow is operable through UI + API
+This phase must conclude with two validation passes:
+
+#### 1. End-to-End UI Validation
+
+Demonstrate that:
+
+- full bootstrap is possible via UI + API
 - readiness gates behave correctly
-- confirmation locks engage and remain enforced
-- No Bid review gate works
-- bid schedule declaration rules enforced (Monday/future/timezone required)
+- No Bid review behaves correctly
+- confirmation locks engage and persist
 
-Tests can be:
+This may be manual, scripted, or automated.
 
-- Playwright (preferred if you already have it)
-- or API-level integration tests + minimal UI smoke tests if Playwright is too heavy right now
+#### 2. API Surface Audit (Deliverable)
 
-The goal is to catch “works in unit tests, fails when clicked” issues.
+At the end of Phase 30:
+
+- enumerate **all active API endpoints**
+- remove endpoints no longer reachable or used
+- remove associated dead code where applicable
+- produce a new documentation artifact:
+  - `docs/api.md`
+
+This document must list:
+
+- endpoint method + path
+- purpose
+- lifecycle status (active / future / internal)
+
+**Process rules for keeping this document up to date are explicitly
+out of scope for Phase 30** and will be introduced in a later phase.
 
 ---
 
 ## Explicit Non-Goals
 
-- Do not implement actual bidding execution.
-- Do not implement time-driven automation (auto mark missed, auto proxy execution).
-- Do not redesign styling beyond what is needed to support new UI flows.
-- Do not refactor unrelated UI components unless required for correctness.
-
----
-
-## Files Likely to Change
-
-- `ui/src/components/admin/**`
-- `ui/src/routes/**` (or equivalent routing/pages)
-- `ui/src/api/**` client wrappers
-- Possibly shared UI components: tables, forms, steppers, cards
-- Possibly `AGENTS.md` UI guidance if new patterns are introduced
+- No bidding execution logic
+- No time-driven automation
+- No styling redesign beyond structural usability
+- No domain invariant changes from Phase 29
+- No process-rule changes to AGENTS.md or phase_execution.md
 
 ---
 
@@ -238,19 +299,16 @@ The goal is to catch “works in unit tests, fails when clicked” issues.
 
 Phase 30 is complete when:
 
-- Bootstrap UI is segmented and usable with 200+ users (not a single long page).
-- All Phase 29 configuration is operable through the UI:
-  - participation flags
-  - No Bid review
-  - round groups/rounds config
-  - area assignment to exactly one round group
-  - bid order viewing
-  - bid schedule declaration
-  - readiness + confirm ready to bid
-- UI accurately reflects lifecycle locks pre/post confirmation.
-- At least one end-to-end validation path exists that exercises the full pre-bid workflow.
+- Bootstrap UI is structured and usable with 200+ users
+- All Phase 29 configuration is operable through UI
+- No Bid zero-user state is treated as valid
+- Readiness and confirmation semantics are faithfully represented
+- Bid order and schedule are viewable and correct
+- A full API surface audit is complete
+- `docs/api.md` exists and reflects reality
 - `cargo xtask ci` passes
 - `pre-commit run --all-files` passes
+- You remind the user to update agents.md and other documents to encode api rules
 
 ---
 
@@ -258,9 +316,9 @@ Phase 30 is complete when:
 
 Stop immediately if:
 
-- UI requirements imply changing Phase 29 domain invariants.
-- confirmation semantics become reversible.
-- DST/timezone rules would be simplified into fixed-duration offsets.
-- post-confirm editing would require structural data mutation (should be forbidden).
+- UI requirements imply changing Phase 29 invariants
+- confirmation becomes reversible
+- DST semantics would be simplified incorrectly
+- UI requires post-confirm structural mutation
 
-These indicate a scope or invariant mismatch, not a UI task.
+These indicate scope or invariant violations, not UI work.

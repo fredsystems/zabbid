@@ -63,6 +63,20 @@ All changes must advance these goals. If unsure, stop and ask.
 - Before completing a phase, or any work, ensure git add has been run on all of the modified files, and `cargo xtask ci` and `pre-commit run --all-files` pass without errors.
 - For casting primitive types that don't fit within each other, use `num-traits`.
 
+### Dead Code Policy
+
+- `#[allow(dead_code)]` is forbidden in production modules to silence
+  planned-but-unwired functionality.
+- Acceptable uses:
+  - test-only helpers inside `#[cfg(test)]`
+  - temporary refactors with an explicit TODO and issue reference
+- Future-phase functionality must be:
+  - gated behind a feature flag, or
+  - isolated in a module not compiled into the main path, or
+  - not implemented yet.
+- If a symbol exists in production code, it must be reachable from a
+  public API or intentionally hidden behind a compile-time gate.
+
 ### Panic-Free Production Code (Non-Negotiable)
 
 - `unwrap()` and `expect()` are **forbidden** in all production code
