@@ -2579,6 +2579,169 @@ async fn handle_override_area_assignment(
     Ok(Json(response))
 }
 
+/// Handler for GET `/bid-status/area` endpoint.
+///
+/// Gets bid status for all users in an area across all rounds.
+async fn handle_get_bid_status_for_area(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Query(query): Query<GetBidStatusForAreaQuery>,
+) -> Result<Json<zab_bid_api::GetBidStatusForAreaResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        bid_year_id = query.bid_year_id,
+        area_id = query.area_id,
+        "Handling get_bid_status_for_area request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+    let request = zab_bid_api::GetBidStatusForAreaRequest {
+        bid_year_id: query.bid_year_id,
+        area_id: query.area_id,
+    };
+
+    let response = zab_bid_api::get_bid_status_for_area(&mut persistence, &request, &actor)?;
+    drop(persistence);
+
+    Ok(Json(response))
+}
+
+/// Handler for GET `/bid-status/user-round` endpoint.
+///
+/// Gets bid status for a specific user in a specific round with history.
+async fn handle_get_bid_status(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Query(query): Query<GetBidStatusQuery>,
+) -> Result<Json<zab_bid_api::GetBidStatusResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        user_id = query.user_id,
+        round_id = query.round_id,
+        "Handling get_bid_status request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+    let request = zab_bid_api::GetBidStatusRequest {
+        bid_year_id: query.bid_year_id,
+        area_id: query.area_id,
+        user_id: query.user_id,
+        round_id: query.round_id,
+    };
+
+    let response = zab_bid_api::get_bid_status(&mut persistence, &request, &actor)?;
+    drop(persistence);
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/bid-status/transition` endpoint.
+///
+/// Transitions a user's bid status for a round.
+async fn handle_transition_bid_status(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<TransitionBidStatusApiRequest>,
+) -> Result<Json<zab_bid_api::TransitionBidStatusResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_status_id = req.bid_status_id,
+        new_status = %req.new_status,
+        "Handling transition_bid_status request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+    let request = zab_bid_api::TransitionBidStatusRequest {
+        bid_status_id: req.bid_status_id,
+        new_status: req.new_status.clone(),
+        notes: req.notes.clone(),
+    };
+
+    let response =
+        zab_bid_api::transition_bid_status(&mut persistence, &request, &actor, &operator)?;
+    drop(persistence);
+
+    info!(
+        bid_status_id = req.bid_status_id,
+        new_status = %response.new_status,
+        "Successfully transitioned bid status"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/bid-status/bulk-update` endpoint.
+///
+/// Bulk updates bid status for multiple users in a round.
+async fn handle_bulk_update_bid_status(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<BulkUpdateBidStatusApiRequest>,
+) -> Result<Json<zab_bid_api::BulkUpdateBidStatusResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        user_count = req.user_ids.len(),
+        round_id = req.round_id,
+        new_status = %req.new_status,
+        "Handling bulk_update_bid_status request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+    let request = zab_bid_api::BulkUpdateBidStatusRequest {
+        bid_year_id: req.bid_year_id,
+        area_id: req.area_id,
+        round_id: req.round_id,
+        user_ids: req.user_ids.clone(),
+        new_status: req.new_status.clone(),
+        notes: req.notes.clone(),
+    };
+
+    let response =
+        zab_bid_api::bulk_update_bid_status(&mut persistence, &request, &actor, &operator)?;
+    drop(persistence);
+
+    info!(
+        updated_count = response.updated_count,
+        "Successfully bulk updated bid status"
+    );
+
+    Ok(Json(response))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GetBidStatusForAreaQuery {
+    bid_year_id: i64,
+    area_id: i64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[allow(clippy::struct_field_names)]
+struct GetBidStatusQuery {
+    bid_year_id: i64,
+    area_id: i64,
+    user_id: i64,
+    round_id: i64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct TransitionBidStatusApiRequest {
+    bid_status_id: i64,
+    new_status: String,
+    notes: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct BulkUpdateBidStatusApiRequest {
+    bid_year_id: i64,
+    area_id: i64,
+    round_id: i64,
+    user_ids: Vec<i64>,
+    new_status: String,
+    notes: String,
+}
+
 fn build_router(state: AppState) -> Router {
     let live_broadcaster = Arc::clone(&state.live_events);
 
@@ -2668,6 +2831,14 @@ fn build_router(state: AppState) -> Router {
             post(handle_preview_csv_users),
         )
         .route("/bootstrap/users/csv/import", post(handle_import_csv_users))
+        // Bid status endpoints
+        .route("/bid-status/area", get(handle_get_bid_status_for_area))
+        .route("/bid-status/user-round", get(handle_get_bid_status))
+        .route("/bid-status/transition", post(handle_transition_bid_status))
+        .route(
+            "/bid-status/bulk-update",
+            post(handle_bulk_update_bid_status),
+        )
         .with_state(state);
 
     let live_router = Router::new()

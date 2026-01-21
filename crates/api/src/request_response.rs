@@ -1812,6 +1812,8 @@ pub struct BidStatusHistoryInfo {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[allow(dead_code)]
 pub struct TransitionBidStatusRequest {
+    /// The bid status record identifier.
+    pub bid_status_id: i64,
     /// The new status value.
     pub new_status: String,
     /// Required notes explaining the transition (min 10 characters).
@@ -1841,6 +1843,10 @@ pub struct TransitionBidStatusResponse {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[allow(dead_code)]
 pub struct BulkUpdateBidStatusRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The canonical area identifier.
+    pub area_id: i64,
     /// The list of user IDs to update.
     pub user_ids: Vec<i64>,
     /// The round identifier.

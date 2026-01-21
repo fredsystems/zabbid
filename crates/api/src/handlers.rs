@@ -27,25 +27,26 @@ use crate::password_policy::PasswordPolicy;
 use crate::request_response::{
     AreaCompletenessInfo, BidOrderPositionInfo, BidScheduleInfo, BidStatusHistoryInfo,
     BidStatusInfo, BidYearCompletenessInfo, BidYearInfo, BlockingReason,
-    BulkUpdateBidStatusResponse, ChangePasswordRequest, ChangePasswordResponse,
-    ConfirmReadyToBidRequest, ConfirmReadyToBidResponse, CreateAreaRequest, CreateBidYearRequest,
-    CreateOperatorRequest, CreateOperatorResponse, CsvImportRowResult, CsvImportRowStatus,
-    CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
+    BulkUpdateBidStatusRequest, BulkUpdateBidStatusResponse, ChangePasswordRequest,
+    ChangePasswordResponse, ConfirmReadyToBidRequest, ConfirmReadyToBidResponse, CreateAreaRequest,
+    CreateBidYearRequest, CreateOperatorRequest, CreateOperatorResponse, CsvImportRowResult,
+    CsvImportRowStatus, CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
     DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
     GetActiveBidYearResponse, GetBidOrderPreviewResponse, GetBidScheduleResponse,
-    GetBidStatusForAreaResponse, GetBidStatusResponse, GetBidYearReadinessResponse,
-    GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse, GlobalCapabilities,
-    ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse,
-    ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse,
-    OperatorCapabilities, OperatorInfo, OverrideAreaAssignmentRequest,
-    OverrideAreaAssignmentResponse, OverrideBidOrderRequest, OverrideBidOrderResponse,
-    OverrideBidWindowRequest, OverrideBidWindowResponse, OverrideEligibilityRequest,
-    OverrideEligibilityResponse, PreviewCsvUsersRequest, PreviewCsvUsersResponse,
-    ReadinessDetailsInfo, RegisterUserRequest, ResetPasswordRequest, ResetPasswordResponse,
-    ReviewNoBidUserResponse, SeniorityInputsInfo, SetActiveBidYearRequest,
-    SetActiveBidYearResponse, SetBidScheduleRequest, SetBidScheduleResponse,
-    SetExpectedAreaCountRequest, SetExpectedAreaCountResponse, SetExpectedUserCountRequest,
-    SetExpectedUserCountResponse, TransitionBidStatusResponse, TransitionToBiddingActiveRequest,
+    GetBidStatusForAreaRequest, GetBidStatusForAreaResponse, GetBidStatusRequest,
+    GetBidStatusResponse, GetBidYearReadinessResponse, GetBootstrapCompletenessResponse,
+    GetLeaveAvailabilityResponse, GlobalCapabilities, ImportCsvUsersRequest,
+    ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse, ListBidYearsResponse,
+    ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse, OperatorCapabilities,
+    OperatorInfo, OverrideAreaAssignmentRequest, OverrideAreaAssignmentResponse,
+    OverrideBidOrderRequest, OverrideBidOrderResponse, OverrideBidWindowRequest,
+    OverrideBidWindowResponse, OverrideEligibilityRequest, OverrideEligibilityResponse,
+    PreviewCsvUsersRequest, PreviewCsvUsersResponse, ReadinessDetailsInfo, RegisterUserRequest,
+    ResetPasswordRequest, ResetPasswordResponse, ReviewNoBidUserResponse, SeniorityInputsInfo,
+    SetActiveBidYearRequest, SetActiveBidYearResponse, SetBidScheduleRequest,
+    SetBidScheduleResponse, SetExpectedAreaCountRequest, SetExpectedAreaCountResponse,
+    SetExpectedUserCountRequest, SetExpectedUserCountResponse, TransitionBidStatusRequest,
+    TransitionBidStatusResponse, TransitionToBiddingActiveRequest,
     TransitionToBiddingActiveResponse, TransitionToBiddingClosedRequest,
     TransitionToBiddingClosedResponse, TransitionToBootstrapCompleteRequest,
     TransitionToBootstrapCompleteResponse, TransitionToCanonicalizedRequest,
@@ -6608,6 +6609,69 @@ pub fn confirm_ready_to_bid(
             message: format!("Failed to update lifecycle state: {e}"),
         })?;
 
+    // Initialize bid status tracking for all users in all rounds
+    // Get all rounds for this bid year
+    let all_rounds = persistence
+        .list_all_rounds_for_bid_year(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get rounds for bid year {year}: {e}"),
+        })?;
+
+    if !all_rounds.is_empty() {
+        // Create initial bid status records for all user/round combinations
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| ApiError::Internal {
+                message: format!("System time error: {e}"),
+            })?
+            .as_secs();
+        let current_timestamp =
+            time::OffsetDateTime::from_unix_timestamp(now.to_i64().ok_or_else(|| {
+                ApiError::Internal {
+                    message: String::from("Timestamp conversion failed"),
+                }
+            })?)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Invalid timestamp: {e}"),
+            })?
+            .format(&time::format_description::well_known::Rfc3339)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Timestamp formatting failed: {e}"),
+            })?;
+        let mut bid_status_records = Vec::new();
+
+        for (area_id, _area_code, users_in_area) in &users_by_area {
+            for user in users_in_area {
+                // All users should have IDs at confirmation time
+                let user_id = user.user_id.ok_or_else(|| ApiError::Internal {
+                    message: format!("User with initials {:?} has no user_id", user.initials),
+                })?;
+
+                for (round_id, _round_name) in &all_rounds {
+                    bid_status_records.push(zab_bid_persistence::data_models::NewBidStatus {
+                        bid_year_id: request.bid_year_id,
+                        area_id: *area_id,
+                        user_id,
+                        round_id: *round_id,
+                        status: String::from("NotStartedPreWindow"),
+                        updated_at: current_timestamp.clone(),
+                        updated_by: operator.operator_id,
+                        notes: Some(String::from("Initial status at confirmation")),
+                    });
+                }
+            }
+        }
+
+        // Bulk insert all bid status records
+        if !bid_status_records.is_empty() {
+            persistence
+                .bulk_insert_bid_status(&bid_status_records)
+                .map_err(|e| ApiError::Internal {
+                    message: format!("Failed to initialize bid status tracking: {e}"),
+                })?;
+        }
+    }
+
     Ok(ConfirmReadyToBidResponse {
         bid_year_id: request.bid_year_id,
         year,
@@ -6812,10 +6876,17 @@ pub fn get_bid_order_preview(
 /// - The bid year does not exist
 /// - The area does not exist
 /// - The database query fails
-#[allow(dead_code)]
 pub fn get_bid_status_for_area(
     persistence: &mut SqlitePersistence,
+    request: &GetBidStatusForAreaRequest,
     _actor: &AuthenticatedActor,
+) -> Result<GetBidStatusForAreaResponse, ApiError> {
+    get_bid_status_for_area_impl(persistence, request.bid_year_id, request.area_id)
+}
+
+#[allow(dead_code)]
+fn get_bid_status_for_area_impl(
+    persistence: &mut SqlitePersistence,
     bid_year_id: i64,
     area_id: i64,
 ) -> Result<GetBidStatusForAreaResponse, ApiError> {
@@ -6884,10 +6955,7 @@ pub fn get_bid_status_for_area(
 ///
 /// * `persistence` - The persistence layer
 /// * `actor` - The authenticated actor
-/// * `bid_year_id` - The canonical bid year identifier
-/// * `area_id` - The canonical area identifier
-/// * `user_id` - The canonical user identifier
-/// * `round_id` - The round identifier
+/// * `request` - The request containing `user_id` and `round_id`
 ///
 /// # Returns
 ///
@@ -6897,16 +6965,25 @@ pub fn get_bid_status_for_area(
 /// # Errors
 ///
 /// Returns an error if:
-/// - The bid year does not exist
-/// - The area does not exist
-/// - The user does not exist
-/// - The round does not exist
 /// - The bid status record does not exist
 /// - The database query fails
-#[allow(dead_code)]
 pub fn get_bid_status(
     persistence: &mut SqlitePersistence,
+    request: &GetBidStatusRequest,
     _actor: &AuthenticatedActor,
+) -> Result<GetBidStatusResponse, ApiError> {
+    get_bid_status_impl(
+        persistence,
+        request.bid_year_id,
+        request.area_id,
+        request.user_id,
+        request.round_id,
+    )
+}
+
+#[allow(dead_code)]
+fn get_bid_status_impl(
+    persistence: &mut SqlitePersistence,
     bid_year_id: i64,
     area_id: i64,
     user_id: i64,
@@ -6993,29 +7070,44 @@ pub fn get_bid_status(
 /// # Arguments
 ///
 /// * `persistence` - The persistence layer
+/// * `request` - The request containing `bid_status_id`, `new_status`, and notes
 /// * `actor` - The authenticated actor (must be Admin or Bidder)
-/// * `bid_status_id` - The bid status record identifier
-/// * `new_status` - The new status value
-/// * `notes` - Required notes explaining the transition
+/// * `operator` - The operator performing the action
 ///
 /// # Returns
 ///
-/// * `Ok(TransitionBidStatusResponse)` - The transition result
+/// * `Ok(TransitionBidStatusResponse)` - Details of the transition
 /// * `Err(ApiError)` - If the transition fails
 ///
 /// # Errors
 ///
 /// Returns an error if:
-/// - The actor lacks required role
+/// - Authorization fails (must be Admin or Bidder)
+/// - Notes are too short (< 10 characters)
 /// - The bid status record does not exist
-/// - The transition is invalid
-/// - The notes are too short (< 10 characters)
-/// - The database update fails
-#[allow(dead_code)]
-#[allow(clippy::too_many_arguments)]
+/// - The status transition is invalid
+/// - The database operation fails
 pub fn transition_bid_status(
     persistence: &mut SqlitePersistence,
+    request: &TransitionBidStatusRequest,
     actor: &AuthenticatedActor,
+    operator: &OperatorData,
+) -> Result<TransitionBidStatusResponse, ApiError> {
+    transition_bid_status_impl(
+        persistence,
+        actor,
+        operator,
+        request.bid_status_id,
+        &request.new_status,
+        &request.notes,
+    )
+}
+
+#[allow(dead_code)]
+fn transition_bid_status_impl(
+    persistence: &mut SqlitePersistence,
+    actor: &AuthenticatedActor,
+    _operator: &OperatorData,
     bid_status_id: i64,
     new_status_str: &str,
     notes: &str,
@@ -7137,34 +7229,48 @@ pub fn transition_bid_status(
 /// # Arguments
 ///
 /// * `persistence` - The persistence layer
+/// * `request` - The request containing `bid_year_id`, `area_id`, `user_ids`, `round_id`, `new_status`, and notes
 /// * `actor` - The authenticated actor (must be Admin or Bidder)
-/// * `bid_year_id` - The canonical bid year identifier
-/// * `area_id` - The canonical area identifier
-/// * `user_ids` - The list of user IDs to update
-/// * `round_id` - The round identifier
-/// * `new_status` - The new status value
-/// * `notes` - Required notes explaining the bulk update
+/// * `operator` - The operator performing the action
 ///
 /// # Returns
 ///
-/// * `Ok(BulkUpdateBidStatusResponse)` - The bulk update result
+/// * `Ok(BulkUpdateBidStatusResponse)` - Details of the bulk update
 /// * `Err(ApiError)` - If the update fails
 ///
 /// # Errors
 ///
 /// Returns an error if:
-/// - The actor lacks required role
-/// - The bid year does not exist
-/// - The area does not exist
-/// - Any user ID is invalid
-/// - Any transition is invalid
-/// - The notes are too short (< 10 characters)
-/// - The database update fails (all or nothing)
-#[allow(dead_code)]
-#[allow(clippy::too_many_arguments)]
+/// - Authorization fails (must be Admin or Bidder)
+/// - Notes are too short (< 10 characters)
+/// - Any bid status record does not exist
+/// - Any status transition is invalid
+/// - The database operation fails
 pub fn bulk_update_bid_status(
     persistence: &mut SqlitePersistence,
+    request: &BulkUpdateBidStatusRequest,
     actor: &AuthenticatedActor,
+    operator: &OperatorData,
+) -> Result<BulkUpdateBidStatusResponse, ApiError> {
+    bulk_update_bid_status_impl(
+        persistence,
+        actor,
+        operator,
+        request.bid_year_id,
+        request.area_id,
+        &request.user_ids,
+        request.round_id,
+        &request.new_status,
+        &request.notes,
+    )
+}
+
+#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
+fn bulk_update_bid_status_impl(
+    persistence: &mut SqlitePersistence,
+    actor: &AuthenticatedActor,
+    _operator: &OperatorData,
     bid_year_id: i64,
     area_id: i64,
     user_ids: &[i64],

@@ -2141,6 +2141,52 @@ impl Persistence {
         }
     }
 
+    /// Lists all rounds for a given bid year (across all round groups).
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The bid year ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the query fails.
+    pub fn list_all_rounds_for_bid_year(
+        &mut self,
+        bid_year_id: i64,
+    ) -> Result<Vec<(i64, String)>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::rounds::list_all_rounds_for_bid_year_sqlite(conn, bid_year_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::rounds::list_all_rounds_for_bid_year_mysql(conn, bid_year_id)
+            }
+        }
+    }
+
+    /// Bulk inserts bid status records (used at confirmation).
+    ///
+    /// # Arguments
+    ///
+    /// * `records` - The bid status records to insert
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the insert fails.
+    pub fn bulk_insert_bid_status(
+        &mut self,
+        records: &[data_models::NewBidStatus],
+    ) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::bid_status::bulk_insert_bid_status_sqlite(conn, records)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::bid_status::bulk_insert_bid_status_mysql(conn, records)
+            }
+        }
+    }
+
     /// # Returns
     ///
     /// Returns a tuple of (`previous_bid_order`, `was_already_overridden`).

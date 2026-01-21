@@ -521,3 +521,31 @@ pub fn round_number_exists(
     Ok(count > 0)
 }
 }
+
+backend_fn! {
+/// Lists all rounds for a given bid year (across all round groups).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The bid year ID
+///
+/// # Errors
+///
+/// Returns an error if the query fails.
+pub fn list_all_rounds_for_bid_year(
+    conn: &mut _,
+    bid_year_id: i64,
+) -> Result<Vec<(i64, String)>, PersistenceError> {
+    let rows = rounds::table
+        .inner_join(round_groups::table)
+        .filter(round_groups::bid_year_id.eq(bid_year_id))
+        .select((
+            rounds::round_id,
+            rounds::name,
+        ))
+        .load::<(i64, String)>(conn)?;
+
+    Ok(rows)
+}
+}
