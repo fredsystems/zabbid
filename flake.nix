@@ -87,6 +87,12 @@
             check_python = true;
             check_javascript = true;
 
+            javascript = {
+              enableBiome = true;
+              enableTsc = true;
+              tsConfig = "ui/tsconfig.json$";
+            };
+
             enableXtask = true;
             extraLibPathPkgs = [
               pkgs.mariadb-connector-c
