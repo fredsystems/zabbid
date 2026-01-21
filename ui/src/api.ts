@@ -9,10 +9,15 @@
  */
 
 import type {
+  AssignAreaRoundGroupResponse,
   BidYearInfo,
   BootstrapStatusResponse,
   CreateAreaResponse,
   CreateBidYearResponse,
+  CreateRoundGroupResponse,
+  CreateRoundResponse,
+  DeleteRoundGroupResponse,
+  DeleteRoundResponse,
   ErrorResponse,
   GetActiveBidYearResponse,
   GetBootstrapCompletenessResponse,
@@ -20,6 +25,8 @@ import type {
   LeaveAvailabilityResponse,
   ListAreasResponse,
   ListBidYearsResponse,
+  ListRoundGroupsResponse,
+  ListRoundsResponse,
   ListUsersResponse,
   OperatorInfo,
   OverrideAreaAssignmentResponse,
@@ -29,6 +36,8 @@ import type {
   SetExpectedAreaCountResponse,
   SetExpectedUserCountResponse,
   UpdateAreaResponse,
+  UpdateRoundGroupResponse,
+  UpdateRoundResponse,
   UpdateUserResponse,
   WhoAmIResponse,
 } from "./types";
@@ -733,4 +742,259 @@ export async function assignAreaRoundGroup(
       }),
     },
   );
+}
+
+/**
+ * Create a new round group.
+ *
+ * @param sessionToken - The session token for authentication
+ * @param bidYearId - The bid year ID to create the round group in
+ * @param name - The round group name (must be unique within bid year)
+ * @param editingEnabled - Whether editing is enabled for this round group
+ * @returns Promise resolving to the create response
+ */
+export async function createRoundGroup(
+  sessionToken: string,
+  bidYearId: number,
+  name: string,
+  editingEnabled: boolean,
+): Promise<CreateRoundGroupResponse> {
+  return fetchJson<CreateRoundGroupResponse>(`${API_BASE}/round-groups`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      cause_id: `create-round-group-${Date.now()}`,
+      cause_description: `Create round group "${name}"`,
+      bid_year_id: bidYearId,
+      name,
+      editing_enabled: editingEnabled,
+    }),
+  });
+}
+
+/**
+ * List all round groups for a bid year.
+ *
+ * @param sessionToken - The session token for authentication
+ * @param bidYearId - The bid year ID to list round groups for
+ * @returns Promise resolving to the list response
+ */
+export async function listRoundGroups(
+  sessionToken: string,
+  bidYearId: number,
+): Promise<ListRoundGroupsResponse> {
+  return fetchJson<ListRoundGroupsResponse>(
+    `${API_BASE}/round-groups?bid_year_id=${bidYearId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${sessionToken}`,
+      },
+    },
+  );
+}
+
+/**
+ * Update a round group.
+ *
+ * @param sessionToken - The session token for authentication
+ * @param roundGroupId - The round group ID to update
+ * @param name - The new name (must be unique within bid year)
+ * @param editingEnabled - Whether editing is enabled
+ * @returns Promise resolving to the update response
+ */
+export async function updateRoundGroup(
+  sessionToken: string,
+  roundGroupId: number,
+  name: string,
+  editingEnabled: boolean,
+): Promise<UpdateRoundGroupResponse> {
+  return fetchJson<UpdateRoundGroupResponse>(
+    `${API_BASE}/round-groups/${roundGroupId}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        cause_id: `update-round-group-${Date.now()}`,
+        cause_description: `Update round group ${roundGroupId}`,
+        round_group_id: roundGroupId,
+        name,
+        editing_enabled: editingEnabled,
+      }),
+    },
+  );
+}
+
+/**
+ * Delete a round group.
+ *
+ * @param sessionToken - The session token for authentication
+ * @param roundGroupId - The round group ID to delete
+ * @returns Promise resolving to the delete response
+ */
+export async function deleteRoundGroup(
+  sessionToken: string,
+  roundGroupId: number,
+): Promise<DeleteRoundGroupResponse> {
+  return fetchJson<DeleteRoundGroupResponse>(
+    `${API_BASE}/round-groups/${roundGroupId}`,
+    {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        cause_id: `delete-round-group-${Date.now()}`,
+        cause_description: `Delete round group ${roundGroupId}`,
+        round_group_id: roundGroupId,
+      }),
+    },
+  );
+}
+
+/**
+ * Create a new round.
+ *
+ * @param sessionToken - The session token for authentication
+ * @param roundGroupId - The round group ID this round belongs to
+ * @param roundNumber - The round number (must be unique within round group)
+ * @param name - The display name for this round
+ * @param slotsPerDay - Maximum number of slots per day
+ * @param maxGroups - Maximum number of groups
+ * @param maxTotalHours - Maximum total hours
+ * @param includeHolidays - Whether holidays are included
+ * @param allowOverbid - Whether overbidding is allowed
+ * @returns Promise resolving to the create response
+ */
+export async function createRound(
+  sessionToken: string,
+  roundGroupId: number,
+  roundNumber: number,
+  name: string,
+  slotsPerDay: number,
+  maxGroups: number,
+  maxTotalHours: number,
+  includeHolidays: boolean,
+  allowOverbid: boolean,
+): Promise<CreateRoundResponse> {
+  return fetchJson<CreateRoundResponse>(`${API_BASE}/rounds`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      cause_id: `create-round-${Date.now()}`,
+      cause_description: `Create round ${roundNumber} in group ${roundGroupId}`,
+      round_group_id: roundGroupId,
+      round_number: roundNumber,
+      name,
+      slots_per_day: slotsPerDay,
+      max_groups: maxGroups,
+      max_total_hours: maxTotalHours,
+      include_holidays: includeHolidays,
+      allow_overbid: allowOverbid,
+    }),
+  });
+}
+
+/**
+ * List all rounds for a round group.
+ *
+ * @param sessionToken - The session token for authentication
+ * @param roundGroupId - The round group ID to list rounds for
+ * @returns Promise resolving to the list response
+ */
+export async function listRounds(
+  sessionToken: string,
+  roundGroupId: number,
+): Promise<ListRoundsResponse> {
+  return fetchJson<ListRoundsResponse>(
+    `${API_BASE}/rounds?round_group_id=${roundGroupId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${sessionToken}`,
+      },
+    },
+  );
+}
+
+/**
+ * Update a round.
+ *
+ * @param sessionToken - The session token for authentication
+ * @param roundId - The round ID to update
+ * @param roundGroupId - The round group ID
+ * @param roundNumber - The round number (must be unique within round group)
+ * @param name - The display name
+ * @param slotsPerDay - Maximum number of slots per day
+ * @param maxGroups - Maximum number of groups
+ * @param maxTotalHours - Maximum total hours
+ * @param includeHolidays - Whether holidays are included
+ * @param allowOverbid - Whether overbidding is allowed
+ * @returns Promise resolving to the update response
+ */
+export async function updateRound(
+  sessionToken: string,
+  roundId: number,
+  roundGroupId: number,
+  roundNumber: number,
+  name: string,
+  slotsPerDay: number,
+  maxGroups: number,
+  maxTotalHours: number,
+  includeHolidays: boolean,
+  allowOverbid: boolean,
+): Promise<UpdateRoundResponse> {
+  return fetchJson<UpdateRoundResponse>(`${API_BASE}/rounds/${roundId}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      cause_id: `update-round-${Date.now()}`,
+      cause_description: `Update round ${roundId}`,
+      round_id: roundId,
+      round_group_id: roundGroupId,
+      round_number: roundNumber,
+      name,
+      slots_per_day: slotsPerDay,
+      max_groups: maxGroups,
+      max_total_hours: maxTotalHours,
+      include_holidays: includeHolidays,
+      allow_overbid: allowOverbid,
+    }),
+  });
+}
+
+/**
+ * Delete a round.
+ *
+ * @param sessionToken - The session token for authentication
+ * @param roundId - The round ID to delete
+ * @returns Promise resolving to the delete response
+ */
+export async function deleteRound(
+  sessionToken: string,
+  roundId: number,
+): Promise<DeleteRoundResponse> {
+  return fetchJson<DeleteRoundResponse>(`${API_BASE}/rounds/${roundId}`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      cause_id: `delete-round-${Date.now()}`,
+      cause_description: `Delete round ${roundId}`,
+      round_id: roundId,
+    }),
+  });
 }

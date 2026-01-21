@@ -29,6 +29,8 @@ import { ConnectionStatus } from "./components/ConnectionStatus";
 import { Navigation } from "./components/Navigation";
 import { NoBidReview } from "./components/NoBidReview";
 import { OperatorManagement } from "./components/OperatorManagement";
+import { RoundGroupManagement } from "./components/RoundGroupManagement";
+import { RoundManagement } from "./components/RoundManagement";
 import { UserDetailView } from "./components/UserDetailView";
 import { UserEditView } from "./components/UserEditView";
 import { UserListView } from "./components/UserListView";
@@ -671,6 +673,34 @@ function AuthenticatedAdminApp({
                 connectionState={connectionState}
                 lastEvent={lastEvent}
               />
+            }
+          />
+          <Route
+            path="round-groups"
+            element={
+              authState.role === "Admin" && authState.sessionToken ? (
+                <RoundGroupManagement
+                  sessionToken={authState.sessionToken}
+                  connectionState={connectionState}
+                  lastEvent={lastEvent}
+                />
+              ) : (
+                <Navigate to="/admin" replace />
+              )
+            }
+          />
+          <Route
+            path="round-groups/:roundGroupId/rounds"
+            element={
+              authState.role === "Admin" && authState.sessionToken ? (
+                <RoundManagement
+                  sessionToken={authState.sessionToken}
+                  connectionState={connectionState}
+                  lastEvent={lastEvent}
+                />
+              ) : (
+                <Navigate to="/admin" replace />
+              )
             }
           />
           <Route

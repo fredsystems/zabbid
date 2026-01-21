@@ -13,14 +13,15 @@
 
 ## Active Sub-Phase
 
-- Sub-Phase: Phase 29 Gap-Fill (Area → Round Group Assignment API)
-- State: Complete
+- Sub-Phase: 30B (Round Groups & Rounds UI)
+- State: In Progress
 
 ## Completed Sub-Phases
 
 - [x] Planning Pass
 - [x] Sub-Phase 30A: Phase 29 Gap Analysis
 - [x] Phase 29 Gap-Fill: Area → Round Group Assignment API
+- [ ] Sub-Phase 30B: Round Groups & Rounds UI (in progress)
 
 ## Work Completed
 
@@ -118,11 +119,67 @@
 - Sub-Phase 30C (Area → Round Group Assignment UI) is unblocked
 - Committed as: `92e70d9`
 
+### Sub-Phase 30B: Round Groups & Rounds UI (In Progress)
+
+**TypeScript Types & API Bindings (Complete):**
+
+- Added Round Group types to `ui/src/types.ts`:
+  - `RoundGroupInfo`, `CreateRoundGroupResponse`, `ListRoundGroupsResponse`
+  - `UpdateRoundGroupResponse`, `DeleteRoundGroupResponse`
+- Added Round types to `ui/src/types.ts`:
+  - `RoundInfo`, `CreateRoundResponse`, `ListRoundsResponse`
+  - `UpdateRoundResponse`, `DeleteRoundResponse`
+- Added API bindings to `ui/src/api.ts`:
+  - `createRoundGroup`, `listRoundGroups`, `updateRoundGroup`, `deleteRoundGroup`
+  - `createRound`, `listRounds`, `updateRound`, `deleteRound`
+- Added `AssignAreaRoundGroupResponse` import to `ui/src/api.ts`
+
+**SCSS Styling (Complete):**
+
+- Created `ui/src/styles/_round-groups.scss` as global SCSS partial
+- Created `ui/src/styles/_rounds.scss` as global SCSS partial
+- Updated `ui/src/styles/main.scss` to import new partials
+- Followed existing pattern (global CSS, not CSS modules)
+- Mobile-first responsive design
+- Card-based layouts with inline editing patterns
+- Lifecycle-aware button states
+
+**Components (In Progress):**
+
+- Created `ui/src/components/RoundGroupManagement.tsx` (needs class name updates)
+- Created `ui/src/components/RoundManagement.tsx` (needs class name updates)
+- Both components have full CRUD operations
+- Lifecycle awareness (blocks mutations after Canonicalized)
+- Real-time updates via live events
+- Uses `listBidYears` to get full bid year info including lifecycle state
+
+**Routing (Complete):**
+
+- Added Round Groups and Rounds routes to `ui/src/App.tsx`
+- Route: `/admin/round-groups` for Round Groups management
+- Route: `/admin/round-groups/:roundGroupId/rounds` for Rounds management
+- Both routes require Admin role
+- Pass sessionToken, connectionState, and lastEvent to components
+
+**Navigation (Complete):**
+
+- Updated `ui/src/components/Navigation.tsx` to include Round Groups link
+- Added to admin dropdown menu
+- Shows "Round Groups" label when active
+
+**Outstanding Work:**
+
+- Update RoundGroupManagement.tsx to use global class names (not CSS modules)
+- Update RoundManagement.tsx to use global class names (not CSS modules)
+- Remove CSS module import statements from both components
+- Test components in browser
+- Manual validation per PHASE_30B.md completion checklist
+
 ## Outstanding Work
 
 ### Ready to Execute
 
-- Sub-Phase 30B: Round Groups & Rounds UI
+- Complete Sub-Phase 30B: Update components to use global class names
 - Sub-Phase 30C: Area → Round Group Assignment UI
 - Sub-Phase 30D: Bootstrap UI Restructure
 - Sub-Phase 30E: Bid Schedule UI
@@ -142,12 +199,16 @@ None.
 
 ## Resume Instructions
 
-1. Begin Sub-Phase 30B: Round Groups & Rounds UI
-2. Execute sub-phases in order (30B → 30C → ... → 30I)
-3. Update this document after each sub-phase completion
-4. Commit progress frequently
-5. Run `cargo xtask ci` and `pre-commit run --all-files` before completing each sub-phase
-6. Stop and ask if any blocking issues arise
+1. Complete Sub-Phase 30B: Update component class names to use global SCSS
+   - Remove `import styles from` statements
+   - Convert all `className={styles.xyz}` to `className="xyz"`
+   - Use kebab-case for multi-word class names
+   - Match existing pattern in BootstrapCompleteness.tsx
+2. Test Round Groups and Rounds UI in browser
+3. Run `cargo xtask ci` and `pre-commit run --all-files` 
+4. Commit Sub-Phase 30B completion
+5. Continue with Sub-Phase 30C
+6. Update this document after each sub-phase completion
 
 ## Planning Notes
 

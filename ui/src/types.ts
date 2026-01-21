@@ -658,3 +658,141 @@ export interface ImportCsvUsersResponse {
   /** Per-row import results */
   results: CsvImportRowResult[];
 }
+
+/**
+ * Round group information.
+ */
+export interface RoundGroupInfo {
+  /** The canonical round group identifier */
+  round_group_id: number;
+  /** The bid year ID this round group belongs to */
+  bid_year_id: number;
+  /** The round group name */
+  name: string;
+  /** Whether editing is enabled */
+  editing_enabled: boolean;
+}
+
+/**
+ * Response for creating a round group.
+ */
+export interface CreateRoundGroupResponse {
+  /** The canonical round group identifier */
+  round_group_id: number;
+  /** The bid year ID this round group belongs to */
+  bid_year_id: number;
+  /** The round group name */
+  name: string;
+  /** Whether editing is enabled */
+  editing_enabled: boolean;
+  /** Success message */
+  message: string;
+}
+
+/**
+ * Response for listing round groups.
+ */
+export interface ListRoundGroupsResponse {
+  /** The bid year ID */
+  bid_year_id: number;
+  /** All round groups for this bid year */
+  round_groups: RoundGroupInfo[];
+}
+
+/**
+ * Response for updating a round group.
+ */
+export interface UpdateRoundGroupResponse {
+  /** The canonical round group identifier */
+  round_group_id: number;
+  /** The bid year ID this round group belongs to */
+  bid_year_id: number;
+  /** The updated round group name */
+  name: string;
+  /** Whether editing is enabled */
+  editing_enabled: boolean;
+  /** Success message */
+  message: string;
+}
+
+/**
+ * Response for deleting a round group.
+ */
+export interface DeleteRoundGroupResponse {
+  /** Success message */
+  message: string;
+}
+
+/**
+ * Round information.
+ */
+export interface RoundInfo {
+  /** The canonical round identifier */
+  round_id: number;
+  /** The round group ID this round belongs to */
+  round_group_id: number;
+  /** The round number (sequence position) */
+  round_number: number;
+  /** The display name */
+  name: string;
+  /** Maximum number of slots per day */
+  slots_per_day: number;
+  /** Maximum number of groups */
+  max_groups: number;
+  /** Maximum total hours */
+  max_total_hours: number;
+  /** Whether holidays are included in this round */
+  include_holidays: boolean;
+  /** Whether overbidding is allowed in this round */
+  allow_overbid: boolean;
+}
+
+/**
+ * Response for creating a round.
+ */
+export interface CreateRoundResponse {
+  /** The canonical round identifier */
+  round_id: number;
+  /** The round group ID this round belongs to */
+  round_group_id: number;
+  /** The round number */
+  round_number: number;
+  /** The display name */
+  name: string;
+  /** Success message */
+  message: string;
+}
+
+/**
+ * Response for listing rounds.
+ */
+export interface ListRoundsResponse {
+  /** The round group ID */
+  round_group_id: number;
+  /** All rounds in this round group */
+  rounds: RoundInfo[];
+}
+
+/**
+ * Response for updating a round.
+ */
+export interface UpdateRoundResponse {
+  /** The canonical round identifier */
+  round_id: number;
+  /** The round group ID this round belongs to */
+  round_group_id: number;
+  /** The round number */
+  round_number: number;
+  /** The display name */
+  name: string;
+  /** Success message */
+  message: string;
+}
+
+/**
+ * Response for deleting a round.
+ */
+export interface DeleteRoundResponse {
+  /** Success message */
+  message: string;
+}
