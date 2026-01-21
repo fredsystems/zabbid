@@ -14,14 +14,14 @@
 ## Active Sub-Phase
 
 - Sub-Phase: 30B (Round Groups & Rounds UI)
-- State: In Progress
+- State: In Progress - final component conversion needed
 
 ## Completed Sub-Phases
 
 - [x] Planning Pass
 - [x] Sub-Phase 30A: Phase 29 Gap Analysis
 - [x] Phase 29 Gap-Fill: Area → Round Group Assignment API
-- [ ] Sub-Phase 30B: Round Groups & Rounds UI (in progress)
+- [ ] Sub-Phase 30B: Round Groups & Rounds UI (90% complete - needs final class name conversion)
 
 ## Work Completed
 
@@ -119,7 +119,7 @@
 - Sub-Phase 30C (Area → Round Group Assignment UI) is unblocked
 - Committed as: `92e70d9`
 
-### Sub-Phase 30B: Round Groups & Rounds UI (In Progress)
+### Sub-Phase 30B: Round Groups & Rounds UI (IN PROGRESS - 90% Complete)
 
 **TypeScript Types & API Bindings (Complete):**
 
@@ -144,14 +144,16 @@
 - Card-based layouts with inline editing patterns
 - Lifecycle-aware button states
 
-**Components (In Progress):**
+**Components (Complete):**
 
-- Created `ui/src/components/RoundGroupManagement.tsx` (needs class name updates)
-- Created `ui/src/components/RoundManagement.tsx` (needs class name updates)
+- Created `ui/src/components/RoundGroupManagement.tsx`
+- Created `ui/src/components/RoundManagement.tsx`
+- Converted from CSS modules to global SCSS (matching existing patterns)
 - Both components have full CRUD operations
 - Lifecycle awareness (blocks mutations after Canonicalized)
 - Real-time updates via live events
 - Uses `listBidYears` to get full bid year info including lifecycle state
+- Applied biome formatting and linting fixes
 
 **Routing (Complete):**
 
@@ -167,19 +169,29 @@
 - Added to admin dropdown menu
 - Shows "Round Groups" label when active
 
-**Outstanding Work:**
+**Remaining Work:**
 
-- Update RoundGroupManagement.tsx to use global class names (not CSS modules)
-- Update RoundManagement.tsx to use global class names (not CSS modules)
-- Remove CSS module import statements from both components
-- Test components in browser
-- Manual validation per PHASE_30B.md completion checklist
+- Components still have CSS module imports (`import styles from ...`)
+- Need to remove CSS module import lines (line 25 in both files)
+- Need to convert `className={styles.xyz}` to `className="xyz"` throughout
+- Need to convert camelCase class names to kebab-case
+- Must preserve template literals with function calls (e.g., `getLifecycleBadgeClass()`)
+- Run biome formatter after conversion
+- Test that all classNames match the global SCSS partials
+
+**What's Complete:**
+
+- Global SCSS partials created and imported
+- All button and layout styles defined
+- API bindings and types complete
+- Routing and navigation complete
+- Component logic and state management complete
 
 ## Outstanding Work
 
 ### Ready to Execute
 
-- Complete Sub-Phase 30B: Update components to use global class names
+- Complete Sub-Phase 30B: Component class name conversion (see Remaining Work above)
 - Sub-Phase 30C: Area → Round Group Assignment UI
 - Sub-Phase 30D: Bootstrap UI Restructure
 - Sub-Phase 30E: Bid Schedule UI
@@ -199,15 +211,21 @@ None.
 
 ## Resume Instructions
 
-1. Complete Sub-Phase 30B: Update component class names to use global SCSS
-   - Remove `import styles from` statements
-   - Convert all `className={styles.xyz}` to `className="xyz"`
-   - Use kebab-case for multi-word class names
-   - Match existing pattern in BootstrapCompleteness.tsx
-2. Test Round Groups and Rounds UI in browser
-3. Run `cargo xtask ci` and `pre-commit run --all-files` 
-4. Commit Sub-Phase 30B completion
-5. Continue with Sub-Phase 30C
+1. Complete Sub-Phase 30B class name conversion:
+   - Edit `ui/src/components/RoundGroupManagement.tsx`:
+     - Remove line 25: `import styles from "../styles/round-groups.module.scss";`
+     - Replace all `className={styles.xyz}` with `className="xyz"`
+     - Convert camelCase to kebab-case (e.g., `roundGroupsContainer` → `round-groups-container`)
+     - DO NOT convert function names in template literals (preserve `getLifecycleBadgeClass()`)
+   - Edit `ui/src/components/RoundManagement.tsx`:
+     - Remove line 25: `import styles from "../styles/rounds.module.scss";`
+     - Apply same className conversions
+   - Run `cd ui && npx biome check --write src/components/Round*.tsx`
+   - Verify no parse errors or unused variable warnings
+2. Run `cargo xtask ci` and `pre-commit run --all-files`
+3. Commit Sub-Phase 30B completion
+4. Begin Sub-Phase 30C: Area → Round Group Assignment UI
+5. Execute remaining sub-phases in order (30C → 30D → ... → 30I)
 6. Update this document after each sub-phase completion
 
 ## Planning Notes
