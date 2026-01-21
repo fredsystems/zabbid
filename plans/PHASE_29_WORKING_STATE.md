@@ -9,12 +9,12 @@
 
 - Status: In Progress
 - Last Updated: 2026-01-21
-- Reason: Sub-Phase 29F complete, proceeding to Phase 29G
+- Reason: Phase 29E schema correction complete, ready for Phase 29G
 
 ## Active Sub-Phase
 
 - Sub-Phase: 29G — Post-Confirmation Bid Order Adjustments
-- State: Not Started
+- State: Ready to Start (schema correction complete)
 
 ## Completed Sub-Phases
 
