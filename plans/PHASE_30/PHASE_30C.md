@@ -9,6 +9,8 @@ round group.
 This sub-phase delivers the **area-to-round-group binding workflow**
 required to complete pre-bid configuration.
 
+Area list is scoped to a specific bid year (bidYearId route param), never global.
+
 ---
 
 ## Scope
@@ -49,8 +51,9 @@ The UI must provide:
    - Lifecycle constraint: assignment blocked after Canonicalized
 
 3. **Clear/unassign round group**
-   - Allow removal of assignment pre-Canonicalized
-   - Backend may reject if this violates readiness constraints
+   - Allow unassign pre-Canonicalized even if it makes readiness blocked.
+   - UI should reflect it immediately as a blocker (not treat it as an error).
+   - Backend may reject unassign only if the lifecycle is locked or if the area is system.
 
 4. **Visual indicators**
    - Areas with assignments: show round group name prominently
@@ -60,6 +63,7 @@ The UI must provide:
 5. **Readiness integration**
    - Display whether area is blocking readiness due to missing round group
    - Link to readiness review if applicable
+   - If an area has no round group assigned, show a badge “Blocks Readiness” and a link/button “View readiness blockers”.
 
 ### C. Backend API Requirements
 
@@ -93,6 +97,12 @@ POST /round_groups/:round_group_id/assign-area
   "area_id": <id>
 }
 ```
+
+Preferred: Pattern B (updateArea with round_group_id)
+
+Acceptable: Pattern A (dedicated endpoint)
+
+Not preferred: Pattern C (assign-area from round group) — because it tends to imply the group “owns” the relationship, which conflicts with your operator workflow and readiness gating.
 
 If **none of these patterns exist**, this is a **blocking gap**.
 

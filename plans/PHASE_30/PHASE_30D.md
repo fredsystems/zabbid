@@ -33,13 +33,15 @@ The existing `BootstrapCompleteness.tsx` component contains:
 - Mixes completed and incomplete tasks
 - No workflow guidance
 
+---
+
 ### B. Target Structure
 
 Replace the monolithic page with a **multi-section workflow**.
 
 Implementation options:
 
-#### Option 1: Route-based sections
+#### Option 1: Route-based sections (Recommended)
 
 Each workflow step is a separate route with dedicated component.
 
@@ -48,21 +50,13 @@ Example routes:
 - `/admin/bootstrap/bid-years`
 - `/admin/bootstrap/areas`
 - `/admin/bootstrap/users`
+- `/admin/bootstrap/no-bid-review`
 - `/admin/bootstrap/round-groups`
+- `/admin/bootstrap/area-round-groups`
 - `/admin/bootstrap/schedule`
 - `/admin/bootstrap/readiness`
 
-#### Option 2: Tab-based sections
-
-Single route with tab-based navigation, each tab lazy-loads section component.
-
-#### Option 3: Accordion/stepper
-
-Single route with progressive disclosure, guided step-by-step flow.
-
-#### Recommended: Option 1 (route-based)
-
-Rationale:
+**Rationale:**
 
 - Deep-linkable
 - Browser back/forward works intuitively
@@ -70,9 +64,11 @@ Rationale:
 - Better mobile support (one task at a time)
 - Clearer separation of concerns
 
+---
+
 ### C. Workflow Sections
 
-Define the following sections (each a separate component):
+Each section is implemented as a dedicated component and route.
 
 #### 1. Bid Year Setup (`BidYearSetup.tsx`)
 
@@ -84,7 +80,7 @@ Define the following sections (each a separate component):
 - Create new bid year
 - Set active bid year
 - Edit bid year metadata (label, notes)
-- Set expected area count
+- Set expected area count (**non-system areas only**)
 - Display lifecycle state
 
 **Navigation:**
@@ -95,7 +91,9 @@ Define the following sections (each a separate component):
 **Completion criteria:**
 
 - Exactly one bid year is active
-- Expected area count is set
+- Expected non-system area count is set
+
+---
 
 #### 2. Area Setup (`AreaSetup.tsx`)
 
@@ -106,19 +104,22 @@ Define the following sections (each a separate component):
 - List all areas for active bid year
 - Create new areas
 - Edit area names
-- Set expected user counts (per area)
-- Show area count vs expected
-- Display system area (No Bid)
+- Set expected user counts (**non-system areas only**)
+- Show area count vs expected (non-system only)
+- Display system area (No Bid) distinctly
 
 **Navigation:**
 
 - Previous: Bid Year Setup
-- Next: User Import/Management
+- Next: User Management
 
 **Completion criteria:**
 
-- Actual area count matches expected
+- Actual non-system area count matches expected
 - All non-system areas have expected user counts set
+- System areas do not block readiness
+
+---
 
 #### 3. User Management (`UserManagement.tsx`)
 
@@ -141,7 +142,9 @@ Define the following sections (each a separate component):
 **Completion criteria:**
 
 - All non-system areas have actual user count matching expected
-- No duplicate initials within bid year
+- Any user-level validation warnings are visible and actionable
+
+---
 
 #### 4. No Bid Review (`NoBidReview.tsx`)
 
@@ -149,11 +152,10 @@ Define the following sections (each a separate component):
 
 **Functionality:**
 
-- Already exists from Phase 26D
-- Minor integration updates may be needed
+- Integrates existing No Bid review UI from Phase 29
 - List users in No Bid
 - Reassign to competitive areas
-- Confirm to remain in No Bid (if that API exists)
+- Explicitly confirm user remains in No Bid
 
 **Navigation:**
 
@@ -162,8 +164,12 @@ Define the following sections (each a separate component):
 
 **Completion criteria:**
 
-- Zero users in No Bid, OR
+- Zero users in No Bid, **OR**
 - All No Bid users explicitly reviewed
+
+If there are zero users in No Bid, this step must automatically be considered complete.
+
+---
 
 #### 5. Round Groups Setup (`RoundGroupSetup.tsx`)
 
@@ -171,32 +177,37 @@ Define the following sections (each a separate component):
 
 **Functionality:**
 
-- Delegate to components from 30B
+- Delegates to components implemented in Phase 30B
 - List round groups
 - Create/edit/delete round groups
 - Navigate to rounds management per group
 - Show round count per group
 
+This component acts as a **wrapper page** around the Phase 30B round group
+management components, not a duplicate implementation.
+
 **Navigation:**
 
 - Previous: No Bid Review
-- Next: Area Round Assignment
+- Next: Area → Round Group Assignment
 
 **Completion criteria:**
 
 - At least one round group exists
-- Each round group has at least one round
+- Each round group has at least one round defined
 
-#### 6. Area Round Assignment (`AreaRoundAssignment.tsx`)
+---
 
-**Purpose:** Assign round groups to areas.
+#### 6. Area → Round Group Assignment (`AreaRoundGroupAssignment.tsx`)
+
+**Purpose:** Assign exactly one round group to each non-system area.
 
 **Functionality:**
 
-- Delegate to component from 30C
+- Delegates to component implemented in Phase 30C
 - List all non-system areas
 - Assign round group to each area
-- Show assignment status
+- Show assignment status and readiness impact
 
 **Navigation:**
 
@@ -207,14 +218,16 @@ Define the following sections (each a separate component):
 
 - Every non-system area has exactly one round group assigned
 
-#### 7. Bid Schedule (`BidScheduleSetup.tsx`)
+---
+
+#### 7. Bid Schedule Setup (`BidScheduleSetup.tsx`)
 
 **Purpose:** Declare bid timing and window.
 
 **Functionality:**
 
 - Set bid timezone (IANA selector)
-- Set bid start date (date picker, must be Monday, must be future)
+- Set bid start date (date picker; must be Monday and future at confirmation)
 - Set daily bid window (wall-clock start/end times)
 - Set bidders per area per day
 - Display schedule summary
@@ -222,242 +235,161 @@ Define the following sections (each a separate component):
 
 **Navigation:**
 
-- Previous: Area Round Assignment
+- Previous: Area → Round Group Assignment
 - Next: Readiness Review
 
 **Completion criteria:**
 
 - All schedule fields are set
-- Start date is valid (Monday, future at confirmation time)
+- Start date is valid
+
+---
 
 #### 8. Readiness Review (`ReadinessReview.tsx`)
 
-**Purpose:** Review all blockers and confirm ready to bid.
+**Purpose:** Review all blockers and confirm readiness.
 
 **Functionality:**
 
-- Display computed readiness state
-- List all blocking reasons (if any)
-- Link to relevant sections to resolve blockers
-- Show "Ready to Bid" status badge
+- Display computed readiness state (backend-derived only)
+- List all blocking reasons
+- Link blockers to relevant workflow sections
+- Display lifecycle state badge
 - Confirm Ready to Bid button (irreversible)
-- Confirmation modal with summary and acknowledgment
+- Confirmation modal summarizing frozen inputs
 
 **Navigation:**
 
 - Previous: Bid Schedule
-- Next: None (terminal state after confirmation)
+- Next: None (terminal state)
 
 **Completion criteria:**
 
 - No blockers remain
-- User has confirmed ready to bid
+- Operator confirms Ready to Bid
 - System transitions to Canonicalized
+
+---
 
 ### D. Shared Navigation Component
 
-Create `ui/src/components/BootstrapNavigation.tsx`:
-
-**Purpose:** Persistent navigation sidebar or header showing workflow steps.
+Create `ui/src/components/BootstrapNavigation.tsx`.
 
 **Functionality:**
 
-- Display all workflow sections in order
-- Highlight current section
-- Show completion status per section (✅ complete, ⚠️ incomplete, ❌ blocked)
-- Enable jumping to any section
-- Mobile: collapsible menu or bottom navigation
+- Display all workflow steps in order
+- Highlight current step
+- Show completion status per step
+- Allow navigation to any step (navigation is never hard-blocked)
+- Mobile: collapsible or bottom navigation
 - Desktop: persistent sidebar
 
-**Visual design:**
+Navigation must never block movement; only confirmation is gated.
 
-- Stepper pattern (numbered steps)
-- Color-coded status indicators
-- Clear labels
-- Touch-friendly on mobile
+---
 
 ### E. Shared Readiness Widget
 
-Create `ui/src/components/ReadinessWidget.tsx`:
-
-**Purpose:** Persistent summary of overall readiness state.
+Create `ui/src/components/ReadinessWidget.tsx`.
 
 **Functionality:**
 
-- Display current lifecycle state badge
-- Show readiness status (ready / not ready / blocked)
-- Show count of remaining blockers
-- Link to Readiness Review section
-- Visible on all bootstrap sections
+- Display lifecycle state badge
+- Display readiness state and blocker count
+- Link to Readiness Review
+- Visible on all bootstrap routes
 
-**Placement:**
+The widget must rely exclusively on backend readiness evaluation
+as the single source of truth.
 
-- Top of page (below header)
-- Sticky on desktop
-- Collapsible on mobile
+---
 
 ### F. Routing Integration
 
 Update `ui/src/App.tsx`:
 
-- Replace single `/admin/bootstrap` route with:
+- Replace `/admin/bootstrap` with:
   - `/admin/bootstrap/bid-years`
   - `/admin/bootstrap/areas`
   - `/admin/bootstrap/users`
   - `/admin/bootstrap/no-bid-review`
   - `/admin/bootstrap/round-groups`
-  - `/admin/bootstrap/area-rounds`
+  - `/admin/bootstrap/area-round-groups`
   - `/admin/bootstrap/schedule`
   - `/admin/bootstrap/readiness`
 
-- Default `/admin/bootstrap` → redirect to `/admin/bootstrap/bid-years`
+Default `/admin/bootstrap` redirects to `/admin/bootstrap/bid-years`.
 
-- Each route renders:
-  - BootstrapNavigation (persistent)
-  - ReadinessWidget (persistent)
-  - Section component (content)
+Each route renders:
 
-Update `ui/src/components/Navigation.tsx`:
+- BootstrapNavigation (persistent)
+- ReadinessWidget (persistent)
+- Section content
 
-- Change "Bootstrap" link to point to `/admin/bootstrap/bid-years`
+Update main navigation to link to `/admin/bootstrap/bid-years`.
+
+---
 
 ### G. Code Migration Strategy
 
-#### Extract existing logic from BootstrapCompleteness.tsx
+Extract existing logic from `BootstrapCompleteness.tsx` into section components.
 
-1. Identify reusable sub-components:
-   - `BidYearItem` → move to `BidYearSetup.tsx`
-   - `CreateBidYearForm` → move to `BidYearSetup.tsx`
-   - `AreaItem` → move to `AreaSetup.tsx`
-   - `CreateAreaForm` → move to `AreaSetup.tsx`
-   - `UserItem` → move to `UserManagement.tsx`
-   - `CreateUserForm` → move to `UserManagement.tsx`
-   - `EditUserForm` → move to `UserManagement.tsx`
+**Rules:**
 
-2. Preserve all existing functionality:
-   - No behavior changes
-   - No API changes
-   - Same validation logic
-   - Same error handling
+- Preserve all existing behavior
+- No API changes
+- No domain logic changes
+- No validation changes
+- No simplification for convenience
 
-3. Update imports and exports
+Delete `BootstrapCompleteness.tsx` only after full migration.
 
-4. Delete `BootstrapCompleteness.tsx` once migration complete
-
-**Do NOT:**
-
-- Change API calls
-- Change domain logic
-- Remove functionality
-- Simplify for the sake of simplification
+---
 
 ### H. Styling
 
-Create new SCSS modules:
+Create SCSS modules per section:
 
-- `ui/src/styles/bootstrap-navigation.module.scss`
-- `ui/src/styles/readiness-widget.module.scss`
-- `ui/src/styles/bid-year-setup.module.scss`
-- `ui/src/styles/area-setup.module.scss`
-- `ui/src/styles/user-management.module.scss`
-- `ui/src/styles/bid-schedule-setup.module.scss`
-- `ui/src/styles/readiness-review.module.scss`
+- `bootstrap-navigation.module.scss`
+- `readiness-widget.module.scss`
+- `bid-year-setup.module.scss`
+- `area-setup.module.scss`
+- `user-management.module.scss`
+- `bid-schedule-setup.module.scss`
+- `readiness-review.module.scss`
 
-Reuse existing styles from:
+Follow AGENTS.md styling rules:
 
-- `ui/src/styles/bootstrap.module.scss`
-
-Follow AGENTS.md styling guidelines:
-
-- Mobile-first responsive design
+- Mobile-first
 - Card-based layouts
 - No inline styles
-- Clear status indicators
-- Touch-friendly controls
-
----
-
-## UI Design Constraints
-
-### Mobile-First
-
-- Navigation: collapsible menu or bottom tabs
-- Sections: one task at a time, vertical stacking
-- Forms: single column on mobile
-- All controls touch-friendly
-
-### Workflow Guidance
-
-- Clear "Previous" and "Next" buttons
-- Show progress through workflow
-- Highlight incomplete steps
-- Disable "Next" if current step incomplete (optional, or allow free navigation)
-
-### Lifecycle Awareness
-
-- Lock completed sections post-Canonicalized
-- Show clear indicators when editing blocked
-- Preserve read-only access to locked sections
-
-### Readiness Integration
-
-- Persistent readiness widget on all screens
-- Clear path from blocker to resolution
-- Real-time updates when blockers resolve
-
----
-
-## Testing & Validation
-
-### Manual Validation
-
-After implementation:
-
-1. Complete full bootstrap workflow start to finish
-2. Navigate backward and forward through sections
-3. Verify browser back/forward works correctly
-4. Test mobile responsiveness on all sections
-5. Verify all existing functionality preserved
-6. Test with 200+ users (CSV import)
-7. Verify readiness widget updates in real-time
-8. Test lifecycle locks engage after Canonicalized
-
-### Regression Testing
-
-- Verify all existing bootstrap tests still pass
-- Verify no API calls changed
-- Verify no domain logic changed
+- Clear lifecycle indicators
 
 ---
 
 ## Explicit Non-Goals
 
-- No new backend APIs
-- No domain logic changes
+- No backend changes
+- No domain changes
 - No lifecycle changes
-- No validation logic changes
-- No styling redesign (preserve existing look and feel)
-- No performance optimization
+- No validation changes
+- No redesign of existing visual language
 
 ---
 
 ## Completion Conditions
 
-This sub-phase is complete when:
+Phase 30D is complete when:
 
-- All 8 workflow sections exist as separate components
-- BootstrapNavigation component exists and functional
-- ReadinessWidget component exists and functional
-- Routing updated and tested
-- All existing functionality preserved
-- `BootstrapCompleteness.tsx` deleted
-- Styling follows AGENTS.md guidelines (no inline styles)
+- Bootstrap workflow is fully segmented
+- Navigation and readiness widgets function correctly
+- All existing bootstrap functionality preserved
+- Old monolithic component removed
+- Lifecycle locks respected
 - Mobile usability verified
-- Browser navigation works correctly
 - Manual validation passes
 - `cargo xtask ci` passes
 - `pre-commit run --all-files` passes
-- All new files added via `git add`
 - Changes committed
 
 ---
@@ -466,21 +398,16 @@ This sub-phase is complete when:
 
 Stop immediately if:
 
-- Existing functionality cannot be preserved
-- API contracts would need to change
-- Domain logic needs modification
-- Lifecycle semantics are ambiguous
-- Migration introduces breaking changes
+- Existing behavior cannot be preserved
+- API contracts must change
+- Domain invariants are violated
+- Lifecycle semantics become ambiguous
 
 ---
 
 ## Risk Notes
 
-- This is a large refactor with high risk of regressions
-- Thorough testing required
-- Preserve all existing behavior
-- May need multiple commits to manage scope
-- Coordinate with 30B and 30C to avoid duplication
-- Consider doing this sub-phase in two parts if scope too large:
-  - Part 1: Extract and route first 4 sections
-  - Part 2: Add remaining sections and delete old component
+- Large refactor with regression risk
+- Must preserve semantics exactly
+- Coordinate carefully with 30B and 30C
+- Consider splitting execution if scope becomes unmanageable

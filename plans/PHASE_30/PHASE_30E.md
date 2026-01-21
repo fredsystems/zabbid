@@ -6,7 +6,7 @@ Implement the UI for declaring and managing the bid schedule, including
 timezone, start date, daily bid window, and bidders per area per day.
 
 This sub-phase delivers the **bid timing configuration workflow** required
-to complete pre-bid setup and enable bid window calculation.
+to complete pre-bid setup and enable bid window derivation.
 
 ---
 
@@ -14,86 +14,100 @@ to complete pre-bid setup and enable bid window calculation.
 
 ### A. Bid Schedule Component
 
-Create `ui/src/components/BidScheduleSetup.tsx` (if not already created in 30D).
+Create `ui/src/components/BidScheduleSetup.tsx`
+(if not already created during Phase 30D).
 
 This component must:
 
 1. **Display current bid schedule** (if set)
    - Bid timezone (IANA identifier)
-   - Bid start date (displayed as YYYY-MM-DD)
+   - Bid start date (YYYY-MM-DD)
    - Daily bid window (wall-clock start and end times)
    - Bidders per area per day
-   - Display audit metadata (when set, by whom)
+   - Audit metadata (last updated time and actor, if available)
 
-2. **Set/Edit bid schedule**
-   - Form to input all required fields
-   - Validation rules (see below)
+2. **Set or edit bid schedule**
+   - Single form covering all required fields
+   - Validation rules enforced at input time (see below)
    - Lifecycle constraint: editable until bidding commences
-   - Clear submission and error handling
+   - Clear submission, success, and error handling
 
-3. **Schedule validation**
-   - Timezone: must be valid IANA timezone
-   - Start date: must be a Monday
-   - Start date: must be in the future at confirmation time (warning if not)
-   - Daily window: start time must be before end time
-   - Bidders per day: must be positive integer
-   - All fields required
+3. **Schedule validation (UI-level)**
+   - Timezone must be a valid IANA identifier
+   - Start date must be a Monday
+   - Start date **may be in the past at edit time**, but must be
+     valid at confirmation time
+   - Daily window start must be before end
+   - Bidders per area per day must be a positive integer
+   - All fields required before readiness can be achieved
 
-4. **Wall-clock semantics display**
-   - Clear explanation that times are wall-clock in selected timezone
-   - Warning about DST implications if applicable
-   - No elapsed-duration calculations shown
+4. **Wall-clock semantics explanation**
+   - Explicit explanation that times are wall-clock in selected timezone
+   - Clear statement that DST does not shift clock labels
+   - No elapsed-duration calculations displayed or implied
 
 5. **Lifecycle awareness**
-   - Show when schedule is locked (post-bidding commencement)
-   - Display clear indicators when editing blocked
-   - Preserve read-only access when locked
+   - Clearly show when schedule is locked
+   - Disable inputs when locked
+   - Preserve read-only display after lock
+
+---
 
 ### B. Form Fields
 
 #### Timezone Selection
 
-- UI element: Searchable dropdown or autocomplete
-- Data source: IANA timezone database
-- Common timezones highlighted (e.g., US timezones)
-- Display format: "America/New_York (Eastern Time)"
-- Validation: Must be valid IANA identifier
+- UI element: searchable dropdown or autocomplete
+- Data source: IANA timezone list
+- Common timezones surfaced (e.g., U.S. timezones)
+- Display format: `America/New_York (Eastern Time)`
+- Validation: must be valid IANA identifier
 
-Implementation note: Consider using a timezone picker library or
-curated list of common timezones to avoid overwhelming users.
+Implementation note: use a curated list or library to avoid overwhelming users.
+
+---
 
 #### Start Date Selection
 
-- UI element: Date picker
+- UI element: date picker
 - Constraints:
-  - Must be a Monday (validation error if not)
-  - Should be in the future (warning if not, hard error at confirmation)
-  - Display day-of-week clearly
-- Format: YYYY-MM-DD (ISO 8601 date-only)
+  - Must be a Monday (hard validation error)
+  - Display weekday prominently
+  - Past dates allowed at edit time but flagged visually
+- Format: ISO 8601 date-only (`YYYY-MM-DD`)
+
+**Note:** “Future date” is enforced at _confirmation_, not at edit time.
+
+---
 
 #### Daily Bid Window
 
-- Start time: Time picker (HH:MM format, 24-hour or 12-hour)
-- End time: Time picker (HH:MM format, 24-hour or 12-hour)
-- Validation: End must be after start
-- Display: Wall-clock times in selected timezone
-- Help text: "Bidding window applies every day during the bid period"
+- Start time: time picker
+- End time: time picker
+- Validation:
+  - End time must be after start time
+- Display: wall-clock times in selected timezone
+- Help text: “Applies uniformly to all bid days”
 
-Note: Do NOT support multi-day windows. If end time is before start time,
-this is a validation error (not a day-spanning window).
+Do **not** support day-spanning windows.
+End-before-start is a validation error.
+
+---
 
 #### Bidders Per Area Per Day
 
-- UI element: Number input
-- Validation: Must be positive integer (≥ 1)
-- Help text: "Number of users who may bid per area per day"
-- Default suggestion: 10 (non-binding)
+- UI element: number input
+- Validation: integer ≥ 1
+- Help text: “Maximum users who may bid per area per calendar day”
+- Optional suggested default: 10 (non-binding)
+
+---
 
 ### C. Backend API Integration
 
-Add to `ui/src/api.ts`:
+Frontend bindings assumed to exist or be added:
 
-```typescript
+```ts
 export async function setBidSchedule(
   sessionToken: string,
   bidYearId: number,
@@ -110,44 +124,45 @@ export async function getBidSchedule(
 ): Promise<GetBidScheduleResponse>;
 ```
 
-Add corresponding types to `ui/src/types.ts`:
+Corresponding types in `ui/src/types.ts`:
 
 - `BidScheduleInfo`
 - `SetBidScheduleRequest`
 - `SetBidScheduleResponse`
-- `GetBidScheduleRequest`
 - `GetBidScheduleResponse`
 
-### D. Integration with Bootstrap Workflow
+---
 
-If part of 30D restructure:
+### D. Bootstrap Workflow Integration
 
-- BidScheduleSetup is a dedicated section in bootstrap workflow
+If Phase 30D is implemented:
+
 - Route: `/admin/bootstrap/schedule`
-- Positioned after Area Round Assignment
-- Before Readiness Review
+- Positioned after area → round group assignment
+- Before readiness review
 
-If standalone:
+Otherwise:
 
-- Add route in `ui/src/App.tsx`
-- Update navigation to include bid schedule link
+- Add standalone route
+- Ensure readiness links route here when schedule missing
 
-### E. Timezone Handling
+---
 
-**Critical constraint:** All times are **wall-clock times** in the selected timezone.
+### E. Time Semantics (Normative)
 
-UI must NOT:
+All bid schedule times are **wall-clock times** in the selected timezone.
 
-- Imply duration semantics
-- Convert to UTC for display
-- Hide timezone from user
-- Suggest elapsed time across DST boundaries
+UI must **not**:
+
+- Convert times to UTC for display
+- Imply elapsed duration semantics
+- Hide or downplay timezone context
 
 UI must:
 
 - Display timezone prominently
 - Show times exactly as entered
-- Explain DST implications if applicable (info text, not automatic adjustment)
+- Explain DST behavior explicitly
 
 **Example display:**
 
@@ -155,36 +170,38 @@ UI must:
 Bid Schedule
 Timezone: America/New_York (Eastern Time)
 Start Date: 2026-03-09 (Monday)
-Daily Window: 08:00 - 17:00 (wall-clock)
-Bidders Per Day: 10 per area
+Daily Window: 08:00 – 17:00 (local wall-clock)
+Bidders Per Area Per Day: 10
 
-Note: Times are wall-clock in the selected timezone.
-During Daylight Saving Time transitions, the window
-remains 08:00-17:00 local time each day.
+Note: During DST transitions, the bidding window
+remains 08:00–17:00 local time each day.
 ```
 
-### F. Validation Error Messages
+---
 
-- Timezone invalid: "Please select a valid timezone"
-- Start date not Monday: "Start date must be a Monday"
-- Start date in past: "Start date should be in the future (warning at save, error at confirmation)"
-- Window end before start: "Daily window end time must be after start time"
-- Bidders invalid: "Bidders per day must be a positive integer"
+### F. Validation Error Messaging
+
+- Invalid timezone: “Please select a valid timezone”
+- Start date not Monday: “Start date must be a Monday”
+- Start date in past: visual warning only (hard error at confirmation)
+- End before start: “End time must be after start time”
+- Invalid bidders count: “Must be a positive integer”
+
+---
 
 ### G. Styling
 
-Create or extend SCSS module:
+Use SCSS modules:
 
 - `ui/src/styles/bid-schedule-setup.module.scss`
 
-Follow AGENTS.md styling guidelines:
+Follow AGENTS.md:
 
-- Mobile-first responsive design
-- Form fields full-width on mobile
-- Clear labels and help text
-- Time pickers touch-friendly
+- Mobile-first layout
+- Full-width fields on mobile
+- Touch-friendly date/time pickers
 - No inline styles
-- Use existing design tokens
+- Clear help text and warnings
 
 ---
 
@@ -192,30 +209,22 @@ Follow AGENTS.md styling guidelines:
 
 ### Mobile-First
 
-- Form: single column layout
-- Date/time pickers: native mobile-friendly controls preferred
-- Timezone picker: searchable on mobile
-- Help text: collapsible on mobile if lengthy
+- Single-column layout
+- Native pickers preferred
+- Timezone selector searchable
+- Long help text collapsible
 
 ### Lifecycle Awareness
 
-- Show lifecycle state badge
-- Disable form when locked
-- Clear "locked" indicator
-- Preserve read-only display
+- Lifecycle badge visible
+- Inputs disabled when locked
+- Read-only display preserved post-lock
 
 ### Readiness Integration
 
-- If schedule not set, show as blocker
-- Clear indication when complete
-- Link from readiness review if incomplete
-
-### Error Handling
-
-- Validation errors: inline, per-field
-- Backend rejections: surface structured errors
-- Network errors: retry-friendly messages
-- DST warnings: informational, not blocking
+- Missing schedule is a readiness blocker
+- Completion reflected immediately
+- Readiness links route here when blocked
 
 ---
 
@@ -223,55 +232,39 @@ Follow AGENTS.md styling guidelines:
 
 ### Manual Validation
 
-After implementation:
-
-1. Set bid schedule with all fields
-2. Edit bid schedule
-3. Verify timezone selection works
-4. Test start date validation (non-Monday should error)
-5. Test daily window validation (end before start should error)
-6. Verify bidders per day accepts positive integers only
-7. Test lifecycle lock (after bidding commences)
-8. Verify mobile responsiveness
-9. Test with various timezones (especially DST-observing)
-
-### Constraint Validation
-
-- Start date Monday constraint enforced
-- Daily window start < end enforced
-- Bidders per day > 0 enforced
-- All fields required
-
-### Edge Cases
-
-- Timezone with DST transition during bid period
-- Start date validation at confirmation time (if in past)
-- Very early or very late daily windows (e.g., 00:00-23:59)
+1. Create schedule
+2. Edit schedule
+3. Test invalid weekdays
+4. Test window validation
+5. Test bidders per day
+6. Verify lifecycle lock
+7. Verify DST explanatory text
+8. Test mobile layout
+9. Test multiple timezones
 
 ---
 
-## Backend Endpoint Verification
+## Backend Dependency Verification
 
 Before implementation, verify:
 
-1. `POST /bid-schedule` or equivalent exists
-2. `GET /bid-schedule?bid_year_id=<id>` or equivalent exists
-3. Backend validates all constraints
-4. Backend enforces lifecycle locks
-5. Backend stores timezone as IANA identifier
-6. Backend stores times as wall-clock (HH:MM:SS format)
+1. Schedule set/get endpoints exist
+2. Backend validates Monday rule
+3. Backend enforces lifecycle locks
+4. Backend stores timezone as IANA ID
+5. Backend stores times as wall-clock values
 
-If any endpoint is missing or semantics differ, **stop and document the gap**.
+If not, **stop and document the gap**.
 
 ---
 
 ## Explicit Non-Goals
 
-- No DST automatic adjustments
-- No duration calculations
-- No bid window preview (deferred to bid order preview)
-- No multi-timezone support (single timezone per bid year)
-- No backend implementation
+- No automatic DST adjustments
+- No duration math
+- No bid window preview logic
+- No multi-timezone schedules
+- No backend changes
 - No domain logic changes
 
 ---
@@ -280,18 +273,14 @@ If any endpoint is missing or semantics differ, **stop and document the gap**.
 
 This sub-phase is complete when:
 
-- BidScheduleSetup component exists and renders
-- All form fields functional and validated
-- Timezone selection works correctly
-- Backend API integration complete
-- Frontend API bindings complete
-- Lifecycle constraints enforced in UI
-- Wall-clock semantics clearly communicated
+- Schedule UI exists and is usable
+- All validation rules enforced correctly
+- Wall-clock semantics clear
+- Lifecycle locking respected
+- Backend integration complete
 - Mobile usability verified
 - Manual validation passes
-- `cargo xtask ci` passes
-- `pre-commit run --all-files` passes
-- All new files added via `git add`
+- CI and pre-commit pass
 - Changes committed
 
 ---
@@ -300,19 +289,15 @@ This sub-phase is complete when:
 
 Stop immediately if:
 
-- Backend bid schedule API does not exist
-- API semantics conflict with wall-clock requirements
-- Timezone handling is ambiguous
-- DST semantics are unclear
-- Start date validation rules conflict with domain invariants
-- Lifecycle enforcement missing in backend
+- Backend schedule API missing or inconsistent
+- DST semantics unclear or violated
+- Lifecycle enforcement missing
+- UI implies elapsed-time semantics
 
 ---
 
 ## Risk Notes
 
-- Timezone handling is complex and error-prone
-- DST semantics must be clearly communicated, not automated
-- Start date validation at confirmation time may require backend support
-- Wall-clock vs elapsed-time distinction is critical
-- May require timezone library for IANA database
+- Time handling is subtle and user-visible
+- Wall-clock semantics must remain explicit
+- Confirmation-time validation may require coordination with readiness logic
