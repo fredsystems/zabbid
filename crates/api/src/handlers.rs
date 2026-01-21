@@ -6490,6 +6490,15 @@ pub fn confirm_ready_to_bid(
             message: format!("Failed to get users for bid year {year}: {e}"),
         })?;
 
+    // Get all rounds for this bid year to calculate windows per-round
+    let all_rounds = persistence
+        .list_all_rounds_for_bid_year(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get rounds for bid year {year}: {e}"),
+        })?;
+
+    let round_ids: Vec<i64> = all_rounds.iter().map(|(id, _name)| *id).collect();
+
     // Materialize bid order and calculate windows for each area
     let mut total_bid_order_count: usize = 0;
     let mut total_bid_windows_count: usize = 0;
@@ -6507,14 +6516,14 @@ pub fn confirm_ready_to_bid(
             continue;
         }
 
-        // Calculate bid windows
+        // Calculate bid windows (per-round)
         let user_positions: Vec<(i64, usize)> = bid_order_positions
             .iter()
             .map(|pos| (pos.user_id, pos.position))
             .collect();
 
         let bid_windows: Vec<zab_bid_domain::BidWindow> =
-            zab_bid_domain::calculate_bid_windows(&user_positions, &bid_schedule)
+            zab_bid_domain::calculate_bid_windows(&user_positions, &round_ids, &bid_schedule)
                 .map_err(translate_domain_error)?;
 
         total_bid_order_count += bid_order_positions.len();
@@ -6571,14 +6580,14 @@ pub fn confirm_ready_to_bid(
                 message: format!("Failed to persist bid order: {e}"),
             })?;
 
-        // Calculate bid windows
+        // Calculate bid windows (per-round)
         let user_positions: Vec<(i64, usize)> = bid_order_positions
             .iter()
             .map(|pos| (pos.user_id, pos.position))
             .collect();
 
         let bid_windows: Vec<zab_bid_domain::BidWindow> =
-            zab_bid_domain::calculate_bid_windows(&user_positions, &bid_schedule)
+            zab_bid_domain::calculate_bid_windows(&user_positions, &round_ids, &bid_schedule)
                 .map_err(translate_domain_error)?;
 
         // Convert to persistence records
@@ -6588,6 +6597,7 @@ pub fn confirm_ready_to_bid(
                 bid_year_id: request.bid_year_id,
                 area_id: *area_id,
                 user_id: window.user_id,
+                round_id: window.round_id,
                 window_start_datetime: window.window_start_datetime.clone(),
                 window_end_datetime: window.window_end_datetime.clone(),
             })
@@ -6610,13 +6620,6 @@ pub fn confirm_ready_to_bid(
         })?;
 
     // Initialize bid status tracking for all users in all rounds
-    // Get all rounds for this bid year
-    let all_rounds = persistence
-        .list_all_rounds_for_bid_year(request.bid_year_id)
-        .map_err(|e| ApiError::Internal {
-            message: format!("Failed to get rounds for bid year {year}: {e}"),
-        })?;
-
     if !all_rounds.is_empty() {
         // Create initial bid status records for all user/round combinations
         let now = SystemTime::now()

@@ -31,11 +31,25 @@ use crate::types::BidSchedule;
 use chrono::{Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Weekday};
 use chrono_tz::Tz;
 
-/// Represents a calculated bid window for a user.
+/// Parameters for calculating a single bid window.
+struct WindowCalculationParams {
+    user_id: i64,
+    round_id: i64,
+    position: usize,
+    start_date: NaiveDate,
+    window_start_time: NaiveTime,
+    window_end_time: NaiveTime,
+    bidders_per_day: u32,
+    tz: Tz,
+}
+
+/// Represents a calculated bid window for a user in a specific round.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BidWindow {
     /// The user's canonical ID.
     pub user_id: i64,
+    /// The round's canonical ID.
+    pub round_id: i64,
     /// Bid order position (1-based).
     pub position: usize,
     /// Window start datetime (UTC, ISO 8601).
@@ -44,16 +58,17 @@ pub struct BidWindow {
     pub window_end_datetime: String,
 }
 
-/// Calculates bid windows for users based on their bid order positions.
+/// Calculates bid windows for users in specific rounds based on their bid order positions.
 ///
 /// # Arguments
 ///
 /// * `user_positions` - User IDs and their 1-based bid order positions
+/// * `round_ids` - Round IDs to generate windows for
 /// * `schedule` - Bid schedule parameters (from `BidYear`)
 ///
 /// # Returns
 ///
-/// A vector of `BidWindow` structs with UTC timestamps.
+/// A vector of `BidWindow` structs with UTC timestamps, one per (user, round) combination.
 ///
 /// # Errors
 ///
@@ -67,6 +82,7 @@ pub struct BidWindow {
 /// - Days are counted Monday-Friday only (weekends are skipped)
 /// - Each user gets a window on their assigned day from `window_start_time` to `window_end_time`
 /// - Times are converted from declared timezone to UTC for storage
+/// - The same window is replicated across all rounds (per-round adjustments come later)
 ///
 /// # Example
 ///
@@ -76,16 +92,18 @@ pub struct BidWindow {
 /// window_start_time = 08:00:00
 /// window_end_time = 18:00:00
 /// timezone = America/New_York
+/// rounds = [1, 2, 3] (RDO, Leave, Travel)
 ///
-/// Users 1-5:   Monday Mar 2, 08:00-18:00 ET
-/// Users 6-10:  Tuesday Mar 3, 08:00-18:00 ET
-/// Users 11-15: Wednesday Mar 4, 08:00-18:00 ET
-/// Users 16-20: Thursday Mar 5, 08:00-18:00 ET
-/// Users 21-25: Friday Mar 6, 08:00-18:00 ET
-/// Users 26-30: Monday Mar 9, 08:00-18:00 ET (skip weekend)
+/// User 1 in round 1: Monday Mar 2, 08:00-18:00 ET
+/// User 1 in round 2: Monday Mar 2, 08:00-18:00 ET
+/// User 1 in round 3: Monday Mar 2, 08:00-18:00 ET
+/// Users 2-5 in all rounds: Monday Mar 2, 08:00-18:00 ET
+/// Users 6-10 in all rounds: Tuesday Mar 3, 08:00-18:00 ET
+/// Users 11-15 in all rounds: Wednesday Mar 4, 08:00-18:00 ET
 /// ```
 pub fn calculate_bid_windows(
     user_positions: &[(i64, usize)],
+    round_ids: &[i64],
     schedule: &BidSchedule,
 ) -> Result<Vec<BidWindow>, DomainError> {
     // Parse timezone
@@ -126,60 +144,60 @@ pub fn calculate_bid_windows(
         reason: format!("Invalid window end time: {}", schedule.window_end_time()),
     })?;
 
-    // Calculate windows
+    // Calculate windows for each (user, round) combination
     let mut windows = Vec::new();
 
     for (user_id, position) in user_positions {
-        let window = calculate_window_for_position(
-            *user_id,
-            *position,
-            start_date,
-            window_start_time,
-            window_end_time,
-            schedule.bidders_per_day(),
-            tz,
-        )?;
-        windows.push(window);
+        for round_id in round_ids {
+            let params = WindowCalculationParams {
+                user_id: *user_id,
+                round_id: *round_id,
+                position: *position,
+                start_date,
+                window_start_time,
+                window_end_time,
+                bidders_per_day: schedule.bidders_per_day(),
+                tz,
+            };
+            let window = calculate_window_for_position(&params)?;
+            windows.push(window);
+        }
     }
 
     Ok(windows)
 }
 
-/// Calculates the bid window for a single user at a given position.
+/// Calculates the bid window for a single user in a specific round at a given position.
 fn calculate_window_for_position(
-    user_id: i64,
-    position: usize,
-    start_date: NaiveDate,
-    window_start_time: NaiveTime,
-    window_end_time: NaiveTime,
-    bidders_per_day: u32,
-    tz: Tz,
+    params: &WindowCalculationParams,
 ) -> Result<BidWindow, DomainError> {
     // Calculate which day this user bids on (0-based weekday index)
-    let day_offset = calculate_weekday_offset(position, bidders_per_day);
+    let day_offset = calculate_weekday_offset(params.position, params.bidders_per_day);
 
     // Calculate the actual calendar date
-    let bid_date = add_weekdays(start_date, day_offset);
+    let bid_date = add_weekdays(params.start_date, day_offset);
 
     // Construct wall-clock datetime in declared timezone
-    let naive_start = bid_date.and_time(window_start_time);
-    let naive_end = bid_date.and_time(window_end_time);
+    let naive_start = bid_date.and_time(params.window_start_time);
+    let naive_end = bid_date.and_time(params.window_end_time);
 
-    let start_dt = tz
+    let start_dt = params.tz
         .from_local_datetime(&naive_start)
         .single()
         .ok_or_else(|| DomainError::InvalidBidSchedule {
             reason: format!(
-                "Could not resolve timezone for date {bid_date} at time {window_start_time} (ambiguous or non-existent due to DST)"
+                "Could not resolve timezone for date {bid_date} at time {} (ambiguous or non-existent due to DST)",
+                params.window_start_time
             ),
         })?;
 
-    let end_dt = tz
+    let end_dt = params.tz
         .from_local_datetime(&naive_end)
         .single()
         .ok_or_else(|| DomainError::InvalidBidSchedule {
             reason: format!(
-                "Could not resolve timezone for date {bid_date} at time {window_end_time} (ambiguous or non-existent due to DST)"
+                "Could not resolve timezone for date {bid_date} at time {} (ambiguous or non-existent due to DST)",
+                params.window_end_time
             ),
         })?;
 
@@ -188,8 +206,9 @@ fn calculate_window_for_position(
     let end_utc = end_dt.with_timezone(&chrono::Utc).to_rfc3339();
 
     Ok(BidWindow {
-        user_id,
-        position,
+        user_id: params.user_id,
+        round_id: params.round_id,
+        position: params.position,
         window_start_datetime: start_utc,
         window_end_datetime: end_utc,
     })
@@ -274,11 +293,13 @@ mod tests {
         .unwrap();
 
         let user_positions = vec![(1001, 1)];
+        let round_ids = vec![1];
 
-        let windows = calculate_bid_windows(&user_positions, &schedule).unwrap();
+        let windows = calculate_bid_windows(&user_positions, &round_ids, &schedule).unwrap();
 
         assert_eq!(windows.len(), 1);
         assert_eq!(windows[0].user_id, 1001);
+        assert_eq!(windows[0].round_id, 1);
         assert_eq!(windows[0].position, 1);
         // Window should be on Monday March 2, 2026
         assert!(windows[0].window_start_datetime.contains("2026-03-02"));
@@ -301,8 +322,9 @@ mod tests {
             (1003, 6),  // Tuesday
             (1004, 11), // Wednesday
         ];
+        let round_ids = vec![1];
 
-        let windows = calculate_bid_windows(&user_positions, &schedule).unwrap();
+        let windows = calculate_bid_windows(&user_positions, &round_ids, &schedule).unwrap();
 
         assert_eq!(windows.len(), 4);
 
@@ -332,8 +354,9 @@ mod tests {
             (1001, 21), // Friday week 1
             (1002, 26), // Monday week 2 (skip weekend)
         ];
+        let round_ids = vec![1];
 
-        let windows = calculate_bid_windows(&user_positions, &schedule).unwrap();
+        let windows = calculate_bid_windows(&user_positions, &round_ids, &schedule).unwrap();
 
         assert_eq!(windows.len(), 2);
 
@@ -356,5 +379,70 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_calculate_bid_windows_multiple_rounds() {
+        let schedule = BidSchedule::new(
+            String::from("America/New_York"),
+            time::Date::from_calendar_date(2026, time::Month::March, 2).unwrap(),
+            time::Time::from_hms(8, 0, 0).unwrap(),
+            time::Time::from_hms(18, 0, 0).unwrap(),
+            5,
+        )
+        .unwrap();
+
+        let user_positions = vec![(1001, 1), (1002, 6)];
+        let round_ids = vec![10, 20, 30]; // Three rounds
+
+        let windows = calculate_bid_windows(&user_positions, &round_ids, &schedule).unwrap();
+
+        // Should get 2 users * 3 rounds = 6 windows
+        assert_eq!(windows.len(), 6);
+
+        // User 1001 should have windows in all three rounds
+        let user_1001_windows: Vec<_> = windows.iter().filter(|w| w.user_id == 1001).collect();
+        assert_eq!(user_1001_windows.len(), 3);
+        assert_eq!(user_1001_windows[0].round_id, 10);
+        assert_eq!(user_1001_windows[1].round_id, 20);
+        assert_eq!(user_1001_windows[2].round_id, 30);
+
+        // All windows for user 1001 should be on Monday (position 1)
+        assert!(
+            user_1001_windows[0]
+                .window_start_datetime
+                .contains("2026-03-02")
+        );
+        assert!(
+            user_1001_windows[1]
+                .window_start_datetime
+                .contains("2026-03-02")
+        );
+        assert!(
+            user_1001_windows[2]
+                .window_start_datetime
+                .contains("2026-03-02")
+        );
+
+        // User 1002 should have windows in all three rounds
+        let user_1002_windows: Vec<_> = windows.iter().filter(|w| w.user_id == 1002).collect();
+        assert_eq!(user_1002_windows.len(), 3);
+
+        // All windows for user 1002 should be on Tuesday (position 6)
+        assert!(
+            user_1002_windows[0]
+                .window_start_datetime
+                .contains("2026-03-03")
+        );
+        assert!(
+            user_1002_windows[1]
+                .window_start_datetime
+                .contains("2026-03-03")
+        );
+        assert!(
+            user_1002_windows[2]
+                .window_start_datetime
+                .contains("2026-03-03")
+        );
     }
 }

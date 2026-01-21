@@ -176,6 +176,7 @@ pub struct BidWindowRow {
     pub bid_year_id: i64,
     pub area_id: i64,
     pub user_id: i64,
+    pub round_id: i64,
     pub window_start_datetime: String,
     pub window_end_datetime: String,
 }
@@ -187,6 +188,7 @@ pub struct NewBidWindow {
     pub bid_year_id: i64,
     pub area_id: i64,
     pub user_id: i64,
+    pub round_id: i64,
     pub window_start_datetime: String,
     pub window_end_datetime: String,
 }

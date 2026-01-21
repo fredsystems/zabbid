@@ -111,6 +111,7 @@ diesel::table! {
         bid_year_id -> BigInt,
         area_id -> BigInt,
         user_id -> BigInt,
+        round_id -> BigInt,
         window_start_datetime -> Text,
         window_end_datetime -> Text,
     }
@@ -237,6 +238,7 @@ diesel::joinable!(canonical_area_membership -> bid_years (bid_year_id));
 diesel::joinable!(canonical_area_membership -> users (user_id));
 diesel::joinable!(bid_windows -> areas (area_id));
 diesel::joinable!(bid_windows -> bid_years (bid_year_id));
+diesel::joinable!(bid_windows -> rounds (round_id));
 diesel::joinable!(bid_windows -> users (user_id));
 diesel::joinable!(canonical_bid_order -> audit_events (audit_event_id));
 diesel::joinable!(canonical_bid_order -> bid_years (bid_year_id));

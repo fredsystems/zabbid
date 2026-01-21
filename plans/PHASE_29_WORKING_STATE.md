@@ -779,9 +779,71 @@ None for Phase 29E scope. Server endpoint wiring is out of scope.
 
 **Blockers:** None
 
+## Phase 29E Schema Correction - 2026-01-21
+
+### Correction Required
+
+Phase 29E was implemented with bid windows as per-user (one window per user for all rounds).
+The correct design is **per-round** (one window per user per round).
+
+### Schema Correction Completed ✅
+
+**Migration Created:**
+
+- ✅ Created SQLite migration `2026-01-21-200000-0000_add_round_id_to_bid_windows/up.sql`
+- ✅ Created SQLite migration `2026-01-21-200000-0000_add_round_id_to_bid_windows/down.sql`
+- ✅ Created MySQL migration `2026-01-21-200000-0000_add_round_id_to_bid_windows/up.sql`
+- ✅ Created MySQL migration `2026-01-21-200000-0000_add_round_id_to_bid_windows/down.sql`
+
+**Schema Changes:**
+
+- ✅ Added `round_id` column to `bid_windows` table (FK to rounds)
+- ✅ Updated UNIQUE constraint from `(bid_year_id, area_id, user_id)` to `(bid_year_id, area_id, user_id, round_id)`
+- ✅ Added indexes: `idx_bid_windows_bid_year_area`, `idx_bid_windows_user`, `idx_bid_windows_round`
+- ✅ Updated Diesel schema in `persistence/src/diesel_schema.rs`
+- ✅ Added joinable constraint for `bid_windows -> rounds`
+
+**Domain Updates:**
+
+- ✅ Updated `BidWindow` struct to include `round_id` field
+- ✅ Updated `calculate_bid_windows()` to accept `round_ids` parameter
+- ✅ Updated calculation logic to generate one window per (user, round) combination
+- ✅ Refactored `calculate_window_for_position()` to use `WindowCalculationParams` struct (clippy compliance)
+- ✅ Added test for multiple rounds: `test_calculate_bid_windows_multiple_rounds`
+- ✅ Updated all existing tests to pass `round_ids` parameter
+
+**Persistence Updates:**
+
+- ✅ Updated `BidWindowRow` struct to include `round_id` field
+- ✅ Updated `NewBidWindow` struct to include `round_id` field
+
+**API Handler Updates:**
+
+- ✅ Updated `confirm_ready_to_bid()` to retrieve rounds before calculating windows
+- ✅ Updated window calculation calls to pass `round_ids`
+- ✅ Updated persistence records to include `round_id` from calculated windows
+
+**Verification:**
+
+- ✅ Schema parity verification passes (`cargo xtask verify-migrations`)
+- ✅ All tests pass (609 tests)
+- ✅ All clippy checks pass
+- ✅ `cargo xtask ci` passes
+- ✅ `pre-commit run --all-files` passes
+
+**Files Modified:**
+
+- `crates/persistence/migrations/2026-01-21-200000-0000_add_round_id_to_bid_windows/*`
+- `crates/persistence/migrations_mysql/2026-01-21-200000-0000_add_round_id_to_bid_windows/*`
+- `crates/persistence/src/diesel_schema.rs`
+- `crates/persistence/src/data_models.rs`
+- `crates/domain/src/bid_window.rs`
+- `crates/api/src/handlers.rs`
+
 ## Phase 29E Complete - 2026-01-21
 
 All editing locks have been successfully implemented and tested.
+Schema corrected to support per-round bid windows.
 
 **Summary:**
 
@@ -790,13 +852,18 @@ Phase 29E implemented the confirmation action that freezes bid order and enforce
 Key accomplishments:
 
 - Bid order materialization at confirmation
-- Bid window calculation and storage
+- **Bid window calculation and storage (per-round)**
 - Lifecycle state transition to Canonicalized
 - Comprehensive editing locks for all structural operations
 - Defensive lifecycle checks (allow operations when bid year has no ID in metadata)
 - Full test coverage for lifecycle enforcement
 
 All operations that modify structural data (areas, users, participation flags, rounds, bid schedule) are now properly blocked after a bid year transitions to Canonicalized state.
+
+**Schema Correction:**
+
+Bid windows are now correctly modeled as per-round (one window per user per round) instead of per-user.
+This aligns with Phase 29G requirements for post-confirmation bid order and window adjustments.
 
 The system uses `BidYearLifecycle::is_locked()` to determine if structural changes are allowed, providing a consistent enforcement pattern across all handlers.
 
@@ -1001,13 +1068,27 @@ All required deliverables have been implemented:
 
 Ready to proceed to **Phase 29G** - Post-Confirmation Bid Order Adjustments
 
-**Notes:**
+**Schema Correction Complete:**
 
-Phase 29G involves implementing administrative capabilities to adjust bid order and bid windows after confirmation. Before proceeding, should verify:
+The Phase 29E schema has been corrected to support per-round bid windows.
+All documentation and implementation now correctly reflects:
 
-1. Integration with existing `override_bid_order` functionality (found in `crates/api/src/handlers.rs`)
-2. Whether Phase 29G should extend existing override functionality or create separate adjustment endpoints
-3. Clarify scope: Phase 29G appears to overlap with existing override capabilities
+- Bid windows are per-round (one window per user per round)
+- UNIQUE constraint is `(bid_year_id, area_id, user_id, round_id)`
+- Phase 29G scope is consistent with implemented schema
+
+**Phase 29G Prerequisites Met:**
+
+1. ✅ Schema supports round_id in bid_windows table
+2. ✅ Domain calculation supports per-round windows
+3. ✅ Persistence layer handles round_id correctly
+4. ✅ All tests pass with corrected schema
+
+**Ready to implement Phase 29G:**
+
+- Bulk bid order adjustment endpoint
+- Per-round bid window adjustment endpoint
+- Bulk bid window recalculation endpoint
 
 **Stop-and-Ask:**
 
