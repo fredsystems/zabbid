@@ -1433,6 +1433,92 @@ pub struct OverrideBidWindowResponse {
 }
 
 // ============================================================================
+// Phase 29G: Post-Confirmation Bid Order Adjustments
+// ============================================================================
+
+/// Single bid order adjustment in a bulk request.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct BidOrderAdjustment {
+    /// The user's canonical identifier.
+    pub user_id: i64,
+    /// The new bid order position.
+    pub new_bid_order: i32,
+}
+
+/// API request to adjust bid order for multiple users.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct AdjustBidOrderRequest {
+    /// List of bid order adjustments to apply.
+    pub adjustments: Vec<BidOrderAdjustment>,
+    /// The reason for the adjustments (min 10 characters).
+    pub reason: String,
+}
+
+/// API response for bulk bid order adjustment.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct AdjustBidOrderResponse {
+    /// The audit event ID.
+    pub audit_event_id: i64,
+    /// Number of users whose bid order was adjusted.
+    pub users_adjusted: usize,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to adjust a single bid window for a specific round.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct AdjustBidWindowRequest {
+    /// The user's canonical identifier.
+    pub user_id: i64,
+    /// The round ID.
+    pub round_id: i64,
+    /// The new window start datetime (ISO 8601 format).
+    pub new_window_start: String,
+    /// The new window end datetime (ISO 8601 format).
+    pub new_window_end: String,
+    /// The reason for the adjustment (min 10 characters).
+    pub reason: String,
+}
+
+/// API response for bid window adjustment.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct AdjustBidWindowResponse {
+    /// The audit event ID.
+    pub audit_event_id: i64,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to recalculate bid windows for multiple users and rounds.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct RecalculateBidWindowsRequest {
+    /// List of user IDs to recalculate windows for.
+    pub user_ids: Vec<i64>,
+    /// List of round IDs to recalculate windows for.
+    pub rounds: Vec<i64>,
+    /// The reason for the recalculation (min 10 characters).
+    pub reason: String,
+}
+
+/// API response for bulk bid window recalculation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct RecalculateBidWindowsResponse {
+    /// The audit event ID.
+    pub audit_event_id: i64,
+    /// Number of bid windows recalculated.
+    pub windows_recalculated: usize,
+    /// Success message.
+    pub message: String,
+}
+
+// ============================================================================
 // Phase 29B: Round Groups and Rounds
 // ============================================================================
 

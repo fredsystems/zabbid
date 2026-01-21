@@ -25,6 +25,7 @@ use crate::csv_preview::{CsvRowResult, preview_csv_users as preview_csv_users_im
 use crate::error::{ApiError, AuthError, translate_core_error, translate_domain_error};
 use crate::password_policy::PasswordPolicy;
 use crate::request_response::{
+    AdjustBidOrderRequest, AdjustBidOrderResponse, AdjustBidWindowRequest, AdjustBidWindowResponse,
     AreaCompletenessInfo, BidOrderPositionInfo, BidScheduleInfo, BidStatusHistoryInfo,
     BidStatusInfo, BidYearCompletenessInfo, BidYearInfo, BlockingReason,
     BulkUpdateBidStatusRequest, BulkUpdateBidStatusResponse, ChangePasswordRequest,
@@ -41,7 +42,8 @@ use crate::request_response::{
     OperatorInfo, OverrideAreaAssignmentRequest, OverrideAreaAssignmentResponse,
     OverrideBidOrderRequest, OverrideBidOrderResponse, OverrideBidWindowRequest,
     OverrideBidWindowResponse, OverrideEligibilityRequest, OverrideEligibilityResponse,
-    PreviewCsvUsersRequest, PreviewCsvUsersResponse, ReadinessDetailsInfo, RegisterUserRequest,
+    PreviewCsvUsersRequest, PreviewCsvUsersResponse, ReadinessDetailsInfo,
+    RecalculateBidWindowsRequest, RecalculateBidWindowsResponse, RegisterUserRequest,
     ResetPasswordRequest, ResetPasswordResponse, ReviewNoBidUserResponse, SeniorityInputsInfo,
     SetActiveBidYearRequest, SetActiveBidYearResponse, SetBidScheduleRequest,
     SetBidScheduleResponse, SetExpectedAreaCountRequest, SetExpectedAreaCountResponse,
@@ -5023,6 +5025,467 @@ pub fn override_bid_window(
     Ok(OverrideBidWindowResponse {
         audit_event_id: event_id,
         message: format!("Bid window overridden for user {user_initials} (audit event {event_id})"),
+    })
+}
+
+// ============================================================================
+// Phase 29G: Post-Confirmation Bid Order Adjustments
+// ============================================================================
+
+/// Adjust bid order for multiple users in bulk.
+///
+/// # Arguments
+///
+/// * `persistence` - Persistence layer
+/// * `bid_year_id` - The bid year ID
+/// * `area_id` - The area ID
+/// * `request` - The bulk adjustment request
+/// * `authenticated_actor` - The authenticated actor performing the adjustment
+/// * `operator` - The operator data
+///
+/// # Returns
+///
+/// Returns a success response with the audit event ID.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not an admin
+/// - The reason is too short
+/// - Any bid order value is invalid
+/// - The lifecycle state is not Canonicalized or later
+/// - The database operation fails
+#[allow(dead_code)]
+pub fn adjust_bid_order(
+    persistence: &mut SqlitePersistence,
+    bid_year_id: i64,
+    area_id: i64,
+    request: &AdjustBidOrderRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+) -> Result<AdjustBidOrderResponse, ApiError> {
+    // Enforce authorization - only admins can perform adjustments
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("adjust_bid_order"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Validate reason (min 10 chars)
+    let reason = request.reason.trim();
+    if reason.len() < 10 {
+        return Err(translate_domain_error(DomainError::InvalidOverrideReason {
+            reason: request.reason.clone(),
+        }));
+    }
+
+    // Validate all bid orders are positive
+    for adjustment in &request.adjustments {
+        if adjustment.new_bid_order <= 0 {
+            return Err(translate_domain_error(DomainError::InvalidBidOrder {
+                reason: format!(
+                    "Bid order must be positive (got: {})",
+                    adjustment.new_bid_order
+                ),
+            }));
+        }
+    }
+
+    // Check lifecycle state >= Canonicalized
+    let lifecycle_state =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    if !matches!(
+        lifecycle_state.as_str(),
+        "Canonicalized" | "BiddingActive" | "BiddingClosed"
+    ) {
+        return Err(translate_domain_error(
+            DomainError::CannotOverrideBeforeCanonicalization {
+                current_state: lifecycle_state,
+            },
+        ));
+    }
+
+    // Apply adjustments
+    let mut users_adjusted = 0;
+    for adjustment in &request.adjustments {
+        // Verify user exists and get details
+        let (_user_bid_year_id, _user_initials) = persistence
+            .get_user_details(adjustment.user_id)
+            .map_err(|_| ApiError::ResourceNotFound {
+                resource_type: String::from("User"),
+                message: format!("User with ID {} not found", adjustment.user_id),
+            })?;
+
+        // Perform override using existing function
+        persistence
+            .override_bid_order(
+                bid_year_id,
+                adjustment.user_id,
+                Some(adjustment.new_bid_order),
+                reason,
+            )
+            .map_err(|e| ApiError::Internal {
+                message: format!(
+                    "Failed to adjust bid order for user {}: {e}",
+                    adjustment.user_id
+                ),
+            })?;
+
+        users_adjusted += 1;
+    }
+
+    // Create and persist audit event
+    let actor = authenticated_actor.to_audit_actor(operator);
+    let cause = Cause::new(
+        String::from("adjust_bid_order"),
+        format!("Bulk bid order adjustment for {users_adjusted} users"),
+    );
+
+    let action = Action::new(
+        String::from("BulkBidOrderAdjustment"),
+        Some(format!(
+            "area_id={area_id}, users_adjusted={users_adjusted}, reason={reason}"
+        )),
+    );
+
+    let before = StateSnapshot::new(String::from("bulk_adjustment_requested"));
+    let after = StateSnapshot::new(format!("users_adjusted={users_adjusted}"));
+
+    let year = persistence
+        .get_bid_year_from_id(bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get bid year: {e}"),
+        })?;
+    let bid_year = BidYear::new(year);
+    let area = Area::new("_bulk_adjustment");
+
+    let audit_event = AuditEvent::new(actor, cause, action, before, after, bid_year, area);
+
+    let event_id =
+        persistence
+            .persist_audit_event(&audit_event)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to persist audit event: {e}"),
+            })?;
+
+    Ok(AdjustBidOrderResponse {
+        audit_event_id: event_id,
+        users_adjusted,
+        message: format!("Adjusted bid order for {users_adjusted} users (audit event {event_id})"),
+    })
+}
+
+/// Adjust a bid window for a specific user and round.
+///
+/// # Arguments
+///
+/// * `persistence` - Persistence layer
+/// * `bid_year_id` - The bid year ID
+/// * `area_id` - The area ID
+/// * `request` - The adjustment request
+/// * `authenticated_actor` - The authenticated actor performing the adjustment
+/// * `operator` - The operator data
+///
+/// # Returns
+///
+/// Returns a success response with the audit event ID.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not an admin
+/// - The reason is too short
+/// - The window start/end datetimes are invalid
+/// - The lifecycle state is not Canonicalized or later
+/// - The database operation fails
+#[allow(dead_code)]
+pub fn adjust_bid_window(
+    persistence: &mut SqlitePersistence,
+    bid_year_id: i64,
+    area_id: i64,
+    request: &AdjustBidWindowRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+) -> Result<AdjustBidWindowResponse, ApiError> {
+    // Enforce authorization - only admins can perform adjustments
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("adjust_bid_window"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Validate reason (min 10 chars)
+    let reason = request.reason.trim();
+    if reason.len() < 10 {
+        return Err(translate_domain_error(DomainError::InvalidOverrideReason {
+            reason: request.reason.clone(),
+        }));
+    }
+
+    // Validate window times (basic format check - detailed validation happens in persistence layer)
+    let window_start = &request.new_window_start;
+    let window_end = &request.new_window_end;
+    if window_start >= window_end {
+        return Err(translate_domain_error(DomainError::InvalidBidWindow {
+            reason: format!(
+                "Window start ({window_start}) must be before window end ({window_end})"
+            ),
+        }));
+    }
+
+    let (user_initials, previous_start, previous_end) = adjust_bid_window_impl(
+        persistence,
+        bid_year_id,
+        area_id,
+        request.user_id,
+        request.round_id,
+        &request.new_window_start,
+        &request.new_window_end,
+    )?;
+
+    // Create and persist audit event
+    let actor = authenticated_actor.to_audit_actor(operator);
+    let cause = Cause::new(
+        String::from("adjust_bid_window"),
+        format!(
+            "Adjust bid window for user {user_initials}, round {}",
+            request.round_id
+        ),
+    );
+
+    let user_id = request.user_id;
+    let round_id = request.round_id;
+    let new_start = &request.new_window_start;
+    let new_end = &request.new_window_end;
+
+    let action = Action::new(
+        String::from("BidWindowAdjusted"),
+        Some(format!(
+            "user_id={user_id}, round_id={round_id}, previous_start={previous_start}, previous_end={previous_end}, new_start={new_start}, new_end={new_end}, reason={reason}"
+        )),
+    );
+
+    let before = StateSnapshot::new(format!(
+        "window_start={previous_start}, window_end={previous_end}"
+    ));
+    let after = StateSnapshot::new(format!("window_start={new_start}, window_end={new_end}"));
+
+    let year = persistence
+        .get_bid_year_from_id(bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get bid year: {e}"),
+        })?;
+    let bid_year = BidYear::new(year);
+    let area = Area::new("_window_adjustment");
+
+    let audit_event = AuditEvent::new(actor, cause, action, before, after, bid_year, area);
+
+    let event_id =
+        persistence
+            .persist_audit_event(&audit_event)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to persist audit event: {e}"),
+            })?;
+
+    let round_id = request.round_id;
+    Ok(AdjustBidWindowResponse {
+        audit_event_id: event_id,
+        message: format!(
+            "Adjusted bid window for user {user_initials}, round {round_id} (audit event {event_id})"
+        ),
+    })
+}
+
+/// Internal helper for bid window adjustment implementation.
+#[allow(dead_code)]
+fn adjust_bid_window_impl(
+    persistence: &mut SqlitePersistence,
+    bid_year_id: i64,
+    area_id: i64,
+    user_id: i64,
+    round_id: i64,
+    new_window_start: &str,
+    new_window_end: &str,
+) -> Result<(String, String, String), ApiError> {
+    // Get user details
+    let (_user_bid_year_id, user_initials) =
+        persistence
+            .get_user_details(user_id)
+            .map_err(|_| ApiError::ResourceNotFound {
+                resource_type: String::from("User"),
+                message: format!("User with ID {user_id} not found"),
+            })?;
+
+    // Check lifecycle state >= Canonicalized
+    let lifecycle_state =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    if !matches!(
+        lifecycle_state.as_str(),
+        "Canonicalized" | "BiddingActive" | "BiddingClosed"
+    ) {
+        return Err(translate_domain_error(
+            DomainError::CannotOverrideBeforeCanonicalization {
+                current_state: lifecycle_state,
+            },
+        ));
+    }
+
+    // Perform adjustment
+    let (previous_start, previous_end) = persistence
+        .adjust_bid_window(
+            bid_year_id,
+            area_id,
+            user_id,
+            round_id,
+            new_window_start,
+            new_window_end,
+        )
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to adjust bid window: {e}"),
+        })?;
+
+    Ok((user_initials, previous_start, previous_end))
+}
+
+/// Recalculate bid windows for multiple users and rounds in bulk.
+///
+/// This endpoint deletes existing bid windows and allows them to be recalculated.
+/// The actual recalculation logic is expected to be invoked separately.
+///
+/// # Arguments
+///
+/// * `persistence` - Persistence layer
+/// * `bid_year_id` - The bid year ID
+/// * `area_id` - The area ID
+/// * `request` - The recalculation request
+/// * `authenticated_actor` - The authenticated actor performing the recalculation
+/// * `operator` - The operator data
+///
+/// # Returns
+///
+/// Returns a success response with the audit event ID.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not an admin
+/// - The reason is too short
+/// - The lifecycle state is not Canonicalized or later
+/// - The database operation fails
+#[allow(dead_code)]
+pub fn recalculate_bid_windows(
+    persistence: &mut SqlitePersistence,
+    bid_year_id: i64,
+    area_id: i64,
+    request: &RecalculateBidWindowsRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+) -> Result<RecalculateBidWindowsResponse, ApiError> {
+    // Enforce authorization - only admins can perform recalculations
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("recalculate_bid_windows"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Validate reason (min 10 chars)
+    let reason = request.reason.trim();
+    if reason.len() < 10 {
+        return Err(translate_domain_error(DomainError::InvalidOverrideReason {
+            reason: request.reason.clone(),
+        }));
+    }
+
+    // Check lifecycle state >= Canonicalized
+    let lifecycle_state =
+        persistence
+            .get_lifecycle_state(bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get lifecycle state: {e}"),
+            })?;
+
+    if !matches!(
+        lifecycle_state.as_str(),
+        "Canonicalized" | "BiddingActive" | "BiddingClosed"
+    ) {
+        return Err(translate_domain_error(
+            DomainError::CannotOverrideBeforeCanonicalization {
+                current_state: lifecycle_state,
+            },
+        ));
+    }
+
+    // Delete existing bid windows for the specified users and rounds
+    let windows_deleted = persistence
+        .delete_bid_windows_for_users_and_rounds(
+            bid_year_id,
+            area_id,
+            &request.user_ids,
+            &request.rounds,
+        )
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to delete bid windows: {e}"),
+        })?;
+
+    // Create and persist audit event
+    let actor = authenticated_actor.to_audit_actor(operator);
+    let cause = Cause::new(
+        String::from("recalculate_bid_windows"),
+        format!(
+            "Bulk bid window recalculation for {} users, {} rounds",
+            request.user_ids.len(),
+            request.rounds.len()
+        ),
+    );
+
+    let action = Action::new(
+        String::from("BulkBidWindowRecalculation"),
+        Some(format!(
+            "area_id={area_id}, user_count={}, round_count={}, windows_deleted={windows_deleted}, reason={reason}",
+            request.user_ids.len(),
+            request.rounds.len()
+        )),
+    );
+
+    let before = StateSnapshot::new(format!("windows_existed={windows_deleted}"));
+    let after = StateSnapshot::new(String::from("windows_deleted_for_recalculation"));
+
+    let year = persistence
+        .get_bid_year_from_id(bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get bid year: {e}"),
+        })?;
+    let bid_year = BidYear::new(year);
+    let area = Area::new("_window_recalculation");
+
+    let audit_event = AuditEvent::new(actor, cause, action, before, after, bid_year, area);
+
+    let event_id =
+        persistence
+            .persist_audit_event(&audit_event)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to persist audit event: {e}"),
+            })?;
+
+    Ok(RecalculateBidWindowsResponse {
+        audit_event_id: event_id,
+        windows_recalculated: windows_deleted,
+        message: format!(
+            "Deleted {windows_deleted} bid windows for recalculation (audit event {event_id})"
+        ),
     })
 }
 

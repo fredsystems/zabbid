@@ -3194,6 +3194,104 @@ impl Persistence {
         // part of the audit event creation flow
         Ok(1)
     }
+
+    // ========================================================================
+    // Phase 29G: Post-Confirmation Bid Order Adjustments
+    // ========================================================================
+
+    /// Adjusts a bid window for a specific user and round.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `area_id` - The canonical area ID
+    /// * `user_id` - The canonical user ID
+    /// * `round_id` - The round ID
+    /// * `new_window_start` - The new window start datetime (ISO 8601)
+    /// * `new_window_end` - The new window end datetime (ISO 8601)
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple of (`previous_window_start`, `previous_window_end`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bid window record does not exist or the database operation fails.
+    pub fn adjust_bid_window(
+        &mut self,
+        bid_year_id: i64,
+        area_id: i64,
+        user_id: i64,
+        round_id: i64,
+        new_window_start: &str,
+        new_window_end: &str,
+    ) -> Result<(String, String), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => mutations::canonical::adjust_bid_window_sqlite(
+                conn,
+                bid_year_id,
+                area_id,
+                user_id,
+                round_id,
+                new_window_start,
+                new_window_end,
+            ),
+            BackendConnection::Mysql(conn) => mutations::canonical::adjust_bid_window_mysql(
+                conn,
+                bid_year_id,
+                area_id,
+                user_id,
+                round_id,
+                new_window_start,
+                new_window_end,
+            ),
+        }
+    }
+
+    /// Deletes bid windows for specific users and rounds (used before recalculation).
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `area_id` - The canonical area ID
+    /// * `user_ids` - List of user IDs
+    /// * `round_ids` - List of round IDs
+    ///
+    /// # Returns
+    ///
+    /// Returns the number of deleted records.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database operation fails.
+    pub fn delete_bid_windows_for_users_and_rounds(
+        &mut self,
+        bid_year_id: i64,
+        area_id: i64,
+        user_ids: &[i64],
+        round_ids: &[i64],
+    ) -> Result<usize, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::canonical::delete_bid_windows_for_users_and_rounds_sqlite(
+                    conn,
+                    bid_year_id,
+                    area_id,
+                    user_ids,
+                    round_ids,
+                )
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::canonical::delete_bid_windows_for_users_and_rounds_mysql(
+                    conn,
+                    bid_year_id,
+                    area_id,
+                    user_ids,
+                    round_ids,
+                )
+            }
+        }
+    }
 }
 
 /// Simple user info struct for display purposes.
