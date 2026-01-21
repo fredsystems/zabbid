@@ -254,3 +254,61 @@ pub struct CanonicalizationSnapshot {
     pub areas: Vec<CanonicalizedAreaSnapshot>,
     pub timestamp: String,
 }
+
+/// Bid status row (diesel queryable).
+#[allow(dead_code)]
+#[derive(Debug, Clone, diesel::Queryable, diesel::Selectable)]
+#[diesel(table_name = crate::diesel_schema::bid_status)]
+pub struct BidStatusRow {
+    pub bid_status_id: i64,
+    pub bid_year_id: i64,
+    pub area_id: i64,
+    pub user_id: i64,
+    pub round_id: i64,
+    pub status: String,
+    pub updated_at: String,
+    pub updated_by: i64,
+    pub notes: Option<String>,
+}
+
+/// Bid status insertable (diesel insertable).
+#[derive(Debug, Clone, diesel::Insertable)]
+#[diesel(table_name = crate::diesel_schema::bid_status)]
+pub struct NewBidStatus {
+    pub bid_year_id: i64,
+    pub area_id: i64,
+    pub user_id: i64,
+    pub round_id: i64,
+    pub status: String,
+    pub updated_at: String,
+    pub updated_by: i64,
+    pub notes: Option<String>,
+}
+
+/// Bid status history row (diesel queryable).
+#[allow(dead_code)]
+#[derive(Debug, Clone, diesel::Queryable, diesel::Selectable)]
+#[diesel(table_name = crate::diesel_schema::bid_status_history)]
+pub struct BidStatusHistoryRow {
+    pub history_id: i64,
+    pub bid_status_id: i64,
+    pub audit_event_id: i64,
+    pub previous_status: Option<String>,
+    pub new_status: String,
+    pub transitioned_at: String,
+    pub transitioned_by: i64,
+    pub notes: Option<String>,
+}
+
+/// Bid status history insertable (diesel insertable).
+#[derive(Debug, Clone, diesel::Insertable)]
+#[diesel(table_name = crate::diesel_schema::bid_status_history)]
+pub struct NewBidStatusHistory {
+    pub bid_status_id: i64,
+    pub audit_event_id: i64,
+    pub previous_status: Option<String>,
+    pub new_status: String,
+    pub transitioned_at: String,
+    pub transitioned_by: i64,
+    pub notes: Option<String>,
+}

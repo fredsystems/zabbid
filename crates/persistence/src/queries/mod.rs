@@ -25,6 +25,7 @@
 //! based on the active backend connection.
 
 pub mod audit;
+pub mod bid_status;
 pub mod canonical;
 pub mod completeness;
 pub mod operators;
@@ -78,4 +79,13 @@ pub use rounds::{
 pub use state::{
     get_current_state_mysql, get_current_state_sqlite, get_historical_state_mysql,
     get_historical_state_sqlite, get_latest_snapshot_mysql, get_latest_snapshot_sqlite,
+};
+
+// Phase 29F: Bid status query re-exports
+#[allow(unused_imports)]
+pub use bid_status::{
+    get_bid_status_for_area_mysql, get_bid_status_for_area_sqlite, get_bid_status_for_round_mysql,
+    get_bid_status_for_round_sqlite, get_bid_status_for_user_and_round_mysql,
+    get_bid_status_for_user_and_round_sqlite, get_bid_status_history_mysql,
+    get_bid_status_history_sqlite,
 };

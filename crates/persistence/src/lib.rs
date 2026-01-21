@@ -171,7 +171,10 @@ mod queries;
 #[cfg(test)]
 mod tests;
 
-pub use data_models::{NewBidWindow, NewCanonicalBidOrder, OperatorData, SessionData};
+pub use data_models::{
+    BidStatusHistoryRow, BidStatusRow, NewBidStatus, NewBidStatusHistory, NewBidWindow,
+    NewCanonicalBidOrder, OperatorData, SessionData,
+};
 pub use error::PersistenceError;
 pub use mutations::PersistTransitionResult;
 

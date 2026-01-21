@@ -798,6 +798,137 @@ All operations that modify structural data (areas, users, participation flags, r
 
 The system uses `BidYearLifecycle::is_locked()` to determine if structural changes are allowed, providing a consistent enforcement pattern across all handlers.
 
+---
+
+## Phase 29F — Bid Status Tracking Structure (In Progress)
+
+### 29F Current Status
+
+In Progress - Core infrastructure complete, API layer pending
+
+### 29F Last Updated
+
+2026-01-21
+
+### 29F Completed Work
+
+#### 29F Database Schema ✅ Complete
+
+- ✅ Created SQLite migration `2026-01-21-180000-0000_add_bid_status_tables/up.sql`
+- ✅ Created SQLite migration `2026-01-21-180000-0000_add_bid_status_tables/down.sql`
+- ✅ Created MySQL migration `2026-01-21-180000-0000_add_bid_status_tables/up.sql`
+- ✅ Created MySQL migration `2026-01-21-180000-0000_add_bid_status_tables/down.sql`
+- ✅ Added `bid_status` table with fields:
+  - `bid_status_id` (PRIMARY KEY)
+  - `bid_year_id` (FK to bid_years)
+  - `area_id` (FK to areas)
+  - `user_id` (FK to users)
+  - `round_id` (FK to rounds)
+  - `status` (TEXT/VARCHAR)
+  - `updated_at`, `updated_by`, `notes`
+  - UNIQUE constraint on (bid_year_id, area_id, user_id, round_id)
+- ✅ Added `bid_status_history` table with fields:
+  - `history_id` (PRIMARY KEY)
+  - `bid_status_id` (FK to bid_status)
+  - `audit_event_id` (FK to audit_events)
+  - `previous_status`, `new_status`, `transitioned_at`, `transitioned_by`, `notes`
+- ✅ Added indexes for efficient querying
+- ✅ Updated Diesel schema in `persistence/src/diesel_schema.rs`
+- ✅ Schema parity verification passes
+
+#### 29F Domain Types ✅ Complete
+
+- ✅ Created `domain/src/bid_status.rs` module
+- ✅ Implemented `BidStatus` enum with 8 states:
+  - `NotStartedPreWindow`, `NotStartedInWindow`, `InProgress`
+  - `CompletedOnTime`, `CompletedLate`, `Missed`
+  - `VoluntarilyNotBidding`, `Proxy`
+- ✅ Implemented `BidStatus::as_str()` and `BidStatus::parse_str()` for serialization
+- ✅ Implemented `FromStr` trait for `BidStatus`
+- ✅ Implemented `is_terminal()` method to identify non-transitioning states
+- ✅ Implemented `validate_transition()` with lifecycle rules:
+  - No transitions allowed from `NotStartedPreWindow` (operator-initiated)
+  - Terminal states cannot transition
+  - Valid transitions from `NotStartedInWindow` to all terminal states
+  - Valid transitions from `InProgress` to `CompletedOnTime` or `CompletedLate`
+- ✅ Implemented `UserBidStatus` struct
+- ✅ Added comprehensive unit tests for all transitions
+- ✅ Added error variants to `DomainError`:
+  - `InvalidBidStatus` with status string
+  - `InvalidStatusTransition` with from/to/reason
+- ✅ Updated API error mappings in `api/src/error.rs`
+- ✅ All clippy checks pass
+- ✅ All domain tests pass (164 tests)
+
+#### 29F Persistence Layer ✅ Complete
+
+- ✅ Added `BidStatusRow` and `NewBidStatus` data models
+- ✅ Added `BidStatusHistoryRow` and `NewBidStatusHistory` data models
+- ✅ Created `persistence/src/mutations/bid_status.rs`:
+  - `bulk_insert_bid_status_{sqlite,mysql}()` - initial status creation at confirmation
+  - `update_bid_status_{sqlite,mysql}()` - status transitions
+  - `insert_bid_status_history_{sqlite,mysql}()` - single history record
+  - `bulk_insert_bid_status_history_{sqlite,mysql}()` - bulk history records
+- ✅ Created `persistence/src/queries/bid_status.rs`:
+  - `get_bid_status_for_user_and_round_{sqlite,mysql}()` - single status lookup
+  - `get_bid_status_for_area_{sqlite,mysql}()` - all users in area
+  - `get_bid_status_for_round_{sqlite,mysql}()` - all users in round
+  - `get_bid_status_history_{sqlite,mysql}()` - transition history
+- ✅ Used `backend_fn!` macro for all functions
+- ✅ Exported data models from `persistence/src/lib.rs`
+- ✅ All persistence tests pass (125 tests)
+
+#### 29F Build & CI ✅ Complete
+
+- ✅ All tests pass (611 tests total)
+- ✅ All clippy warnings resolved
+- ✅ No schema migration issues
+- ✅ Schema parity verification passes
+- ✅ MariaDB backend validation tests pass
+- ✅ `cargo xtask ci` passes
+- ✅ `pre-commit run --all-files` passes
+- ✅ All files staged with `git add`
+
+### 29F Outstanding Work
+
+- [ ] Core layer integration (initial status creation at confirmation)
+- [ ] API layer endpoints:
+  - [ ] GET bid status queries
+  - [ ] POST status transition
+  - [ ] POST bulk status update
+- [ ] Integration with Phase 29E confirmation flow
+- [ ] API tests for status tracking
+- [ ] Integration tests for status lifecycle
+
+### 29F Known Issues
+
+None - foreign key reference issue in migrations was fixed (changed `audit_events(id)` to `audit_events(event_id)`)
+
+### 29F Stop-and-Ask Items
+
+None
+
+### 29F Current State Summary
+
+**Completed:**
+
+- ✅ Database schema (bid_status and bid_status_history tables)
+- ✅ Domain logic (BidStatus enum, transition validation)
+- ✅ Persistence layer (CRUD operations for status tracking)
+- ✅ Data models and exports
+- ✅ Error handling and API error mapping
+
+**Remaining:**
+
+- Core layer integration
+- API endpoints
+- Integration with confirmation flow
+- Testing and validation
+
+**Blockers:**
+
+None
+
 **Next:** Phase 29F (Bid Status Tracking) or Phase 29G (Post-Confirmation Adjustments) per phase plan.
 
 Phase 29D (Readiness Evaluation) has been successfully completed.

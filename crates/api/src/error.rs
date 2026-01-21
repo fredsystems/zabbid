@@ -490,6 +490,16 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
             field: String::from("bid_schedule"),
             message: format!("Invalid bid schedule: {reason}"),
         },
+        DomainError::InvalidBidStatus { status } => ApiError::InvalidInput {
+            field: String::from("status"),
+            message: format!("Invalid bid status: '{status}'"),
+        },
+        DomainError::InvalidStatusTransition { from, to, reason } => {
+            ApiError::DomainRuleViolation {
+                rule: String::from("bid_status_transition"),
+                message: format!("Invalid status transition from '{from}' to '{to}': {reason}"),
+            }
+        }
     }
 }
 

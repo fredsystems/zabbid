@@ -321,6 +321,22 @@ pub enum DomainError {
         /// Description of the validation error.
         reason: String,
     },
+    /// Invalid bid status string.
+    /// Phase 29F
+    InvalidBidStatus {
+        /// The invalid status string.
+        status: String,
+    },
+    /// Invalid bid status transition.
+    /// Phase 29F
+    InvalidStatusTransition {
+        /// The current status.
+        from: String,
+        /// The requested new status.
+        to: String,
+        /// Description of why the transition is invalid.
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for DomainError {
@@ -607,6 +623,15 @@ impl std::fmt::Display for DomainError {
             }
             Self::InvalidBidSchedule { reason } => {
                 write!(f, "Invalid bid schedule: {reason}")
+            }
+            Self::InvalidBidStatus { status } => {
+                write!(f, "Invalid bid status: '{status}'")
+            }
+            Self::InvalidStatusTransition { from, to, reason } => {
+                write!(
+                    f,
+                    "Invalid status transition from '{from}' to '{to}': {reason}"
+                )
             }
         }
     }

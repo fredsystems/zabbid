@@ -55,6 +55,33 @@ diesel::table! {
 }
 
 diesel::table! {
+    bid_status (bid_status_id) {
+        bid_status_id -> BigInt,
+        bid_year_id -> BigInt,
+        area_id -> BigInt,
+        user_id -> BigInt,
+        round_id -> BigInt,
+        status -> Text,
+        updated_at -> Text,
+        updated_by -> BigInt,
+        notes -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    bid_status_history (history_id) {
+        history_id -> BigInt,
+        bid_status_id -> BigInt,
+        audit_event_id -> BigInt,
+        previous_status -> Nullable<Text>,
+        new_status -> Text,
+        transitioned_at -> Text,
+        transitioned_by -> BigInt,
+        notes -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     canonical_area_membership (id) {
         id -> BigInt,
         bid_year_id -> BigInt,
@@ -198,6 +225,12 @@ diesel::joinable!(areas -> round_groups (round_group_id));
 diesel::joinable!(audit_events -> areas (area_id));
 diesel::joinable!(audit_events -> bid_years (bid_year_id));
 diesel::joinable!(audit_events -> operators (actor_operator_id));
+diesel::joinable!(bid_status -> areas (area_id));
+diesel::joinable!(bid_status -> bid_years (bid_year_id));
+diesel::joinable!(bid_status -> rounds (round_id));
+diesel::joinable!(bid_status -> users (user_id));
+diesel::joinable!(bid_status_history -> audit_events (audit_event_id));
+diesel::joinable!(bid_status_history -> bid_status (bid_status_id));
 diesel::joinable!(canonical_area_membership -> areas (area_id));
 diesel::joinable!(canonical_area_membership -> audit_events (audit_event_id));
 diesel::joinable!(canonical_area_membership -> bid_years (bid_year_id));
@@ -226,6 +259,8 @@ diesel::joinable!(users -> bid_years (bid_year_id));
 diesel::allow_tables_to_appear_in_same_query!(
     areas,
     audit_events,
+    bid_status,
+    bid_status_history,
     bid_years,
     bid_windows,
     canonical_area_membership,
