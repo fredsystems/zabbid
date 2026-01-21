@@ -4,3 +4,14 @@ target
 *.db
 *.db-shm
 *.db-wal
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Docker
+data/
+
+# Node modules (if UI dependencies installed locally)
+node_modules/

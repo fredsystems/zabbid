@@ -3129,11 +3129,18 @@ async fn handle_recalculate_bid_windows(
     Ok(Json(response))
 }
 
+/// Health check endpoint for Docker and load balancers
+async fn handle_health() -> impl IntoResponse {
+    (axum::http::StatusCode::OK, "healthy\n")
+}
+
 #[allow(clippy::too_many_lines)]
 fn build_router(state: AppState) -> Router {
     let live_broadcaster = Arc::clone(&state.live_events);
 
     let api_router = Router::new()
+        // Health check endpoint (no authentication required)
+        .route("/health", get(handle_health))
         // Bootstrap authentication endpoints (no authentication required)
         .route("/auth/bootstrap/status", get(handle_bootstrap_status))
         .route("/auth/bootstrap/login", post(handle_bootstrap_login))

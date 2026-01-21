@@ -1,0 +1,78 @@
+# Git
+.git
+.gitignore
+
+# Rust build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Nix
+.direnv/
+flake.lock
+flake.nix
+
+# Documentation
+*.md
+docs/
+
+# Plans and notes
+plans/
+notes.txt
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# CI/CD
+.github/
+.pre-commit-config.yaml
+
+# UI (not needed in backend build)
+ui/
+
+# Data directories
+data/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Test artifacts
+*.profraw
+*.profdata
+
+# Logs
+*.log
+
+# Other config files not needed in container
+deny.toml
+renovate.json
+typos.toml
+biome.json
+diesel.toml
+.markdownlint-cli2.yaml
+.dictionary.txt
+
+# Coverage and audit files
+COVERAGE_GAPS.md
+DEAD_CODE_AUDIT.md
+FLAKY_TESTS_ANALYSIS.md
+IGNORED_TESTS.md
+UI_VIOLATIONS.md
+
+# Scripts
+api_cli.py
