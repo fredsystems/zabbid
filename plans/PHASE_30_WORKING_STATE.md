@@ -7,19 +7,20 @@
 
 ## Current Status
 
-- Status: Blocked
+- Status: In Progress
 - Last Updated: 2025-01-27
-- Reason: Sub-Phase 30A complete - Critical blocking gap identified in Phase 29
+- Reason: Gap-fill complete - resuming Phase 30 execution
 
 ## Active Sub-Phase
 
-- Sub-Phase: 30A - Phase 29 Gap Analysis
-- State: Complete (Blocked - awaiting user decision)
+- Sub-Phase: Phase 29 Gap-Fill (Area → Round Group Assignment API)
+- State: Complete
 
 ## Completed Sub-Phases
 
 - [x] Planning Pass
 - [x] Sub-Phase 30A: Phase 29 Gap Analysis
+- [x] Phase 29 Gap-Fill: Area → Round Group Assignment API
 
 ## Work Completed
 
@@ -69,77 +70,84 @@
   3. Stop Phase 30 until Phase 29 is complete
 - Committed gap analysis document
 
+### Phase 29 Gap-Fill: Area → Round Group Assignment API
+
+**Backend Implementation:**
+
+- Added persistence mutations: `update_area_round_group_sqlite`, `update_area_round_group_mysql`
+- Added persistence query: `get_area_round_group_id_sqlite`, `get_area_round_group_id_mysql`
+- Added public Persistence methods: `update_area_round_group`, `get_area_round_group_id`
+
+**API Layer:**
+
+- Implemented `assign_area_round_group` handler with full validation:
+  - Admin authorization required
+  - Non-system area only
+  - Round group must exist in same bid year
+  - Lifecycle check (pre-canonicalized only)
+  - Complete audit trail with before/after snapshots
+- Added `AssignAreaRoundGroupRequest` and `AssignAreaRoundGroupResponse` types
+- Exported new types and function from zab-bid-api crate
+
+**Server Layer:**
+
+- Added `POST /areas/{area_id}/assign-round-group` endpoint
+- Implemented `handle_assign_area_round_group` wrapper
+- Imported new request/response types
+
+**Frontend Binding:**
+
+- Added `assignAreaRoundGroup` function to `ui/src/api.ts`
+- Added `AssignAreaRoundGroupResponse` TypeScript type
+
+**Tests:**
+
+- 5 comprehensive integration tests covering:
+  - Happy path (assign and persist)
+  - Clear assignment (set to null)
+  - Nonexistent round group rejection
+  - Nonexistent area rejection
+  - Bidder authorization failure
+- All tests pass
+- All CI checks pass
+
+**Gap Resolution:**
+
+- Critical blocking gap from Phase 30A analysis is now resolved
+- The `areas.round_group_id` column has complete API coverage
+- Sub-Phase 30C (Area → Round Group Assignment UI) is unblocked
+- Committed as: `92e70d9`
+
 ## Outstanding Work
 
-### BLOCKED - Awaiting User Decision on Critical Gap
+### Ready to Execute
 
-Once gap is resolved:
-
-- Execute Sub-Phase 30B: Round Groups & Rounds UI
-- Execute Sub-Phase 30C: Area → Round Group Assignment UI (BLOCKED without API)
-- Execute Sub-Phase 30D: Bootstrap UI Restructure
-- Execute Sub-Phase 30E: Bid Schedule UI
-- Execute Sub-Phase 30F: Readiness Review & Confirmation UI
-- Execute Sub-Phase 30G: User Participation Flags UI & Bid Order Preview
-- Execute Sub-Phase 30H: End-to-End Validation
-- Execute Sub-Phase 30I: API Surface Audit & Documentation
+- Sub-Phase 30B: Round Groups & Rounds UI
+- Sub-Phase 30C: Area → Round Group Assignment UI
+- Sub-Phase 30D: Bootstrap UI Restructure
+- Sub-Phase 30E: Bid Schedule UI
+- Sub-Phase 30F: Readiness Review & Confirmation UI
+- Sub-Phase 30G: User Participation Flags UI & Bid Order Preview
+- Sub-Phase 30H: End-to-End Validation
+- Sub-Phase 30I: API Surface Audit & Documentation
 - Remind user to update AGENTS.md with API governance rules (per PHASE_30.md)
 
 ## Known Failures / Breakages
 
 None. All code compiles and tests pass.
 
-However, Phase 30C cannot be implemented without the missing API.
-
 ## Stop-and-Ask Items
 
-### CRITICAL: Area → Round Group Assignment API Missing
-
-See plans/PHASE_30/PHASE_29_GAP_ANALYSIS.md for full details.
-
-User must decide on one of three options:
-
-1. **Implement missing API now (recommended)**
-   - Add POST /areas/{area_id}/assign-round-group endpoint
-   - Add persistence mutation: update_area_round_group(area_id, round_group_id)
-   - Enforce lifecycle constraints (immutable after confirmation)
-   - Enforce validation (non-system areas only, same bid year, round group exists)
-   - Add audit event for assignment
-   - Add frontend binding
-   - Then proceed with Phase 30B → 30C → ...
-
-2. **Defer round group assignment**
-   - Skip Sub-Phase 30C entirely
-   - Document limitation
-   - Proceed with remaining sub-phases (30B, 30D-30I)
-   - Mark 30C as future work
-
-3. **Stop Phase 30 until Phase 29 is complete**
-   - Return to Phase 29 to implement missing capability
-   - Resume Phase 30 once gap is filled
-
-**Awaiting user guidance before proceeding.**
+None.
 
 ## Resume Instructions
 
-### CURRENT STATE: Blocked on user decision
-
-1. User reviews plans/PHASE_30/PHASE_29_GAP_ANALYSIS.md
-2. User decides on one of three options (see Stop-and-Ask Items above)
-3. If Option 1 (implement API):
-   - Implement area → round group assignment API
-   - Update this working state document
-   - Proceed with Sub-Phase 30B
-4. If Option 2 (defer):
-   - Update sub-phase plan to skip 30C
-   - Update this working state document
-   - Proceed with Sub-Phase 30B
-5. If Option 3 (stop):
-   - Return to Phase 29 implementation
-   - Resume Phase 30 once gap is filled
-6. Continue executing sub-phases in order
-7. Update this document after each sub-phase completion
-8. Commit progress frequently
+1. Begin Sub-Phase 30B: Round Groups & Rounds UI
+2. Execute sub-phases in order (30B → 30C → ... → 30I)
+3. Update this document after each sub-phase completion
+4. Commit progress frequently
+5. Run `cargo xtask ci` and `pre-commit run --all-files` before completing each sub-phase
+6. Stop and ask if any blocking issues arise
 
 ## Planning Notes
 
