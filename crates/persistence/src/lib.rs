@@ -868,6 +868,52 @@ impl Persistence {
         }
     }
 
+    /// Updates an area's assigned round group.
+    ///
+    /// # Arguments
+    ///
+    /// * `area_id` - The canonical area ID
+    /// * `round_group_id` - The round group ID to assign (or `None` to clear)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the area doesn't exist or the database operation fails.
+    pub fn update_area_round_group(
+        &mut self,
+        area_id: i64,
+        round_group_id: Option<i64>,
+    ) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::update_area_round_group_sqlite(conn, area_id, round_group_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::update_area_round_group_mysql(conn, area_id, round_group_id)
+            }
+        }
+    }
+
+    /// Gets the current round group ID assigned to an area.
+    ///
+    /// # Arguments
+    ///
+    /// * `area_id` - The canonical area ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the area doesn't exist or the database query fails.
+    pub fn get_area_round_group_id(
+        &mut self,
+        area_id: i64,
+    ) -> Result<Option<i64>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::get_area_round_group_id_sqlite(conn, area_id)
+            }
+            BackendConnection::Mysql(conn) => queries::get_area_round_group_id_mysql(conn, area_id),
+        }
+    }
+
     /// Determines if a given action requires a full snapshot.
     ///
     /// # Arguments

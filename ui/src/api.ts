@@ -706,3 +706,31 @@ export async function updateArea(
     }),
   });
 }
+
+/**
+ * Assign a round group to an area.
+ *
+ * @param sessionToken - The session token for authentication
+ * @param areaId - The area's canonical identifier
+ * @param roundGroupId - The round group ID to assign (null to clear)
+ * @returns Promise resolving to the assignment response
+ */
+export async function assignAreaRoundGroup(
+  sessionToken: string,
+  areaId: number,
+  roundGroupId: number | null,
+): Promise<AssignAreaRoundGroupResponse> {
+  return fetchJson<AssignAreaRoundGroupResponse>(
+    `${API_BASE}/areas/${areaId}/assign-round-group`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        round_group_id: roundGroupId,
+      }),
+    },
+  );
+}

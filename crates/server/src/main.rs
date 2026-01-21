@@ -37,7 +37,8 @@ use tracing::{error, info};
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_api::{
     AdjustBidOrderRequest, AdjustBidOrderResponse, AdjustBidWindowRequest, AdjustBidWindowResponse,
-    ApiError, ApiResult, BidOrderAdjustment, BootstrapStatusResponse, ConfirmReadyToBidRequest,
+    ApiError, ApiResult, AssignAreaRoundGroupRequest, AssignAreaRoundGroupResponse,
+    BidOrderAdjustment, BootstrapStatusResponse, ConfirmReadyToBidRequest,
     ConfirmReadyToBidResponse, CreateAreaRequest, CreateAreaResponse, CreateBidYearRequest,
     CreateBidYearResponse, CreateRoundGroupRequest, CreateRoundGroupResponse, CreateRoundRequest,
     CreateRoundResponse, CsvImportRowStatus, DeleteRoundGroupResponse, DeleteRoundResponse,
@@ -60,18 +61,18 @@ use zab_bid_api::{
     UpdateBidYearMetadataRequest, UpdateBidYearMetadataResponse, UpdateRoundGroupRequest,
     UpdateRoundGroupResponse, UpdateRoundRequest, UpdateRoundResponse,
     UpdateUserParticipationRequest, UpdateUserParticipationResponse, UpdateUserRequest,
-    UpdateUserResponse, adjust_bid_order, adjust_bid_window, checkpoint, confirm_ready_to_bid,
-    create_area, create_bid_year, create_round, create_round_group, delete_round,
-    delete_round_group, finalize, get_active_bid_year, get_bid_order_preview, get_bid_schedule,
-    get_bid_year_readiness, get_bootstrap_completeness, get_bootstrap_status, get_current_state,
-    get_historical_state, get_leave_availability, import_csv_users, list_areas, list_bid_years,
-    list_round_groups, list_rounds, list_users, override_area_assignment, override_bid_order,
-    override_bid_window, override_eligibility, preview_csv_users, recalculate_bid_windows,
-    register_user, review_no_bid_user, rollback, set_active_bid_year, set_bid_schedule,
-    set_expected_area_count, set_expected_user_count, transition_to_bidding_active,
-    transition_to_bidding_closed, transition_to_bootstrap_complete, transition_to_canonicalized,
-    update_area, update_bid_year_metadata, update_round, update_round_group, update_user,
-    update_user_participation,
+    UpdateUserResponse, adjust_bid_order, adjust_bid_window, assign_area_round_group, checkpoint,
+    confirm_ready_to_bid, create_area, create_bid_year, create_round, create_round_group,
+    delete_round, delete_round_group, finalize, get_active_bid_year, get_bid_order_preview,
+    get_bid_schedule, get_bid_year_readiness, get_bootstrap_completeness, get_bootstrap_status,
+    get_current_state, get_historical_state, get_leave_availability, import_csv_users, list_areas,
+    list_bid_years, list_round_groups, list_rounds, list_users, override_area_assignment,
+    override_bid_order, override_bid_window, override_eligibility, preview_csv_users,
+    recalculate_bid_windows, register_user, review_no_bid_user, rollback, set_active_bid_year,
+    set_bid_schedule, set_expected_area_count, set_expected_user_count,
+    transition_to_bidding_active, transition_to_bidding_closed, transition_to_bootstrap_complete,
+    transition_to_canonicalized, update_area, update_bid_year_metadata, update_round,
+    update_round_group, update_user, update_user_participation,
 };
 use zab_bid_audit::{AuditEvent, Cause};
 use zab_bid_domain::{Area, BidYear, BidYearLifecycle, CanonicalBidYear, Initials};
@@ -2292,6 +2293,45 @@ async fn handle_update_area(
     Ok(Json(response))
 }
 
+async fn handle_assign_area_round_group(
+    AxumState(app_state): AxumState<AppState>,
+    Path(area_id): Path<i64>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<AssignAreaRoundGroupRequest>,
+) -> Result<Json<AssignAreaRoundGroupResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        area_id = area_id,
+        ?req.round_group_id,
+        "Handling assign_area_round_group request"
+    );
+
+    // Get current bootstrap metadata
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    // Execute command via API
+    let response: AssignAreaRoundGroupResponse = assign_area_round_group(
+        &mut persistence,
+        &metadata,
+        area_id,
+        &req,
+        &actor,
+        &operator,
+    )?;
+    drop(persistence);
+
+    info!(
+        area_id = response.area_id,
+        area_code = %response.area_code,
+        ?response.round_group_id,
+        "Successfully assigned round group to area"
+    );
+
+    Ok(Json(response))
+}
+
 /// Handler for PUT `/users/{initials}` endpoint.
 ///
 /// Updates an existing user. Admin only.
@@ -3806,6 +3846,10 @@ fn build_router(state: AppState) -> Router {
             post(handle_set_expected_user_count),
         )
         .route("/areas/update", post(handle_update_area))
+        .route(
+            "/areas/{area_id}/assign-round-group",
+            post(handle_assign_area_round_group),
+        )
         .route(
             "/bootstrap/completeness",
             get(handle_get_bootstrap_completeness),

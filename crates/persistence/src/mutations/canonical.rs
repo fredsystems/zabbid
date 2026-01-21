@@ -1328,6 +1328,80 @@ pub fn update_area_name_mysql(
     Ok(())
 }
 
+/// Updates an area's assigned round group (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `area_id` - The canonical area identifier
+/// * `round_group_id` - The round group ID to assign (or `None` to clear)
+///
+/// # Errors
+///
+/// Returns an error if the area doesn't exist or the database operation fails.
+pub fn update_area_round_group_sqlite(
+    conn: &mut SqliteConnection,
+    area_id: i64,
+    round_group_id: Option<i64>,
+) -> Result<(), PersistenceError> {
+    use crate::diesel_schema::areas;
+
+    let rows_affected = diesel::update(areas::table.filter(areas::area_id.eq(area_id)))
+        .set(areas::round_group_id.eq(round_group_id))
+        .execute(conn)?;
+
+    if rows_affected == 0 {
+        return Err(PersistenceError::ReconstructionError(format!(
+            "Area with ID {area_id} not found"
+        )));
+    }
+
+    debug!(
+        area_id,
+        ?round_group_id,
+        "Updated area round group assignment"
+    );
+
+    Ok(())
+}
+
+/// Updates an area's assigned round group (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `area_id` - The canonical area identifier
+/// * `round_group_id` - The round group ID to assign (or `None` to clear)
+///
+/// # Errors
+///
+/// Returns an error if the area doesn't exist or the database operation fails.
+pub fn update_area_round_group_mysql(
+    conn: &mut MysqlConnection,
+    area_id: i64,
+    round_group_id: Option<i64>,
+) -> Result<(), PersistenceError> {
+    use crate::diesel_schema::areas;
+
+    let rows_affected = diesel::update(areas::table.filter(areas::area_id.eq(area_id)))
+        .set(areas::round_group_id.eq(round_group_id))
+        .execute(conn)?;
+
+    if rows_affected == 0 {
+        return Err(PersistenceError::ReconstructionError(format!(
+            "Area with ID {area_id} not found"
+        )));
+    }
+
+    debug!(
+        area_id,
+        ?round_group_id,
+        "Updated area round group assignment"
+    );
+
+    Ok(())
+}
+
 // ============================================================================
 // Phase 29G: Post-Confirmation Bid Order Adjustments
 // ============================================================================

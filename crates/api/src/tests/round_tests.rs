@@ -6,12 +6,16 @@
 //! Integration tests for round groups and rounds API endpoints (Phase 29B).
 
 use crate::{
-    ApiError, AuthenticatedActor, CreateRoundGroupRequest, CreateRoundRequest,
-    UpdateRoundGroupRequest, UpdateRoundRequest, create_round, create_round_group, delete_round,
-    delete_round_group, list_round_groups, list_rounds, update_round, update_round_group,
+    ApiError, AssignAreaRoundGroupRequest, AuthenticatedActor, CreateRoundGroupRequest,
+    CreateRoundRequest, UpdateRoundGroupRequest, UpdateRoundRequest, assign_area_round_group,
+    create_round, create_round_group, delete_round, delete_round_group, list_round_groups,
+    list_rounds, update_round, update_round_group,
 };
 
-use super::helpers::{create_test_admin, create_test_bidder, setup_test_persistence};
+use super::helpers::{
+    create_test_admin, create_test_admin_operator, create_test_bidder, create_test_bidder_operator,
+    setup_test_persistence,
+};
 
 // ============================================================================
 // Round Group Tests
@@ -639,6 +643,254 @@ fn test_bidder_cannot_create_round() {
     };
 
     let result = create_round(&mut persistence, north_area_id, &request, &bidder);
+
+    assert!(matches!(result, Err(ApiError::Unauthorized { .. })));
+}
+
+// ============================================================================
+// Area → Round Group Assignment Tests
+// ============================================================================
+
+#[test]
+fn test_assign_round_group_to_area_success() {
+    let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
+    let admin = create_test_admin();
+
+    let bid_year_id = persistence
+        .get_bid_year_id(2026)
+        .expect("Failed to get bid year ID");
+
+    // Create a round group
+    let rg_request = CreateRoundGroupRequest {
+        name: String::from("Test Round Group"),
+        editing_enabled: true,
+    };
+    let rg_response = create_round_group(&mut persistence, bid_year_id, &rg_request, &admin)
+        .expect("Failed to create round group");
+
+    // Get a non-system area ID (North area from test fixture)
+    let metadata = persistence
+        .get_bootstrap_metadata()
+        .expect("Failed to get metadata");
+    let north_area_id = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_code() == "NORTH")
+        .and_then(|(_, a)| a.area_id())
+        .expect("North area not found");
+
+    let admin_operator = create_test_admin_operator();
+
+    // Assign the round group to the area
+    let assign_request = AssignAreaRoundGroupRequest {
+        round_group_id: Some(rg_response.round_group_id),
+    };
+
+    let result = assign_area_round_group(
+        &mut persistence,
+        &metadata,
+        north_area_id,
+        &assign_request,
+        &admin,
+        &admin_operator,
+    );
+
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(response.area_id, north_area_id);
+    assert_eq!(response.round_group_id, Some(rg_response.round_group_id));
+
+    // Verify persistence
+    let assigned_rg_id = persistence
+        .get_area_round_group_id(north_area_id)
+        .expect("Failed to get round group ID");
+    assert_eq!(assigned_rg_id, Some(rg_response.round_group_id));
+}
+
+#[test]
+fn test_assign_round_group_clear_assignment() {
+    let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
+    let admin = create_test_admin();
+
+    let bid_year_id = persistence
+        .get_bid_year_id(2026)
+        .expect("Failed to get bid year ID");
+
+    // Create and assign a round group
+    let rg_request = CreateRoundGroupRequest {
+        name: String::from("Test Round Group"),
+        editing_enabled: true,
+    };
+    let rg_response = create_round_group(&mut persistence, bid_year_id, &rg_request, &admin)
+        .expect("Failed to create round group");
+
+    let metadata = persistence
+        .get_bootstrap_metadata()
+        .expect("Failed to get metadata");
+    let north_area_id = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_code() == "NORTH")
+        .and_then(|(_, a)| a.area_id())
+        .expect("North area not found");
+
+    let admin_operator = create_test_admin_operator();
+
+    let assign_request = AssignAreaRoundGroupRequest {
+        round_group_id: Some(rg_response.round_group_id),
+    };
+
+    assign_area_round_group(
+        &mut persistence,
+        &metadata,
+        north_area_id,
+        &assign_request,
+        &admin,
+        &admin_operator,
+    )
+    .expect("Failed to assign round group");
+
+    // Now clear the assignment
+    let clear_request = AssignAreaRoundGroupRequest {
+        round_group_id: None,
+    };
+
+    let result = assign_area_round_group(
+        &mut persistence,
+        &metadata,
+        north_area_id,
+        &clear_request,
+        &admin,
+        &admin_operator,
+    );
+
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(response.round_group_id, None);
+
+    // Verify persistence
+    let assigned_rg_id = persistence
+        .get_area_round_group_id(north_area_id)
+        .expect("Failed to get round group ID");
+    assert_eq!(assigned_rg_id, None);
+}
+
+// Note: System area validation test skipped in unit tests since test fixture
+// doesn't easily support creating system areas. The validate_not_system_area
+// function is tested elsewhere and enforced at the handler level.
+
+#[test]
+fn test_assign_round_group_nonexistent_round_group_fails() {
+    let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
+    let admin = create_test_admin();
+
+    let metadata = persistence
+        .get_bootstrap_metadata()
+        .expect("Failed to get metadata");
+    let north_area_id = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_code() == "NORTH")
+        .and_then(|(_, a)| a.area_id())
+        .expect("North area not found");
+
+    let admin_operator = create_test_admin_operator();
+
+    let assign_request = AssignAreaRoundGroupRequest {
+        round_group_id: Some(999_999), // Non-existent ID
+    };
+
+    let result = assign_area_round_group(
+        &mut persistence,
+        &metadata,
+        north_area_id,
+        &assign_request,
+        &admin,
+        &admin_operator,
+    );
+
+    assert!(matches!(result, Err(ApiError::ResourceNotFound { .. })));
+}
+
+#[test]
+fn test_assign_round_group_nonexistent_area_fails() {
+    let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
+    let admin = create_test_admin();
+
+    let bid_year_id = persistence
+        .get_bid_year_id(2026)
+        .expect("Failed to get bid year ID");
+
+    let rg_request = CreateRoundGroupRequest {
+        name: String::from("Test Round Group"),
+        editing_enabled: true,
+    };
+    let rg_response = create_round_group(&mut persistence, bid_year_id, &rg_request, &admin)
+        .expect("Failed to create round group");
+
+    let metadata = persistence
+        .get_bootstrap_metadata()
+        .expect("Failed to get metadata");
+
+    let admin_operator = create_test_admin_operator();
+
+    let assign_request = AssignAreaRoundGroupRequest {
+        round_group_id: Some(rg_response.round_group_id),
+    };
+
+    let result = assign_area_round_group(
+        &mut persistence,
+        &metadata,
+        999_999, // Non-existent area ID
+        &assign_request,
+        &admin,
+        &admin_operator,
+    );
+
+    assert!(matches!(result, Err(ApiError::ResourceNotFound { .. })));
+}
+
+#[test]
+fn test_assign_round_group_bidder_fails() {
+    let mut persistence = setup_test_persistence().expect("Failed to setup test persistence");
+    let bidder = create_test_bidder();
+    let admin = create_test_admin();
+
+    let bid_year_id = persistence
+        .get_bid_year_id(2026)
+        .expect("Failed to get bid year ID");
+
+    let rg_request = CreateRoundGroupRequest {
+        name: String::from("Test Round Group"),
+        editing_enabled: true,
+    };
+    let rg_response = create_round_group(&mut persistence, bid_year_id, &rg_request, &admin)
+        .expect("Failed to create round group");
+
+    let metadata = persistence
+        .get_bootstrap_metadata()
+        .expect("Failed to get metadata");
+    let north_area_id = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_code() == "NORTH")
+        .and_then(|(_, a)| a.area_id())
+        .expect("North area not found");
+
+    let bidder_operator = create_test_bidder_operator();
+
+    let assign_request = AssignAreaRoundGroupRequest {
+        round_group_id: Some(rg_response.round_group_id),
+    };
+
+    let result = assign_area_round_group(
+        &mut persistence,
+        &metadata,
+        north_area_id,
+        &assign_request,
+        &bidder,
+        &bidder_operator,
+    );
 
     assert!(matches!(result, Err(ApiError::Unauthorized { .. })));
 }

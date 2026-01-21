@@ -44,9 +44,10 @@ pub use password_policy::{PasswordPolicy, PasswordPolicyError};
 // Re-export public types from request_response module
 pub use request_response::{
     AdjustBidOrderRequest, AdjustBidOrderResponse, AdjustBidWindowRequest, AdjustBidWindowResponse,
-    AreaCompletenessInfo, AreaInfo, AreaStatusInfo, BidOrderAdjustment, BidScheduleInfo,
-    BidStatusHistoryInfo, BidStatusInfo, BidYearCompletenessInfo, BidYearInfo, BidYearStatusInfo,
-    BlockingReason, BootstrapAuthStatusResponse, BootstrapLoginRequest, BootstrapLoginResponse,
+    AreaCompletenessInfo, AreaInfo, AreaStatusInfo, AssignAreaRoundGroupRequest,
+    AssignAreaRoundGroupResponse, BidOrderAdjustment, BidScheduleInfo, BidStatusHistoryInfo,
+    BidStatusInfo, BidYearCompletenessInfo, BidYearInfo, BidYearStatusInfo, BlockingReason,
+    BootstrapAuthStatusResponse, BootstrapLoginRequest, BootstrapLoginResponse,
     BootstrapStatusResponse, BulkUpdateBidStatusRequest, BulkUpdateBidStatusResponse, Capability,
     ChangePasswordRequest, ChangePasswordResponse, ConfirmReadyToBidRequest,
     ConfirmReadyToBidResponse, CreateAreaRequest, CreateAreaResponse, CreateBidYearRequest,
@@ -89,8 +90,8 @@ pub use capabilities::{
 
 // Re-export public functions from handlers module
 pub use handlers::{
-    ApiResult, RegisterUserResult, adjust_bid_order, adjust_bid_window, bootstrap_login,
-    bulk_update_bid_status, change_password, check_bootstrap_status, checkpoint,
+    ApiResult, RegisterUserResult, adjust_bid_order, adjust_bid_window, assign_area_round_group,
+    bootstrap_login, bulk_update_bid_status, change_password, check_bootstrap_status, checkpoint,
     confirm_ready_to_bid, create_area, create_bid_year, create_first_admin, create_operator,
     create_round, create_round_group, delete_operator, delete_round, delete_round_group,
     disable_operator, enable_operator, finalize, get_active_bid_year, get_bid_order_preview,

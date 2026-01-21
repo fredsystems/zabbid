@@ -670,6 +670,30 @@ pub struct UpdateAreaResponse {
     pub message: String,
 }
 
+/// API request to assign a round group to an area.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AssignAreaRoundGroupRequest {
+    /// The round group ID to assign (or `None` to clear).
+    pub round_group_id: Option<i64>,
+}
+
+/// API response for successful round group assignment.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AssignAreaRoundGroupResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year (display value).
+    pub bid_year: u16,
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The area code (immutable).
+    pub area_code: String,
+    /// The assigned round group ID (or `None` if cleared).
+    pub round_group_id: Option<i64>,
+    /// Success message.
+    pub message: String,
+}
+
 /// API request to update an existing user in the active bid year.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UpdateUserRequest {

@@ -26,12 +26,13 @@ use crate::error::{ApiError, AuthError, translate_core_error, translate_domain_e
 use crate::password_policy::PasswordPolicy;
 use crate::request_response::{
     AdjustBidOrderRequest, AdjustBidOrderResponse, AdjustBidWindowRequest, AdjustBidWindowResponse,
-    AreaCompletenessInfo, BidOrderPositionInfo, BidScheduleInfo, BidStatusHistoryInfo,
-    BidStatusInfo, BidYearCompletenessInfo, BidYearInfo, BlockingReason,
-    BulkUpdateBidStatusRequest, BulkUpdateBidStatusResponse, ChangePasswordRequest,
-    ChangePasswordResponse, ConfirmReadyToBidRequest, ConfirmReadyToBidResponse, CreateAreaRequest,
-    CreateBidYearRequest, CreateOperatorRequest, CreateOperatorResponse, CsvImportRowResult,
-    CsvImportRowStatus, CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
+    AreaCompletenessInfo, AssignAreaRoundGroupRequest, AssignAreaRoundGroupResponse,
+    BidOrderPositionInfo, BidScheduleInfo, BidStatusHistoryInfo, BidStatusInfo,
+    BidYearCompletenessInfo, BidYearInfo, BlockingReason, BulkUpdateBidStatusRequest,
+    BulkUpdateBidStatusResponse, ChangePasswordRequest, ChangePasswordResponse,
+    ConfirmReadyToBidRequest, ConfirmReadyToBidResponse, CreateAreaRequest, CreateBidYearRequest,
+    CreateOperatorRequest, CreateOperatorResponse, CsvImportRowResult, CsvImportRowStatus,
+    CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
     DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
     GetActiveBidYearResponse, GetBidOrderPreviewResponse, GetBidScheduleResponse,
     GetBidStatusForAreaRequest, GetBidStatusForAreaResponse, GetBidStatusRequest,
@@ -914,6 +915,216 @@ pub fn update_area(
             "Area '{}' display name updated successfully",
             area.area_code()
         ),
+    })
+}
+
+/// Assigns a round group to an area.
+///
+/// This operation allows admins to assign or clear a round group for a non-system area.
+/// Assignment is only permitted before the bid year is canonicalized.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The current bootstrap metadata
+/// * `area_id` - The canonical area identifier
+/// * `request` - The assignment request
+/// * `authenticated_actor` - The authenticated actor
+/// * `operator` - The operator data
+///
+/// # Returns
+///
+/// * `Ok(AssignAreaRoundGroupResponse)` on success
+/// * `Err(ApiError)` if validation fails or the operation is not permitted
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor is not an admin
+/// - The area does not exist
+/// - The area is a system area
+/// - The lifecycle state does not allow editing
+/// - The round group does not exist (when assigning)
+/// - The round group is in a different bid year
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_lines)]
+pub fn assign_area_round_group(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    area_id: i64,
+    request: &AssignAreaRoundGroupRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+) -> Result<AssignAreaRoundGroupResponse, ApiError> {
+    // Enforce authorization - only admins can assign round groups
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("assign_area_round_group"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Resolve area from metadata
+    let area = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(area_id))
+        .map(|(_, a)| a)
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("Area"),
+            message: format!("Area with ID {area_id} not found"),
+        })?;
+
+    // Get the bid year for this area
+    let bid_year = metadata
+        .areas
+        .iter()
+        .find(|(_, a)| a.area_id() == Some(area_id))
+        .map(|(by, _)| by)
+        .ok_or_else(|| ApiError::Internal {
+            message: format!("Area {area_id} has no associated bid year"),
+        })?;
+
+    // Get bid_year_id for lifecycle check
+    let bid_year_id = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == bid_year.year())
+        .and_then(zab_bid_domain::BidYear::bid_year_id)
+        .ok_or_else(|| ApiError::Internal {
+            message: format!("Bid year {} has no ID", bid_year.year()),
+        })?;
+
+    // Validate this is not a system area
+    validate_not_system_area(persistence, area_id, area.area_code())?;
+
+    // Validate lifecycle state allows editing
+    validate_lifecycle_allows_area_edit(persistence, bid_year_id, bid_year.year())?;
+
+    // Get current round_group_id before update for audit trail
+    let current_round_group_id =
+        persistence
+            .get_area_round_group_id(area_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to get current round group assignment: {e}"),
+            })?;
+
+    // If assigning a round group (not clearing), validate it exists and is in same bid year
+    if let Some(round_group_id) = request.round_group_id {
+        let round_group = persistence
+            .get_round_group(round_group_id)
+            .map_err(|e| match e {
+                PersistenceError::NotFound(_) => ApiError::ResourceNotFound {
+                    resource_type: String::from("Round Group"),
+                    message: format!("Round group with ID {round_group_id} not found"),
+                },
+                _ => ApiError::Internal {
+                    message: format!("Failed to validate round group: {e}"),
+                },
+            })?;
+
+        // Ensure round group is in the same bid year
+        let rg_bid_year_id =
+            round_group
+                .bid_year()
+                .bid_year_id()
+                .ok_or_else(|| ApiError::Internal {
+                    message: format!("Round group {round_group_id} has no bid year ID"),
+                })?;
+
+        if rg_bid_year_id != bid_year_id {
+            return Err(ApiError::InvalidInput {
+                field: String::from("round_group_id"),
+                message: format!(
+                    "Round group {round_group_id} belongs to a different bid year (expected {bid_year_id}, got {rg_bid_year_id})"
+                ),
+            });
+        }
+    }
+
+    // Update the area's round group assignment
+    persistence
+        .update_area_round_group(area_id, request.round_group_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to update area round group: {e}"),
+        })?;
+
+    // Create audit event for the assignment
+    let actor = authenticated_actor.to_audit_actor(operator);
+    let cause = Cause::new(
+        String::from("operator_action"),
+        String::from("Area round group assignment via admin interface"),
+    );
+
+    let before = StateSnapshot::new(format!(
+        "round_group_id={}",
+        current_round_group_id.map_or_else(|| String::from("null"), |id: i64| id.to_string())
+    ));
+    let after = StateSnapshot::new(format!(
+        "round_group_id={}",
+        request
+            .round_group_id
+            .map_or_else(|| String::from("null"), |id| id.to_string())
+    ));
+
+    let action_description = request.round_group_id.map_or_else(
+        || {
+            format!(
+                "Cleared round group assignment for area '{}'",
+                area.area_code()
+            )
+        },
+        |rg_id| {
+            format!(
+                "Assigned round group {rg_id} to area '{}'",
+                area.area_code()
+            )
+        },
+    );
+
+    let action = Action::new(
+        String::from("AssignAreaRoundGroup"),
+        Some(action_description),
+    );
+
+    let audit_event = AuditEvent::new(
+        actor,
+        cause,
+        action,
+        before,
+        after,
+        bid_year.clone(),
+        area.clone(),
+    );
+
+    persistence
+        .persist_audit_event(&audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    let message = request.round_group_id.map_or_else(
+        || {
+            format!(
+                "Successfully cleared round group assignment for area '{}'",
+                area.area_code()
+            )
+        },
+        |rg_id| {
+            format!(
+                "Successfully assigned round group {rg_id} to area '{}'",
+                area.area_code()
+            )
+        },
+    );
+
+    Ok(AssignAreaRoundGroupResponse {
+        bid_year_id,
+        bid_year: bid_year.year(),
+        area_id,
+        area_code: area.area_code().to_string(),
+        round_group_id: request.round_group_id,
+        message,
     })
 }
 

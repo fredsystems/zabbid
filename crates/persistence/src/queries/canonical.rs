@@ -88,6 +88,36 @@ pub fn lookup_area_id(
 }
 
 backend_fn! {
+/// Gets the current round group ID assigned to an area.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `area_id` - The canonical area identifier
+///
+/// # Errors
+///
+/// Returns an error if the area doesn't exist or the database query fails.
+pub fn get_area_round_group_id(
+    conn: &mut _,
+    area_id: i64,
+) -> Result<Option<i64>, PersistenceError> {
+    let result = areas::table
+        .select(areas::round_group_id)
+        .filter(areas::area_id.eq(area_id))
+        .first::<Option<i64>>(conn);
+
+    match result {
+        Ok(round_group_id) => Ok(round_group_id),
+        Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(
+            format!("Area with ID {area_id} not found"),
+        )),
+        Err(e) => Err(PersistenceError::from(e)),
+    }
+}
+}
+
+backend_fn! {
 /// Reconstructs bootstrap metadata from canonical tables.
 ///
 /// This method queries the canonical `bid_years` and `areas` tables to retrieve

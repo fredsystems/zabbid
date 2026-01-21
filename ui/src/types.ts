@@ -132,6 +132,21 @@ export interface UpdateAreaResponse {
   /** Success message */
   message: string;
 }
+
+export interface AssignAreaRoundGroupResponse {
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The bid year (display value) */
+  bid_year: number;
+  /** The canonical area identifier */
+  area_id: number;
+  /** The area code (immutable) */
+  area_code: string;
+  /** The assigned round group ID (or null if cleared) */
+  round_group_id: number | null;
+  /** Success message */
+  message: string;
+}
 /**
  * Information about a single area.
  */
