@@ -84,7 +84,8 @@ pub use state::{
 // Phase 29F: Bid status query re-exports
 #[allow(unused_imports)]
 pub use bid_status::{
-    get_bid_status_for_area_mysql, get_bid_status_for_area_sqlite, get_bid_status_for_round_mysql,
+    get_bid_status_by_id_mysql, get_bid_status_by_id_sqlite, get_bid_status_for_area_mysql,
+    get_bid_status_for_area_sqlite, get_bid_status_for_round_mysql,
     get_bid_status_for_round_sqlite, get_bid_status_for_user_and_round_mysql,
     get_bid_status_for_user_and_round_sqlite, get_bid_status_history_mysql,
     get_bid_status_history_sqlite,

@@ -101,3 +101,26 @@ pub fn get_bid_status_history(
 }
 
 }
+
+backend_fn! {
+
+/// Query a bid status record by its ID.
+///
+/// # Backend-agnostic
+///
+/// This function uses Diesel DSL exclusively.
+#[allow(dead_code)]
+pub fn get_bid_status_by_id(
+    conn: &mut _,
+    bid_status_id: i64,
+) -> Result<Option<BidStatusRow>, PersistenceError> {
+    bid_status::table
+        .filter(bid_status::bid_status_id.eq(bid_status_id))
+        .first::<BidStatusRow>(conn)
+        .optional()
+        .map_err(|e| {
+            PersistenceError::QueryFailed(format!("get_bid_status_by_id: {e}"))
+        })
+}
+
+}

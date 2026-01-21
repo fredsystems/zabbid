@@ -2881,4 +2881,285 @@ impl Persistence {
             }
         }
     }
+
+    /// Get user information by ID.
+    ///
+    /// Returns a simple struct with user initials for display purposes.
+    ///
+    /// # Arguments
+    ///
+    /// * `user_id` - The canonical user ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user does not exist or the database operation fails.
+    pub fn get_user_by_id(&mut self, user_id: i64) -> Result<UserInfo, PersistenceError> {
+        let (_bid_year_id, initials) = self.get_user_details(user_id)?;
+        Ok(UserInfo { initials })
+    }
+
+    /// Get round information by ID.
+    ///
+    /// Returns round details including the round name.
+    ///
+    /// # Arguments
+    ///
+    /// * `round_id` - The round ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the round does not exist or the database operation fails.
+    pub fn get_round_by_id(&mut self, round_id: i64) -> Result<RoundInfo, PersistenceError> {
+        let round = self.get_round(round_id)?;
+        Ok(RoundInfo {
+            round_name: round.name().to_string(),
+        })
+    }
+
+    /// Get bid status for an area.
+    ///
+    /// Returns all bid status records for users in the specified area.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `area_id` - The canonical area ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn get_bid_status_for_area(
+        &mut self,
+        bid_year_id: i64,
+        area_id: i64,
+    ) -> Result<Vec<BidStatusRow>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::bid_status::get_bid_status_for_area_sqlite(conn, bid_year_id, area_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::bid_status::get_bid_status_for_area_mysql(conn, bid_year_id, area_id)
+            }
+        }
+    }
+
+    /// Get bid status for a specific user and round.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year_id` - The canonical bid year ID
+    /// * `area_id` - The canonical area ID
+    /// * `user_id` - The canonical user ID
+    /// * `round_id` - The round ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the record is not found or the database cannot be queried.
+    pub fn get_bid_status_for_user_and_round(
+        &mut self,
+        bid_year_id: i64,
+        area_id: i64,
+        user_id: i64,
+        round_id: i64,
+    ) -> Result<BidStatusRow, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::bid_status::get_bid_status_for_user_and_round_sqlite(
+                    conn,
+                    bid_year_id,
+                    area_id,
+                    user_id,
+                    round_id,
+                )
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::bid_status::get_bid_status_for_user_and_round_mysql(
+                    conn,
+                    bid_year_id,
+                    area_id,
+                    user_id,
+                    round_id,
+                )
+            }
+        }?
+        .ok_or_else(|| {
+            PersistenceError::NotFound(format!(
+                "Bid status not found for user {user_id} in round {round_id}"
+            ))
+        })
+    }
+
+    /// Get bid status by ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_status_id` - The bid status record ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the record is not found or the database cannot be queried.
+    pub fn get_bid_status_by_id(
+        &mut self,
+        bid_status_id: i64,
+    ) -> Result<BidStatusRow, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::bid_status::get_bid_status_by_id_sqlite(conn, bid_status_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::bid_status::get_bid_status_by_id_mysql(conn, bid_status_id)
+            }
+        }?
+        .ok_or_else(|| PersistenceError::NotFound(format!("Bid status {bid_status_id} not found")))
+    }
+
+    /// Get bid status history for a bid status record.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_status_id` - The bid status record ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be queried.
+    pub fn get_bid_status_history(
+        &mut self,
+        bid_status_id: i64,
+    ) -> Result<Vec<BidStatusHistoryRow>, PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                queries::bid_status::get_bid_status_history_sqlite(conn, bid_status_id)
+            }
+            BackendConnection::Mysql(conn) => {
+                queries::bid_status::get_bid_status_history_mysql(conn, bid_status_id)
+            }
+        }
+    }
+
+    /// Update bid status.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_status_id` - The bid status record ID
+    /// * `new_status` - The new status string
+    /// * `updated_at` - The update timestamp
+    /// * `updated_by` - The operator ID making the update
+    /// * `notes` - Optional notes
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
+    pub fn update_bid_status(
+        &mut self,
+        bid_status_id: i64,
+        new_status: &str,
+        updated_at: &str,
+        updated_by: i64,
+        notes: Option<&str>,
+    ) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => mutations::bid_status::update_bid_status_sqlite(
+                conn,
+                bid_status_id,
+                new_status,
+                updated_at,
+                updated_by,
+                notes.map(ToString::to_string),
+            ),
+            BackendConnection::Mysql(conn) => mutations::bid_status::update_bid_status_mysql(
+                conn,
+                bid_status_id,
+                new_status,
+                updated_at,
+                updated_by,
+                notes.map(ToString::to_string),
+            ),
+        }
+    }
+
+    /// Insert bid status history record.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_status_id` - The bid status record ID
+    /// * `audit_event_id` - The audit event ID
+    /// * `previous_status` - The previous status (if any)
+    /// * `new_status` - The new status
+    /// * `transitioned_at` - The transition timestamp
+    /// * `transitioned_by` - The operator ID making the transition
+    /// * `notes` - Optional notes
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database insert fails.
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_bid_status_history(
+        &mut self,
+        bid_status_id: i64,
+        audit_event_id: i64,
+        previous_status: Option<&str>,
+        new_status: &str,
+        transitioned_at: &str,
+        transitioned_by: i64,
+        notes: Option<&str>,
+    ) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::bid_status::insert_bid_status_history_sqlite(
+                    conn,
+                    bid_status_id,
+                    audit_event_id,
+                    previous_status,
+                    new_status,
+                    transitioned_at,
+                    transitioned_by,
+                    notes,
+                )
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::bid_status::insert_bid_status_history_mysql(
+                    conn,
+                    bid_status_id,
+                    audit_event_id,
+                    previous_status,
+                    new_status,
+                    transitioned_at,
+                    transitioned_by,
+                    notes,
+                )
+            }
+        }
+    }
+
+    /// Get the next audit event ID (temporary helper for Phase 29F).
+    ///
+    /// This is a placeholder until proper audit event creation is integrated.
+    ///
+    /// # Returns
+    ///
+    /// The next available audit event ID.
+    ///
+    /// # Errors
+    ///
+    /// Currently always returns `Ok`, but signature allows for future error cases.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn get_next_audit_event_id(&mut self) -> Result<i64, PersistenceError> {
+        // This is a simplified implementation - in production, this would be
+        // part of the audit event creation flow
+        Ok(1)
+    }
+}
+
+/// Simple user info struct for display purposes.
+#[derive(Debug, Clone)]
+pub struct UserInfo {
+    /// The user's initials.
+    pub initials: String,
+}
+
+/// Simple round info struct for display purposes.
+#[derive(Debug, Clone)]
+pub struct RoundInfo {
+    /// The round's name.
+    pub round_name: String,
 }

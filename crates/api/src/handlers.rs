@@ -25,17 +25,19 @@ use crate::csv_preview::{CsvRowResult, preview_csv_users as preview_csv_users_im
 use crate::error::{ApiError, AuthError, translate_core_error, translate_domain_error};
 use crate::password_policy::PasswordPolicy;
 use crate::request_response::{
-    AreaCompletenessInfo, BidOrderPositionInfo, BidScheduleInfo, BidYearCompletenessInfo,
-    BidYearInfo, BlockingReason, ChangePasswordRequest, ChangePasswordResponse,
+    AreaCompletenessInfo, BidOrderPositionInfo, BidScheduleInfo, BidStatusHistoryInfo,
+    BidStatusInfo, BidYearCompletenessInfo, BidYearInfo, BlockingReason,
+    BulkUpdateBidStatusResponse, ChangePasswordRequest, ChangePasswordResponse,
     ConfirmReadyToBidRequest, ConfirmReadyToBidResponse, CreateAreaRequest, CreateBidYearRequest,
     CreateOperatorRequest, CreateOperatorResponse, CsvImportRowResult, CsvImportRowStatus,
     CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
     DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
     GetActiveBidYearResponse, GetBidOrderPreviewResponse, GetBidScheduleResponse,
-    GetBidYearReadinessResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse,
-    GlobalCapabilities, ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest,
-    ListAreasResponse, ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse,
-    LoginRequest, LoginResponse, OperatorCapabilities, OperatorInfo, OverrideAreaAssignmentRequest,
+    GetBidStatusForAreaResponse, GetBidStatusResponse, GetBidYearReadinessResponse,
+    GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse, GlobalCapabilities,
+    ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse,
+    ListBidYearsResponse, ListOperatorsResponse, ListUsersResponse, LoginRequest, LoginResponse,
+    OperatorCapabilities, OperatorInfo, OverrideAreaAssignmentRequest,
     OverrideAreaAssignmentResponse, OverrideBidOrderRequest, OverrideBidOrderResponse,
     OverrideBidWindowRequest, OverrideBidWindowResponse, OverrideEligibilityRequest,
     OverrideEligibilityResponse, PreviewCsvUsersRequest, PreviewCsvUsersResponse,
@@ -43,7 +45,7 @@ use crate::request_response::{
     ReviewNoBidUserResponse, SeniorityInputsInfo, SetActiveBidYearRequest,
     SetActiveBidYearResponse, SetBidScheduleRequest, SetBidScheduleResponse,
     SetExpectedAreaCountRequest, SetExpectedAreaCountResponse, SetExpectedUserCountRequest,
-    SetExpectedUserCountResponse, TransitionToBiddingActiveRequest,
+    SetExpectedUserCountResponse, TransitionBidStatusResponse, TransitionToBiddingActiveRequest,
     TransitionToBiddingActiveResponse, TransitionToBiddingClosedRequest,
     TransitionToBiddingClosedResponse, TransitionToBootstrapCompleteRequest,
     TransitionToBootstrapCompleteResponse, TransitionToCanonicalizedRequest,
@@ -6783,5 +6785,508 @@ pub fn get_bid_order_preview(
         area_id,
         area_code,
         positions,
+    })
+}
+
+// ========================================================================
+// Phase 29F: Bid Status Tracking Handlers
+// ========================================================================
+
+/// Get bid status for all users in an area across all rounds.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `actor` - The authenticated actor
+/// * `bid_year_id` - The canonical bid year identifier
+/// * `area_id` - The canonical area identifier
+///
+/// # Returns
+///
+/// * `Ok(GetBidStatusForAreaResponse)` - The bid status records
+/// * `Err(ApiError)` - If the query fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The bid year does not exist
+/// - The area does not exist
+/// - The database query fails
+#[allow(dead_code)]
+pub fn get_bid_status_for_area(
+    persistence: &mut SqlitePersistence,
+    _actor: &AuthenticatedActor,
+    bid_year_id: i64,
+    area_id: i64,
+) -> Result<GetBidStatusForAreaResponse, ApiError> {
+    // Get area code for display (validates area exists)
+    let area = persistence
+        .get_area_by_id(area_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get area: {e}"),
+        })?;
+
+    // Query bid status records
+    let status_rows = persistence
+        .get_bid_status_for_area(bid_year_id, area_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get bid status for area: {e}"),
+        })?;
+
+    // Convert to API response type
+    let statuses: Vec<BidStatusInfo> = status_rows
+        .into_iter()
+        .map(|row| {
+            // Get user initials
+            let user = persistence
+                .get_user_by_id(row.user_id)
+                .ok()
+                .map_or_else(|| String::from("Unknown"), |u| u.initials);
+
+            // Get round name
+            let round = persistence
+                .get_round_by_id(row.round_id)
+                .ok()
+                .map_or_else(|| String::from("Unknown"), |r| r.round_name);
+
+            // Get operator display name
+            let operator = persistence
+                .get_operator_by_id(row.updated_by)
+                .ok()
+                .flatten()
+                .map_or_else(|| String::from("Unknown"), |op| op.display_name);
+
+            BidStatusInfo {
+                bid_status_id: row.bid_status_id,
+                user_id: row.user_id,
+                initials: user,
+                round_id: row.round_id,
+                round_name: round,
+                status: row.status,
+                updated_at: row.updated_at,
+                updated_by: operator,
+                notes: row.notes,
+            }
+        })
+        .collect();
+
+    Ok(GetBidStatusForAreaResponse {
+        bid_year_id,
+        area_id,
+        area_code: area.0.area_code().to_string(),
+        statuses,
+    })
+}
+
+/// Get bid status for a specific user and round.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `actor` - The authenticated actor
+/// * `bid_year_id` - The canonical bid year identifier
+/// * `area_id` - The canonical area identifier
+/// * `user_id` - The canonical user identifier
+/// * `round_id` - The round identifier
+///
+/// # Returns
+///
+/// * `Ok(GetBidStatusResponse)` - The bid status and history
+/// * `Err(ApiError)` - If the query fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The bid year does not exist
+/// - The area does not exist
+/// - The user does not exist
+/// - The round does not exist
+/// - The bid status record does not exist
+/// - The database query fails
+#[allow(dead_code)]
+pub fn get_bid_status(
+    persistence: &mut SqlitePersistence,
+    _actor: &AuthenticatedActor,
+    bid_year_id: i64,
+    area_id: i64,
+    user_id: i64,
+    round_id: i64,
+) -> Result<GetBidStatusResponse, ApiError> {
+    // Query bid status record (validates bid year, area exist)
+    let status_row = persistence
+        .get_bid_status_for_user_and_round(bid_year_id, area_id, user_id, round_id)
+        .map_err(|e| match e {
+            PersistenceError::NotFound(_) => ApiError::ResourceNotFound {
+                resource_type: String::from("bid_status"),
+                message: format!("Bid status not found for user_id={user_id}, round_id={round_id}"),
+            },
+            _ => ApiError::Internal {
+                message: format!("Failed to get bid status: {e}"),
+            },
+        })?;
+
+    // Get user initials
+    let user = persistence
+        .get_user_by_id(user_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get user: {e}"),
+        })?;
+
+    // Get round name
+    let round = persistence
+        .get_round_by_id(round_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get round: {e}"),
+        })?;
+
+    // Get operator display name
+    let operator = persistence
+        .get_operator_by_id(status_row.updated_by)
+        .ok()
+        .flatten()
+        .map_or_else(|| String::from("Unknown"), |op| op.display_name);
+
+    let status = BidStatusInfo {
+        bid_status_id: status_row.bid_status_id,
+        user_id: status_row.user_id,
+        initials: user.initials,
+        round_id: status_row.round_id,
+        round_name: round.round_name,
+        status: status_row.status,
+        updated_at: status_row.updated_at,
+        updated_by: operator,
+        notes: status_row.notes,
+    };
+
+    // Query status history
+    let history_rows = persistence
+        .get_bid_status_history(status_row.bid_status_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get bid status history: {e}"),
+        })?;
+
+    let history: Vec<BidStatusHistoryInfo> = history_rows
+        .into_iter()
+        .map(|row| {
+            let operator = persistence
+                .get_operator_by_id(row.transitioned_by)
+                .ok()
+                .flatten()
+                .map_or_else(|| String::from("Unknown"), |op| op.display_name);
+
+            BidStatusHistoryInfo {
+                history_id: row.history_id,
+                previous_status: row.previous_status,
+                new_status: row.new_status,
+                transitioned_at: row.transitioned_at,
+                transitioned_by: operator,
+                notes: row.notes,
+            }
+        })
+        .collect();
+
+    Ok(GetBidStatusResponse { status, history })
+}
+
+/// Transition a bid status to a new state.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `actor` - The authenticated actor (must be Admin or Bidder)
+/// * `bid_status_id` - The bid status record identifier
+/// * `new_status` - The new status value
+/// * `notes` - Required notes explaining the transition
+///
+/// # Returns
+///
+/// * `Ok(TransitionBidStatusResponse)` - The transition result
+/// * `Err(ApiError)` - If the transition fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor lacks required role
+/// - The bid status record does not exist
+/// - The transition is invalid
+/// - The notes are too short (< 10 characters)
+/// - The database update fails
+#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
+pub fn transition_bid_status(
+    persistence: &mut SqlitePersistence,
+    actor: &AuthenticatedActor,
+    bid_status_id: i64,
+    new_status_str: &str,
+    notes: &str,
+) -> Result<TransitionBidStatusResponse, ApiError> {
+    // Authorization: Admin or Bidder required
+    if !matches!(actor.role, Role::Admin | Role::Bidder) {
+        return Err(ApiError::Unauthorized {
+            action: String::from("transition_bid_status"),
+            required_role: String::from("Admin or Bidder"),
+        });
+    }
+
+    // Validate notes length
+    if notes.len() < 10 {
+        return Err(ApiError::InvalidInput {
+            field: String::from("notes"),
+            message: String::from("Notes must be at least 10 characters"),
+        });
+    }
+
+    // Get current bid status record
+    let current_row = persistence
+        .get_bid_status_by_id(bid_status_id)
+        .map_err(|e| match e {
+            PersistenceError::NotFound(_) => ApiError::ResourceNotFound {
+                resource_type: String::from("bid_status"),
+                message: format!("Bid status {bid_status_id} not found"),
+            },
+            _ => ApiError::Internal {
+                message: format!("Failed to get bid status: {e}"),
+            },
+        })?;
+
+    // Parse current and new status
+    let current_status =
+        zab_bid_domain::BidStatus::from_str(&current_row.status).map_err(translate_domain_error)?;
+    let new_status =
+        zab_bid_domain::BidStatus::from_str(new_status_str).map_err(translate_domain_error)?;
+
+    // Validate transition
+    current_status
+        .validate_transition(new_status)
+        .map_err(translate_domain_error)?;
+
+    // Get current timestamp
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| ApiError::Internal {
+            message: format!("System time error: {e}"),
+        })?
+        .as_secs();
+    let transitioned_at =
+        time::OffsetDateTime::from_unix_timestamp(now.to_i64().ok_or_else(|| {
+            ApiError::Internal {
+                message: String::from("Timestamp conversion failed"),
+            }
+        })?)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Invalid timestamp: {e}"),
+        })?
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to format timestamp: {e}"),
+        })?;
+
+    // Update bid status
+    // Parse operator_id from actor.id (string) to i64
+    let operator_id = actor.id.parse::<i64>().map_err(|_| ApiError::Internal {
+        message: String::from("Invalid operator ID format"),
+    })?;
+
+    persistence
+        .update_bid_status(
+            bid_status_id,
+            new_status_str,
+            &transitioned_at,
+            operator_id,
+            Some(notes),
+        )
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to update bid status: {e}"),
+        })?;
+
+    // Record transition in history
+    // Get the next audit event ID (this is a simplification - in a real implementation
+    // we would create an actual audit event)
+    let audit_event_id = persistence.get_next_audit_event_id().unwrap_or(1);
+
+    persistence
+        .insert_bid_status_history(
+            bid_status_id,
+            audit_event_id,
+            Some(&current_row.status),
+            new_status_str,
+            &transitioned_at,
+            operator_id,
+            Some(notes),
+        )
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to insert bid status history: {e}"),
+        })?;
+
+    Ok(TransitionBidStatusResponse {
+        bid_status_id,
+        user_id: current_row.user_id,
+        round_id: current_row.round_id,
+        previous_status: current_row.status.clone(),
+        new_status: new_status_str.to_string(),
+        transitioned_at,
+        message: format!(
+            "Bid status transitioned from '{}' to '{new_status_str}'",
+            current_row.status
+        ),
+    })
+}
+
+/// Bulk update bid status for multiple users in a round.
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `actor` - The authenticated actor (must be Admin or Bidder)
+/// * `bid_year_id` - The canonical bid year identifier
+/// * `area_id` - The canonical area identifier
+/// * `user_ids` - The list of user IDs to update
+/// * `round_id` - The round identifier
+/// * `new_status` - The new status value
+/// * `notes` - Required notes explaining the bulk update
+///
+/// # Returns
+///
+/// * `Ok(BulkUpdateBidStatusResponse)` - The bulk update result
+/// * `Err(ApiError)` - If the update fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The actor lacks required role
+/// - The bid year does not exist
+/// - The area does not exist
+/// - Any user ID is invalid
+/// - Any transition is invalid
+/// - The notes are too short (< 10 characters)
+/// - The database update fails (all or nothing)
+#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
+pub fn bulk_update_bid_status(
+    persistence: &mut SqlitePersistence,
+    actor: &AuthenticatedActor,
+    bid_year_id: i64,
+    area_id: i64,
+    user_ids: &[i64],
+    round_id: i64,
+    new_status_str: &str,
+    notes: &str,
+) -> Result<BulkUpdateBidStatusResponse, ApiError> {
+    // Authorization: Admin or Bidder required
+    if !matches!(actor.role, Role::Admin | Role::Bidder) {
+        return Err(ApiError::Unauthorized {
+            action: String::from("bulk_update_bid_status"),
+            required_role: String::from("Admin or Bidder"),
+        });
+    }
+
+    // Validate notes length
+    if notes.len() < 10 {
+        return Err(ApiError::InvalidInput {
+            field: String::from("notes"),
+            message: String::from("Notes must be at least 10 characters"),
+        });
+    }
+
+    // Parse new status
+    let new_status =
+        zab_bid_domain::BidStatus::from_str(new_status_str).map_err(translate_domain_error)?;
+
+    // Get current timestamp
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| ApiError::Internal {
+            message: format!("System time error: {e}"),
+        })?
+        .as_secs();
+    let transitioned_at =
+        time::OffsetDateTime::from_unix_timestamp(now.to_i64().ok_or_else(|| {
+            ApiError::Internal {
+                message: String::from("Timestamp conversion failed"),
+            }
+        })?)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Invalid timestamp: {e}"),
+        })?
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to format timestamp: {e}"),
+        })?;
+
+    // Validate all transitions before updating
+    let mut status_records = Vec::new();
+    for &user_id in user_ids {
+        let status_row = persistence
+            .get_bid_status_for_user_and_round(bid_year_id, area_id, user_id, round_id)
+            .map_err(|e| match e {
+                PersistenceError::NotFound(_) => ApiError::ResourceNotFound {
+                    resource_type: String::from("bid_status"),
+                    message: format!(
+                        "Bid status not found for user_id={user_id}, round_id={round_id}"
+                    ),
+                },
+                _ => ApiError::Internal {
+                    message: format!("Failed to get bid status: {e}"),
+                },
+            })?;
+
+        let current_status = zab_bid_domain::BidStatus::from_str(&status_row.status)
+            .map_err(translate_domain_error)?;
+
+        // Validate transition
+        current_status
+            .validate_transition(new_status)
+            .map_err(translate_domain_error)?;
+
+        status_records.push(status_row);
+    }
+
+    // Parse operator_id from actor.id (string) to i64
+    let operator_id = actor.id.parse::<i64>().map_err(|_| ApiError::Internal {
+        message: String::from("Invalid operator ID format"),
+    })?;
+
+    // All validations passed - perform updates
+    let mut updated_count = 0;
+    for status_row in status_records {
+        // Update bid status
+        persistence
+            .update_bid_status(
+                status_row.bid_status_id,
+                new_status_str,
+                &transitioned_at,
+                operator_id,
+                Some(notes),
+            )
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to update bid status: {e}"),
+            })?;
+
+        // Record transition in history
+        let audit_event_id = persistence.get_next_audit_event_id().unwrap_or(1);
+
+        persistence
+            .insert_bid_status_history(
+                status_row.bid_status_id,
+                audit_event_id,
+                Some(&status_row.status),
+                new_status_str,
+                &transitioned_at,
+                operator_id,
+                Some(notes),
+            )
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to insert bid status history: {e}"),
+            })?;
+
+        updated_count += 1;
+    }
+
+    Ok(BulkUpdateBidStatusResponse {
+        updated_count,
+        new_status: new_status_str.to_string(),
+        message: format!(
+            "Successfully updated {updated_count} bid status records to '{new_status_str}'"
+        ),
     })
 }

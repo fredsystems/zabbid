@@ -73,13 +73,34 @@ backend_fn! {
 /// # Backend-agnostic
 ///
 /// This function uses Diesel DSL exclusively.
+///
+/// # Errors
+///
+/// Returns an error if the database insert fails.
 #[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
 pub fn insert_bid_status_history(
     conn: &mut _,
-    record: &NewBidStatusHistory,
+    bid_status_id: i64,
+    audit_event_id: i64,
+    previous_status: Option<&str>,
+    new_status: &str,
+    transitioned_at: &str,
+    transitioned_by: i64,
+    notes: Option<&str>,
 ) -> Result<(), PersistenceError> {
+    let record = NewBidStatusHistory {
+        bid_status_id,
+        audit_event_id,
+        previous_status: previous_status.map(ToString::to_string),
+        new_status: new_status.to_string(),
+        transitioned_at: transitioned_at.to_string(),
+        transitioned_by,
+        notes: notes.map(ToString::to_string),
+    };
+
     diesel::insert_into(bid_status_history::table)
-        .values(record)
+        .values(&record)
         .execute(conn)?;
     Ok(())
 }

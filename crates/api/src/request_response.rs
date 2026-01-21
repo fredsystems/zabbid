@@ -1716,3 +1716,148 @@ pub struct SeniorityInputsInfo {
     /// Lottery value (deterministic tie-breaker).
     pub lottery_value: Option<u32>,
 }
+
+// ========================================================================
+// Phase 29F: Bid Status Tracking
+// ========================================================================
+
+/// API request to get bid status for all users in an area across all rounds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+pub struct GetBidStatusForAreaRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The canonical area identifier.
+    pub area_id: i64,
+}
+
+/// API response containing bid status for all users in an area.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GetBidStatusForAreaResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The area code (for display).
+    pub area_code: String,
+    /// Bid status records for all users and rounds.
+    pub statuses: Vec<BidStatusInfo>,
+}
+
+/// API request to get bid status for a specific user and round.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_field_names)]
+#[allow(dead_code)]
+pub struct GetBidStatusRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The canonical user identifier.
+    pub user_id: i64,
+    /// The round identifier.
+    pub round_id: i64,
+}
+
+/// API response containing bid status for a specific user and round.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GetBidStatusResponse {
+    /// The bid status information.
+    pub status: BidStatusInfo,
+    /// History of status transitions.
+    pub history: Vec<BidStatusHistoryInfo>,
+}
+
+/// Information about a user's bid status for a specific round.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BidStatusInfo {
+    /// The bid status record identifier.
+    pub bid_status_id: i64,
+    /// The canonical user identifier.
+    pub user_id: i64,
+    /// The user's initials (for display).
+    pub initials: String,
+    /// The round identifier.
+    pub round_id: i64,
+    /// The round name (for display).
+    pub round_name: String,
+    /// The current status.
+    pub status: String,
+    /// When the status was last updated (ISO 8601).
+    pub updated_at: String,
+    /// The operator who last updated the status.
+    pub updated_by: String,
+    /// Optional notes about the status.
+    pub notes: Option<String>,
+}
+
+/// Information about a bid status transition.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BidStatusHistoryInfo {
+    /// The history record identifier.
+    pub history_id: i64,
+    /// The previous status (if any).
+    pub previous_status: Option<String>,
+    /// The new status.
+    pub new_status: String,
+    /// When the transition occurred (ISO 8601).
+    pub transitioned_at: String,
+    /// The operator who made the transition.
+    pub transitioned_by: String,
+    /// Optional notes about the transition.
+    pub notes: Option<String>,
+}
+
+/// API request to transition a bid status to a new state.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct TransitionBidStatusRequest {
+    /// The new status value.
+    pub new_status: String,
+    /// Required notes explaining the transition (min 10 characters).
+    pub notes: String,
+}
+
+/// API response for a successful bid status transition.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TransitionBidStatusResponse {
+    /// The bid status record identifier.
+    pub bid_status_id: i64,
+    /// The canonical user identifier.
+    pub user_id: i64,
+    /// The round identifier.
+    pub round_id: i64,
+    /// The previous status.
+    pub previous_status: String,
+    /// The new status.
+    pub new_status: String,
+    /// When the transition occurred (ISO 8601).
+    pub transitioned_at: String,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to bulk update bid status for multiple users.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct BulkUpdateBidStatusRequest {
+    /// The list of user IDs to update.
+    pub user_ids: Vec<i64>,
+    /// The round identifier.
+    pub round_id: i64,
+    /// The new status value.
+    pub new_status: String,
+    /// Required notes explaining the bulk update (min 10 characters).
+    pub notes: String,
+}
+
+/// API response for a successful bulk bid status update.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BulkUpdateBidStatusResponse {
+    /// The number of records updated.
+    pub updated_count: usize,
+    /// The new status value.
+    pub new_status: String,
+    /// Success message.
+    pub message: String,
+}
