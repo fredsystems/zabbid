@@ -22,12 +22,19 @@
 //! the `backend` module. All other code uses Diesel DSL exclusively.
 
 pub mod audit;
+pub mod bid_status;
 pub mod bootstrap;
 pub mod canonical;
 pub mod operators;
 
 // Re-export backend-specific mutation functions used by lib.rs
 pub use audit::{persist_audit_event_mysql, persist_audit_event_sqlite};
+#[allow(unused_imports)]
+pub use bid_status::{
+    bulk_insert_bid_status_history_mysql, bulk_insert_bid_status_history_sqlite,
+    bulk_insert_bid_status_mysql, bulk_insert_bid_status_sqlite, insert_bid_status_history_mysql,
+    insert_bid_status_history_sqlite, update_bid_status_mysql, update_bid_status_sqlite,
+};
 pub use bootstrap::{
     PersistTransitionResult, persist_bootstrap_mysql, persist_bootstrap_sqlite,
     persist_transition_mysql, persist_transition_sqlite, set_active_bid_year_mysql,

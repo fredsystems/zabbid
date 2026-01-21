@@ -1,0 +1,3 @@
+-- No-op migration for MySQL
+-- The foreign key constraint for areas.round_group_id was already added
+-- in migration 2026-01-20-034406-0000_correct_round_area_relationships

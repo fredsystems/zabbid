@@ -166,6 +166,152 @@ impl BidYear {
     }
 }
 
+/// Represents the bid schedule configuration for a bid year.
+///
+/// Phase 29C: The bid schedule defines when and how bidding occurs.
+///
+/// All bid times are wall-clock times in the declared timezone.
+/// DST transitions do not shift labels, only duration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BidSchedule {
+    /// IANA timezone identifier (e.g., `"America/New_York"`)
+    timezone: String,
+    /// Bid start date (must be a Monday, must be in the future at confirmation)
+    start_date: time::Date,
+    /// Daily bid window start time (wall-clock)
+    window_start_time: time::Time,
+    /// Daily bid window end time (wall-clock)
+    window_end_time: time::Time,
+    /// Number of bidders per area per day
+    bidders_per_day: u32,
+}
+
+impl BidSchedule {
+    /// Creates a new `BidSchedule`.
+    ///
+    /// # Arguments
+    ///
+    /// * `timezone` - IANA timezone identifier
+    /// * `start_date` - Bid start date
+    /// * `window_start_time` - Daily bid window start time
+    /// * `window_end_time` - Daily bid window end time
+    /// * `bidders_per_day` - Number of bidders per area per day
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if validation fails
+    pub fn new(
+        timezone: String,
+        start_date: time::Date,
+        window_start_time: time::Time,
+        window_end_time: time::Time,
+        bidders_per_day: u32,
+    ) -> Result<Self, DomainError> {
+        let schedule = Self {
+            timezone,
+            start_date,
+            window_start_time,
+            window_end_time,
+            bidders_per_day,
+        };
+        schedule.validate()?;
+        Ok(schedule)
+    }
+
+    /// Validates the bid schedule according to domain rules.
+    ///
+    /// # Validation Rules
+    ///
+    /// - Timezone must be a valid IANA identifier
+    /// - Start date must be a Monday
+    /// - Window start time must be before window end time
+    /// - Bidders per day must be > 0
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any validation rule is violated
+    pub fn validate(&self) -> Result<(), DomainError> {
+        // Validate timezone
+        self.timezone
+            .parse::<chrono_tz::Tz>()
+            .map_err(|_| DomainError::InvalidTimezone(self.timezone.clone()))?;
+
+        // Validate start date is a Monday
+        if self.start_date.weekday() != time::Weekday::Monday {
+            return Err(DomainError::BidStartDateNotMonday(self.start_date));
+        }
+
+        // Validate window times
+        if self.window_start_time >= self.window_end_time {
+            return Err(DomainError::InvalidBidWindowTimes {
+                start: self.window_start_time,
+                end: self.window_end_time,
+            });
+        }
+
+        // Validate bidders per day
+        if self.bidders_per_day == 0 {
+            return Err(DomainError::InvalidBiddersPerDay(0));
+        }
+
+        Ok(())
+    }
+
+    /// Returns the timezone identifier.
+    #[must_use]
+    pub fn timezone(&self) -> &str {
+        &self.timezone
+    }
+
+    /// Returns the bid start date.
+    #[must_use]
+    pub const fn start_date(&self) -> time::Date {
+        self.start_date
+    }
+
+    /// Returns the daily bid window start time.
+    #[must_use]
+    pub const fn window_start_time(&self) -> time::Time {
+        self.window_start_time
+    }
+
+    /// Returns the daily bid window end time.
+    #[must_use]
+    pub const fn window_end_time(&self) -> time::Time {
+        self.window_end_time
+    }
+
+    /// Returns the number of bidders per area per day.
+    #[must_use]
+    pub const fn bidders_per_day(&self) -> u32 {
+        self.bidders_per_day
+    }
+
+    /// Validates that the start date is in the future relative to a given reference date.
+    ///
+    /// This is used during confirmation to ensure the bid schedule has not already passed.
+    ///
+    /// # Arguments
+    ///
+    /// * `reference_date` - The date to compare against (typically "today")
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the start date is not in the future
+    pub fn validate_future_start_date(
+        &self,
+        reference_date: time::Date,
+    ) -> Result<(), DomainError> {
+        if self.start_date <= reference_date {
+            return Err(DomainError::BidStartDateNotFuture {
+                start_date: self.start_date,
+                reference_date,
+            });
+        }
+        Ok(())
+    }
+}
+
 /// Represents a user's initials.
 ///
 /// Initials are the sole identifier for a user within a bid year.
@@ -216,6 +362,10 @@ pub struct Area {
     area_name: Option<String>,
     /// Phase 25B: Whether this is a system-managed area (e.g., "No Bid").
     is_system_area: bool,
+    /// Phase 29B: The round group this area references.
+    /// Non-system areas must reference exactly one round group.
+    /// System areas must not reference any round group (None).
+    round_group_id: Option<i64>,
 }
 
 // Phase 23A: Custom PartialEq and Hash that ignore area_id
@@ -252,6 +402,7 @@ impl Area {
             area_code: area_code.to_uppercase(),
             area_name: None,
             is_system_area: false,
+            round_group_id: None,
         }
     }
 
@@ -267,6 +418,7 @@ impl Area {
             area_code: area_code.to_uppercase(),
             area_name: None,
             is_system_area: true,
+            round_group_id: None,
         }
     }
 
@@ -284,12 +436,14 @@ impl Area {
         area_code: &str,
         area_name: Option<String>,
         is_system_area: bool,
+        round_group_id: Option<i64>,
     ) -> Self {
         Self {
             area_id: Some(area_id),
             area_code: area_code.to_uppercase(),
             area_name,
             is_system_area,
+            round_group_id,
         }
     }
 
@@ -315,6 +469,15 @@ impl Area {
     #[must_use]
     pub const fn is_system_area(&self) -> bool {
         self.is_system_area
+    }
+
+    /// Returns the round group ID this area references.
+    ///
+    /// Non-system areas should have exactly one round group.
+    /// System areas should have none.
+    #[must_use]
+    pub const fn round_group_id(&self) -> Option<i64> {
+        self.round_group_id
     }
 
     /// Legacy method for backward compatibility - returns `area_code`.
@@ -500,6 +663,17 @@ pub struct User {
     pub crew: Option<Crew>,
     /// Seniority-related data (informational only in Phase 1).
     pub seniority_data: SeniorityData,
+    /// Phase 29A: Whether this user is excluded from bidding.
+    /// If true, user is excluded from bid order derivation and does not receive a bid window.
+    pub excluded_from_bidding: bool,
+    /// Phase 29A: Whether this user is excluded from leave calculation.
+    /// If true, user does not count toward area leave capacity or maximum bid slots.
+    /// Directional invariant: `excluded_from_leave_calculation` => `excluded_from_bidding`
+    pub excluded_from_leave_calculation: bool,
+    /// Phase 29D: Whether this user in "No Bid" system area has been reviewed.
+    /// Review means the user was moved to a non-system area OR explicitly confirmed to remain in No Bid.
+    /// This flag is used by readiness evaluation to ensure all No Bid users are reviewed.
+    pub no_bid_reviewed: bool,
 }
 
 impl User {
@@ -526,6 +700,9 @@ impl User {
         user_type: UserType,
         crew: Option<Crew>,
         seniority_data: SeniorityData,
+        excluded_from_bidding: bool,
+        excluded_from_leave_calculation: bool,
+        no_bid_reviewed: bool,
     ) -> Self {
         Self {
             user_id: None,
@@ -536,6 +713,9 @@ impl User {
             user_type,
             crew,
             seniority_data,
+            excluded_from_bidding,
+            excluded_from_leave_calculation,
+            no_bid_reviewed,
         }
     }
 
@@ -562,6 +742,9 @@ impl User {
         user_type: UserType,
         crew: Option<Crew>,
         seniority_data: SeniorityData,
+        excluded_from_bidding: bool,
+        excluded_from_leave_calculation: bool,
+        no_bid_reviewed: bool,
     ) -> Self {
         Self {
             user_id: Some(user_id),
@@ -572,6 +755,433 @@ impl User {
             user_type,
             crew,
             seniority_data,
+            excluded_from_bidding,
+            excluded_from_leave_calculation,
+            no_bid_reviewed,
+        }
+    }
+
+    /// Validates the directional invariant for participation flags.
+    ///
+    /// Validates the participation flag directional invariant.
+    ///
+    /// # Invariant
+    ///
+    /// `excluded_from_leave_calculation == true` ⇒ `excluded_from_bidding == true`
+    ///
+    /// A user may never be included in bidding while excluded from leave calculation.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the invariant holds.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DomainError::ParticipationFlagViolation` if `excluded_from_leave_calculation`
+    /// is true but `excluded_from_bidding` is false.
+    pub fn validate_participation_flags(&self) -> Result<(), DomainError> {
+        if self.excluded_from_leave_calculation && !self.excluded_from_bidding {
+            return Err(DomainError::ParticipationFlagViolation {
+                user_initials: self.initials.value().to_owned(),
+                reason: String::from(
+                    "User excluded from leave calculation must also be excluded from bidding",
+                ),
+            });
+        }
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Phase 29B: Round Groups and Rounds
+// ============================================================================
+
+/// A reusable configuration set for rounds.
+///
+/// Round groups define common rule sets that can be applied to multiple rounds
+/// across different areas within a bid year.
+#[allow(dead_code)]
+#[allow(clippy::struct_field_names)]
+pub struct RoundGroup {
+    /// The canonical numeric identifier assigned by the database.
+    /// `None` indicates the round group has not been persisted yet.
+    round_group_id: Option<i64>,
+    /// The bid year this round group belongs to.
+    bid_year: BidYear,
+    /// The name of this round group (unique within the bid year).
+    name: String,
+    /// Whether editing is enabled for this round group.
+    /// When false, rounds using this group should not be modifiable.
+    editing_enabled: bool,
+}
+
+#[allow(dead_code)]
+impl RoundGroup {
+    /// Creates a new `RoundGroup` without a persisted ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `bid_year` - The bid year this round group belongs to
+    /// * `name` - The name of this round group
+    /// * `editing_enabled` - Whether editing is enabled
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn new(bid_year: BidYear, name: String, editing_enabled: bool) -> Self {
+        Self {
+            round_group_id: None,
+            bid_year,
+            name,
+            editing_enabled,
+        }
+    }
+
+    /// Creates a `RoundGroup` with an existing persisted ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `round_group_id` - The canonical numeric identifier
+    /// * `bid_year` - The bid year this round group belongs to
+    /// * `name` - The name of this round group
+    /// * `editing_enabled` - Whether editing is enabled
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn with_id(
+        round_group_id: i64,
+        bid_year: BidYear,
+        name: String,
+        editing_enabled: bool,
+    ) -> Self {
+        Self {
+            round_group_id: Some(round_group_id),
+            bid_year,
+            name,
+            editing_enabled,
+        }
+    }
+
+    /// Returns the canonical numeric identifier if persisted.
+    #[must_use]
+    pub const fn round_group_id(&self) -> Option<i64> {
+        self.round_group_id
+    }
+
+    /// Returns the bid year this round group belongs to.
+    #[must_use]
+    pub const fn bid_year(&self) -> &BidYear {
+        &self.bid_year
+    }
+
+    /// Returns the name of this round group.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns whether editing is enabled for this round group.
+    #[must_use]
+    pub const fn editing_enabled(&self) -> bool {
+        self.editing_enabled
+    }
+
+    /// Validates the round group configuration constraints.
+    ///
+    /// Ensures that:
+    /// - `name` is not empty
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if all constraints are satisfied.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DomainError::InvalidRoundConfiguration` if any constraint is violated.
+    #[allow(dead_code)]
+    pub fn validate_constraints(&self) -> Result<(), crate::error::DomainError> {
+        if self.name.trim().is_empty() {
+            return Err(crate::error::DomainError::InvalidRoundConfiguration {
+                reason: String::from("round group name cannot be empty"),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// A bidding round within a round group.
+///
+/// Rounds carry all bidding rule fields and belong to round groups.
+/// Round groups are reusable collections of rounds that areas reference.
+#[allow(dead_code)]
+#[allow(clippy::struct_field_names)]
+pub struct Round {
+    /// The canonical numeric identifier assigned by the database.
+    /// `None` indicates the round has not been persisted yet.
+    round_id: Option<i64>,
+    /// The round group this round belongs to.
+    round_group: RoundGroup,
+    /// The round number (unique within the round group).
+    /// Determines the order in which rounds are executed.
+    round_number: u32,
+    /// The display name for this round.
+    name: String,
+    /// Maximum number of slots that can be bid per day.
+    slots_per_day: u32,
+    /// Maximum number of groups (consecutive day sequences) that can be bid.
+    max_groups: u32,
+    /// Maximum total hours that can be bid.
+    max_total_hours: u32,
+    /// Whether holidays are included in bid groups.
+    /// If false, holidays do not count toward group length.
+    include_holidays: bool,
+    /// Whether overbidding is allowed.
+    /// If true, accrued leave limits are ignored (round limits still apply).
+    /// Typically used for carryover rounds.
+    allow_overbid: bool,
+}
+
+#[allow(dead_code)]
+impl Round {
+    /// Creates a new `Round` without a persisted ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `round_group` - The round group this round belongs to
+    /// * `round_number` - The round number (unique within round group)
+    /// * `name` - The display name for this round
+    /// * `slots_per_day` - Maximum slots per day
+    /// * `max_groups` - Maximum number of groups
+    /// * `max_total_hours` - Maximum total hours
+    /// * `include_holidays` - Whether holidays are included
+    /// * `allow_overbid` - Whether overbidding is allowed
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn new(
+        round_group: RoundGroup,
+        round_number: u32,
+        name: String,
+        slots_per_day: u32,
+        max_groups: u32,
+        max_total_hours: u32,
+        include_holidays: bool,
+        allow_overbid: bool,
+    ) -> Self {
+        Self {
+            round_id: None,
+            round_group,
+            round_number,
+            name,
+            slots_per_day,
+            max_groups,
+            max_total_hours,
+            include_holidays,
+            allow_overbid,
+        }
+    }
+
+    /// Creates a `Round` with an existing persisted ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `round_id` - The canonical numeric identifier
+    /// * `round_group` - The round group this round belongs to
+    /// * `round_number` - The round number (unique within round group)
+    /// * `name` - The display name for this round
+    /// * `slots_per_day` - Maximum slots per day
+    /// * `max_groups` - Maximum number of groups
+    /// * `max_total_hours` - Maximum total hours
+    /// * `include_holidays` - Whether holidays are included
+    /// * `allow_overbid` - Whether overbidding is allowed
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn with_id(
+        round_id: i64,
+        round_group: RoundGroup,
+        round_number: u32,
+        name: String,
+        slots_per_day: u32,
+        max_groups: u32,
+        max_total_hours: u32,
+        include_holidays: bool,
+        allow_overbid: bool,
+    ) -> Self {
+        Self {
+            round_id: Some(round_id),
+            round_group,
+            round_number,
+            name,
+            slots_per_day,
+            max_groups,
+            max_total_hours,
+            include_holidays,
+            allow_overbid,
+        }
+    }
+
+    /// Returns the canonical numeric identifier if persisted.
+    #[must_use]
+    pub const fn round_id(&self) -> Option<i64> {
+        self.round_id
+    }
+
+    /// Returns the round group this round belongs to.
+    #[must_use]
+    pub const fn round_group(&self) -> &RoundGroup {
+        &self.round_group
+    }
+
+    /// Returns the round number.
+    #[must_use]
+    pub const fn round_number(&self) -> u32 {
+        self.round_number
+    }
+
+    /// Returns the display name for this round.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the maximum number of slots per day.
+    #[must_use]
+    pub const fn slots_per_day(&self) -> u32 {
+        self.slots_per_day
+    }
+
+    /// Returns the maximum number of groups.
+    #[must_use]
+    pub const fn max_groups(&self) -> u32 {
+        self.max_groups
+    }
+
+    /// Returns the maximum total hours.
+    #[must_use]
+    pub const fn max_total_hours(&self) -> u32 {
+        self.max_total_hours
+    }
+
+    /// Returns whether holidays are included in groups.
+    #[must_use]
+    pub const fn include_holidays(&self) -> bool {
+        self.include_holidays
+    }
+
+    /// Returns whether overbidding is allowed.
+    #[must_use]
+    pub const fn allow_overbid(&self) -> bool {
+        self.allow_overbid
+    }
+
+    /// Validates the round configuration constraints.
+    ///
+    /// Ensures that:
+    /// - `slots_per_day` is greater than 0
+    /// - `max_groups` is greater than 0
+    /// - `max_total_hours` is greater than 0
+    /// - `name` is not empty
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if all constraints are satisfied.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DomainError::InvalidRoundConfiguration` if any constraint is violated.
+    #[allow(dead_code)]
+    pub fn validate_constraints(&self) -> Result<(), crate::error::DomainError> {
+        if self.slots_per_day == 0 {
+            return Err(crate::error::DomainError::InvalidRoundConfiguration {
+                reason: String::from("slots_per_day must be greater than 0"),
+            });
+        }
+        if self.max_groups == 0 {
+            return Err(crate::error::DomainError::InvalidRoundConfiguration {
+                reason: String::from("max_groups must be greater than 0"),
+            });
+        }
+        if self.max_total_hours == 0 {
+            return Err(crate::error::DomainError::InvalidRoundConfiguration {
+                reason: String::from("max_total_hours must be greater than 0"),
+            });
+        }
+        if self.name.trim().is_empty() {
+            return Err(crate::error::DomainError::InvalidRoundConfiguration {
+                reason: String::from("name cannot be empty"),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Phase 29D: Readiness evaluation result for a bid year.
+///
+/// Readiness is computed, not stored. It represents whether a bid year
+/// is structurally complete and ready for confirmation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BidYearReadiness {
+    /// The bid year ID being evaluated.
+    pub bid_year_id: i64,
+    /// The bid year value (for display).
+    pub year: u16,
+    /// Overall readiness flag.
+    pub is_ready: bool,
+    /// List of all unsatisfied criteria (empty if ready).
+    pub blocking_reasons: Vec<String>,
+    /// Detailed breakdown per criterion.
+    pub details: ReadinessDetails,
+}
+
+/// Phase 29D: Detailed breakdown of readiness criteria.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadinessDetails {
+    /// Areas that exist but have no rounds configured.
+    pub areas_missing_rounds: Vec<String>,
+    /// Number of users in No Bid area who have not been reviewed.
+    pub no_bid_users_pending_review: usize,
+    /// Number of users violating participation flag invariant.
+    pub participation_flag_violations: usize,
+    /// Number of seniority conflicts detected.
+    pub seniority_conflicts: usize,
+    /// Whether bid schedule is set and valid.
+    pub bid_schedule_set: bool,
+}
+
+impl BidYearReadiness {
+    /// Creates a new readiness evaluation result.
+    #[must_use]
+    pub const fn new(
+        bid_year_id: i64,
+        year: u16,
+        is_ready: bool,
+        blocking_reasons: Vec<String>,
+        details: ReadinessDetails,
+    ) -> Self {
+        Self {
+            bid_year_id,
+            year,
+            is_ready,
+            blocking_reasons,
+            details,
+        }
+    }
+}
+
+impl ReadinessDetails {
+    /// Creates a new readiness details structure.
+    #[must_use]
+    pub const fn new(
+        areas_missing_rounds: Vec<String>,
+        no_bid_users_pending_review: usize,
+        participation_flag_violations: usize,
+        seniority_conflicts: usize,
+        bid_schedule_set: bool,
+    ) -> Self {
+        Self {
+            areas_missing_rounds,
+            no_bid_users_pending_review,
+            participation_flag_violations,
+            seniority_conflicts,
+            bid_schedule_set,
         }
     }
 }

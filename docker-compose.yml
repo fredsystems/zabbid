@@ -1,0 +1,104 @@
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: zabbid-mariadb
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: zabbid
+      MYSQL_USER: zabbid
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - ./mariadb_data:/var/lib/mysql
+      - ./crates/persistence/migrations_mysql:/docker-entrypoint-initdb.d/migrations:ro
+    networks:
+      - zabbid_network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zabbid-backend
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: mysql://zabbid:${MYSQL_PASSWORD}@mariadb:3306/zabbid
+      RUST_LOG: ${RUST_LOG:-info}
+      JWT_SECRET: ${JWT_SECRET}
+      BIND_ADDRESS: 0.0.0.0:8080
+    networks:
+      - zabbid_network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8080/api/health",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+    container_name: zabbid-ui
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - zabbid_network
+
+  nginx:
+    image: nginx:1.29.4-trixie
+    container_name: zabbid-nginx
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      ui:
+        condition: service_started
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - zabbid_network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost/",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  zabbid_network:
+    driver: bridge
+
+volumes:
+  mariadb_data:
+    driver: local

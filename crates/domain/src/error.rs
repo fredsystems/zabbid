@@ -216,6 +216,127 @@ pub enum DomainError {
         /// Description of the validation error.
         reason: String,
     },
+    /// Participation flag directional invariant violation.
+    /// Phase 29A: `excluded_from_leave_calculation` => `excluded_from_bidding`
+    ParticipationFlagViolation {
+        /// The user's initials (for error context).
+        user_initials: String,
+        /// Description of the violation.
+        reason: String,
+    },
+    /// Round group not found.
+    /// Phase 29B
+    RoundGroupNotFound {
+        /// The round group ID.
+        round_group_id: i64,
+    },
+    /// Round group name already exists in the bid year.
+    /// Phase 29B
+    DuplicateRoundGroupName {
+        /// The bid year.
+        bid_year: u16,
+        /// The round group name.
+        name: String,
+    },
+    /// Round not found.
+    /// Phase 29B
+    RoundNotFound {
+        /// The round ID.
+        round_id: i64,
+    },
+    /// Round number already exists in the area.
+    /// Phase 29B
+    DuplicateRoundNumber {
+        /// The area code.
+        area_code: String,
+        /// The round number.
+        round_number: u32,
+    },
+    /// Cannot create round for system area.
+    /// Phase 29B
+    CannotCreateRoundForSystemArea {
+        /// The system area code.
+        area_code: String,
+    },
+    /// Invalid round configuration.
+    /// Phase 29B
+    InvalidRoundConfiguration {
+        /// Description of the validation error.
+        reason: String,
+    },
+    /// Cannot delete round group because it is referenced by rounds.
+    /// Phase 29B
+    RoundGroupInUse {
+        /// The round group ID.
+        round_group_id: i64,
+        /// Number of rounds referencing this group.
+        round_count: usize,
+    },
+    /// Invalid timezone identifier.
+    /// Phase 29C
+    InvalidTimezone(String),
+    /// Bid start date is not a Monday.
+    /// Phase 29C
+    BidStartDateNotMonday(time::Date),
+    /// Bid start date is not in the future.
+    /// Phase 29C
+    BidStartDateNotFuture {
+        /// The bid start date.
+        start_date: time::Date,
+        /// The reference date (typically "today").
+        reference_date: time::Date,
+    },
+    /// Invalid bid window times.
+    /// Phase 29C
+    InvalidBidWindowTimes {
+        /// Window start time.
+        start: time::Time,
+        /// Window end time.
+        end: time::Time,
+    },
+    /// Invalid bidders per day count.
+    /// Phase 29C
+    InvalidBiddersPerDay(u32),
+    /// Seniority conflict - two users have identical seniority after all tie-breakers.
+    /// Phase 29D
+    SeniorityConflict {
+        /// First user's initials.
+        user1_initials: String,
+        /// Second user's initials.
+        user2_initials: String,
+        /// Description of the conflict.
+        reason: String,
+    },
+    /// Invalid bid start date.
+    /// Phase 29E
+    InvalidBidStartDate {
+        /// The date string that failed validation.
+        date: String,
+        /// Description of the validation error.
+        reason: String,
+    },
+    /// Invalid bid schedule configuration.
+    /// Phase 29E
+    InvalidBidSchedule {
+        /// Description of the validation error.
+        reason: String,
+    },
+    /// Invalid bid status string.
+    /// Phase 29F
+    InvalidBidStatus {
+        /// The invalid status string.
+        status: String,
+    },
+    /// Invalid bid status transition.
+    /// Phase 29F
+    InvalidStatusTransition {
+        /// The current status.
+        from: String,
+        /// The requested new status.
+        to: String,
+        /// Description of why the transition is invalid.
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for DomainError {
@@ -413,6 +534,104 @@ impl std::fmt::Display for DomainError {
             }
             Self::InvalidBidWindow { reason } => {
                 write!(f, "Invalid bid window: {reason}")
+            }
+            Self::ParticipationFlagViolation {
+                user_initials,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "Participation flag violation for user {user_initials}: {reason}"
+                )
+            }
+            Self::RoundGroupNotFound { round_group_id } => {
+                write!(f, "Round group with ID {round_group_id} not found")
+            }
+            Self::DuplicateRoundGroupName { bid_year, name } => {
+                write!(
+                    f,
+                    "Round group with name '{name}' already exists in bid year {bid_year}"
+                )
+            }
+            Self::RoundNotFound { round_id } => {
+                write!(f, "Round with ID {round_id} not found")
+            }
+            Self::DuplicateRoundNumber {
+                area_code,
+                round_number,
+            } => {
+                write!(
+                    f,
+                    "Round number {round_number} already exists in area '{area_code}'"
+                )
+            }
+            Self::CannotCreateRoundForSystemArea { area_code } => {
+                write!(f, "Cannot create round for system area '{area_code}'")
+            }
+            Self::InvalidRoundConfiguration { reason } => {
+                write!(f, "Invalid round configuration: {reason}")
+            }
+            Self::RoundGroupInUse {
+                round_group_id,
+                round_count,
+            } => {
+                write!(
+                    f,
+                    "Cannot delete round group {round_group_id}: referenced by {round_count} round(s)"
+                )
+            }
+            Self::InvalidTimezone(tz) => {
+                write!(f, "Invalid timezone identifier: '{tz}'")
+            }
+            Self::BidStartDateNotMonday(date) => {
+                write!(
+                    f,
+                    "Bid start date must be a Monday, but {date} is a {}",
+                    date.weekday()
+                )
+            }
+            Self::BidStartDateNotFuture {
+                start_date,
+                reference_date,
+            } => {
+                write!(
+                    f,
+                    "Bid start date {start_date} must be in the future (after {reference_date})"
+                )
+            }
+            Self::InvalidBidWindowTimes { start, end } => {
+                write!(
+                    f,
+                    "Bid window start time ({start}) must be before end time ({end})"
+                )
+            }
+            Self::InvalidBiddersPerDay(count) => {
+                write!(f, "Invalid bidders per day: {count} (must be > 0)")
+            }
+            Self::SeniorityConflict {
+                user1_initials,
+                user2_initials,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "Seniority conflict between '{user1_initials}' and '{user2_initials}': {reason}"
+                )
+            }
+            Self::InvalidBidStartDate { date, reason } => {
+                write!(f, "Invalid bid start date '{date}': {reason}")
+            }
+            Self::InvalidBidSchedule { reason } => {
+                write!(f, "Invalid bid schedule: {reason}")
+            }
+            Self::InvalidBidStatus { status } => {
+                write!(f, "Invalid bid status: '{status}'")
+            }
+            Self::InvalidStatusTransition { from, to, reason } => {
+                write!(
+                    f,
+                    "Invalid status transition from '{from}' to '{to}': {reason}"
+                )
             }
         }
     }

@@ -74,10 +74,7 @@ pub fn insert_new_user_sqlite(
             diesel_schema::users::initials.eq(user.initials.value()),
             diesel_schema::users::name.eq(&user.name),
             diesel_schema::users::user_type.eq(user.user_type.as_str()),
-            diesel_schema::users::crew.eq(user
-                .crew
-                .as_ref()
-                .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+            diesel_schema::users::crew.eq(user.crew.as_ref().map(|c| i32::from(c.number()))),
             diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
             diesel_schema::users::natca_bu_date.eq(natca_bu_date),
             diesel_schema::users::eod_faa_date.eq(eod_faa_date),
@@ -151,10 +148,7 @@ pub fn insert_new_user_mysql(
             diesel_schema::users::initials.eq(user.initials.value()),
             diesel_schema::users::name.eq(&user.name),
             diesel_schema::users::user_type.eq(user.user_type.as_str()),
-            diesel_schema::users::crew.eq(user
-                .crew
-                .as_ref()
-                .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+            diesel_schema::users::crew.eq(user.crew.as_ref().map(|c| i32::from(c.number()))),
             diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
             diesel_schema::users::natca_bu_date.eq(natca_bu_date),
             diesel_schema::users::eod_faa_date.eq(eod_faa_date),
@@ -231,10 +225,8 @@ pub fn sync_canonical_users_sqlite(
                     diesel_schema::users::initials.eq(user.initials.value()),
                     diesel_schema::users::name.eq(&user.name),
                     diesel_schema::users::user_type.eq(user.user_type.as_str()),
-                    diesel_schema::users::crew.eq(user
-                        .crew
-                        .as_ref()
-                        .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+                    diesel_schema::users::crew
+                        .eq(user.crew.as_ref().map(|c| i32::from(c.number()))),
                     diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
                     diesel_schema::users::natca_bu_date.eq(natca_bu_date),
                     diesel_schema::users::eod_faa_date.eq(eod_faa_date),
@@ -252,10 +244,8 @@ pub fn sync_canonical_users_sqlite(
                     diesel_schema::users::initials.eq(user.initials.value()),
                     diesel_schema::users::name.eq(&user.name),
                     diesel_schema::users::user_type.eq(user.user_type.as_str()),
-                    diesel_schema::users::crew.eq(user
-                        .crew
-                        .as_ref()
-                        .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+                    diesel_schema::users::crew
+                        .eq(user.crew.as_ref().map(|c| i32::from(c.number()))),
                     diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
                     diesel_schema::users::natca_bu_date.eq(natca_bu_date),
                     diesel_schema::users::eod_faa_date.eq(eod_faa_date),
@@ -327,10 +317,8 @@ pub fn sync_canonical_users_mysql(
                     diesel_schema::users::initials.eq(user.initials.value()),
                     diesel_schema::users::name.eq(&user.name),
                     diesel_schema::users::user_type.eq(user.user_type.as_str()),
-                    diesel_schema::users::crew.eq(user
-                        .crew
-                        .as_ref()
-                        .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+                    diesel_schema::users::crew
+                        .eq(user.crew.as_ref().map(|c| i32::from(c.number()))),
                     diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
                     diesel_schema::users::natca_bu_date.eq(natca_bu_date),
                     diesel_schema::users::eod_faa_date.eq(eod_faa_date),
@@ -348,10 +336,8 @@ pub fn sync_canonical_users_mysql(
                     diesel_schema::users::initials.eq(user.initials.value()),
                     diesel_schema::users::name.eq(&user.name),
                     diesel_schema::users::user_type.eq(user.user_type.as_str()),
-                    diesel_schema::users::crew.eq(user
-                        .crew
-                        .as_ref()
-                        .map(|c| c.number().to_i32().expect("Crew number out of range"))),
+                    diesel_schema::users::crew
+                        .eq(user.crew.as_ref().map(|c| i32::from(c.number()))),
                     diesel_schema::users::cumulative_natca_bu_date.eq(cumulative_natca_bu_date),
                     diesel_schema::users::natca_bu_date.eq(natca_bu_date),
                     diesel_schema::users::eod_faa_date.eq(eod_faa_date),
@@ -707,6 +693,50 @@ pub fn bulk_insert_canonical_bid_windows_mysql(
         .execute(conn)?;
 
     debug!(count = records.len(), "Bulk inserted canonical bid windows");
+    Ok(())
+}
+
+/// Bulk inserts bid window records (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `records` - The bid window records to insert
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn bulk_insert_bid_windows_sqlite(
+    conn: &mut SqliteConnection,
+    records: &[crate::data_models::NewBidWindow],
+) -> Result<(), PersistenceError> {
+    diesel::insert_into(diesel_schema::bid_windows::table)
+        .values(records)
+        .execute(conn)?;
+
+    debug!(count = records.len(), "Bulk inserted bid windows");
+    Ok(())
+}
+
+/// Bulk inserts bid window records (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `records` - The bid window records to insert
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn bulk_insert_bid_windows_mysql(
+    conn: &mut MysqlConnection,
+    records: &[crate::data_models::NewBidWindow],
+) -> Result<(), PersistenceError> {
+    diesel::insert_into(diesel_schema::bid_windows::table)
+        .values(records)
+        .execute(conn)?;
+
+    debug!(count = records.len(), "Bulk inserted bid windows");
     Ok(())
 }
 
@@ -1296,4 +1326,254 @@ pub fn update_area_name_mysql(
     debug!(area_id, ?area_name, "Updated area display name");
 
     Ok(())
+}
+
+// ============================================================================
+// Phase 29G: Post-Confirmation Bid Order Adjustments
+// ============================================================================
+
+/// Adjusts bid window for a specific user and round (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `area_id` - The canonical area ID
+/// * `user_id` - The canonical user ID
+/// * `round_id` - The round ID
+/// * `new_window_start` - The new window start datetime (ISO 8601)
+/// * `new_window_end` - The new window end datetime (ISO 8601)
+///
+/// # Returns
+///
+/// Returns the previous window start and end datetimes.
+///
+/// # Errors
+///
+/// Returns an error if the bid window record does not exist or the database operation fails.
+pub fn adjust_bid_window_sqlite(
+    conn: &mut SqliteConnection,
+    bid_year_id: i64,
+    area_id: i64,
+    user_id: i64,
+    round_id: i64,
+    new_window_start: &str,
+    new_window_end: &str,
+) -> Result<(String, String), PersistenceError> {
+    use crate::diesel_schema::bid_windows;
+
+    // First, fetch the current record
+    let (previous_start, previous_end): (String, String) = bid_windows::table
+        .filter(bid_windows::bid_year_id.eq(bid_year_id))
+        .filter(bid_windows::area_id.eq(area_id))
+        .filter(bid_windows::user_id.eq(user_id))
+        .filter(bid_windows::round_id.eq(round_id))
+        .select((
+            bid_windows::window_start_datetime,
+            bid_windows::window_end_datetime,
+        ))
+        .first::<(String, String)>(conn)
+        .map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "Bid window not found for user_id={user_id}, round_id={round_id}"
+            ))
+        })?;
+
+    // Update the record
+    diesel::update(
+        bid_windows::table
+            .filter(bid_windows::bid_year_id.eq(bid_year_id))
+            .filter(bid_windows::area_id.eq(area_id))
+            .filter(bid_windows::user_id.eq(user_id))
+            .filter(bid_windows::round_id.eq(round_id)),
+    )
+    .set((
+        bid_windows::window_start_datetime.eq(new_window_start),
+        bid_windows::window_end_datetime.eq(new_window_end),
+    ))
+    .execute(conn)?;
+
+    debug!(
+        bid_year_id,
+        area_id,
+        user_id,
+        round_id,
+        ?previous_start,
+        ?previous_end,
+        ?new_window_start,
+        ?new_window_end,
+        "Adjusted bid window"
+    );
+
+    Ok((previous_start, previous_end))
+}
+
+/// Adjusts bid window for a specific user and round (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `area_id` - The canonical area ID
+/// * `user_id` - The canonical user ID
+/// * `round_id` - The round ID
+/// * `new_window_start` - The new window start datetime (ISO 8601)
+/// * `new_window_end` - The new window end datetime (ISO 8601)
+///
+/// # Returns
+///
+/// Returns the previous window start and end datetimes.
+///
+/// # Errors
+///
+/// Returns an error if the bid window record does not exist or the database operation fails.
+pub fn adjust_bid_window_mysql(
+    conn: &mut MysqlConnection,
+    bid_year_id: i64,
+    area_id: i64,
+    user_id: i64,
+    round_id: i64,
+    new_window_start: &str,
+    new_window_end: &str,
+) -> Result<(String, String), PersistenceError> {
+    use crate::diesel_schema::bid_windows;
+
+    // First, fetch the current record
+    let (previous_start, previous_end): (String, String) = bid_windows::table
+        .filter(bid_windows::bid_year_id.eq(bid_year_id))
+        .filter(bid_windows::area_id.eq(area_id))
+        .filter(bid_windows::user_id.eq(user_id))
+        .filter(bid_windows::round_id.eq(round_id))
+        .select((
+            bid_windows::window_start_datetime,
+            bid_windows::window_end_datetime,
+        ))
+        .first::<(String, String)>(conn)
+        .map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "Bid window not found for user_id={user_id}, round_id={round_id}"
+            ))
+        })?;
+
+    // Update the record
+    diesel::update(
+        bid_windows::table
+            .filter(bid_windows::bid_year_id.eq(bid_year_id))
+            .filter(bid_windows::area_id.eq(area_id))
+            .filter(bid_windows::user_id.eq(user_id))
+            .filter(bid_windows::round_id.eq(round_id)),
+    )
+    .set((
+        bid_windows::window_start_datetime.eq(new_window_start),
+        bid_windows::window_end_datetime.eq(new_window_end),
+    ))
+    .execute(conn)?;
+
+    debug!(
+        bid_year_id,
+        area_id,
+        user_id,
+        round_id,
+        ?previous_start,
+        ?previous_end,
+        ?new_window_start,
+        ?new_window_end,
+        "Adjusted bid window"
+    );
+
+    Ok((previous_start, previous_end))
+}
+
+/// Deletes bid windows for specific users and rounds, used before recalculation (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `area_id` - The canonical area ID
+/// * `user_ids` - List of user IDs
+/// * `round_ids` - List of round IDs
+///
+/// # Returns
+///
+/// Returns the number of deleted records.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn delete_bid_windows_for_users_and_rounds_sqlite(
+    conn: &mut SqliteConnection,
+    bid_year_id: i64,
+    area_id: i64,
+    user_ids: &[i64],
+    round_ids: &[i64],
+) -> Result<usize, PersistenceError> {
+    use crate::diesel_schema::bid_windows;
+
+    let deleted = diesel::delete(
+        bid_windows::table
+            .filter(bid_windows::bid_year_id.eq(bid_year_id))
+            .filter(bid_windows::area_id.eq(area_id))
+            .filter(bid_windows::user_id.eq_any(user_ids))
+            .filter(bid_windows::round_id.eq_any(round_ids)),
+    )
+    .execute(conn)?;
+
+    debug!(
+        bid_year_id,
+        area_id,
+        user_count = user_ids.len(),
+        round_count = round_ids.len(),
+        deleted,
+        "Deleted bid windows for recalculation"
+    );
+
+    Ok(deleted)
+}
+
+/// Deletes bid windows for specific users and rounds, used before recalculation (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The canonical bid year ID
+/// * `area_id` - The canonical area ID
+/// * `user_ids` - List of user IDs
+/// * `round_ids` - List of round IDs
+///
+/// # Returns
+///
+/// Returns the number of deleted records.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn delete_bid_windows_for_users_and_rounds_mysql(
+    conn: &mut MysqlConnection,
+    bid_year_id: i64,
+    area_id: i64,
+    user_ids: &[i64],
+    round_ids: &[i64],
+) -> Result<usize, PersistenceError> {
+    use crate::diesel_schema::bid_windows;
+
+    let deleted = diesel::delete(
+        bid_windows::table
+            .filter(bid_windows::bid_year_id.eq(bid_year_id))
+            .filter(bid_windows::area_id.eq(area_id))
+            .filter(bid_windows::user_id.eq_any(user_ids))
+            .filter(bid_windows::round_id.eq_any(round_ids)),
+    )
+    .execute(conn)?;
+
+    debug!(
+        bid_year_id,
+        area_id,
+        user_count = user_ids.len(),
+        round_count = round_ids.len(),
+        deleted,
+        "Deleted bid windows for recalculation"
+    );
+
+    Ok(deleted)
 }

@@ -105,6 +105,23 @@ pub struct RegisterUserResponse {
     pub event_id: i64,
 }
 
+/// Bid schedule information for a bid year.
+///
+/// Phase 29C: Defines when and how bidding occurs.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BidScheduleInfo {
+    /// IANA timezone identifier (e.g., `"America/New_York"`)
+    pub timezone: String,
+    /// Bid start date (ISO 8601 format)
+    pub start_date: String,
+    /// Daily bid window start time (HH:MM:SS format)
+    pub window_start_time: String,
+    /// Daily bid window end time (HH:MM:SS format)
+    pub window_end_time: String,
+    /// Number of bidders per area per day
+    pub bidders_per_day: u32,
+}
+
 /// Canonical bid year information.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BidYearInfo {
@@ -128,6 +145,9 @@ pub struct BidYearInfo {
     pub label: Option<String>,
     /// Optional notes for operational context.
     pub notes: Option<String>,
+    /// Optional bid schedule configuration.
+    /// Phase 29C: Present if bid schedule has been configured.
+    pub bid_schedule: Option<BidScheduleInfo>,
 }
 
 /// API response for listing bid years.
@@ -194,6 +214,7 @@ pub struct ListUsersResponse {
 
 /// User information for listing.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // Booleans represent independent domain state
 pub struct UserInfo {
     /// The user's canonical internal identifier.
     pub user_id: i64,
@@ -231,6 +252,12 @@ pub struct UserInfo {
     pub is_exhausted: bool,
     /// Whether leave balance is overdrawn.
     pub is_overdrawn: bool,
+    /// Phase 29A: Whether this user is excluded from bidding.
+    pub excluded_from_bidding: bool,
+    /// Phase 29A: Whether this user is excluded from leave calculation.
+    pub excluded_from_leave_calculation: bool,
+    /// Phase 29D: Whether this user in "No Bid" system area has been reviewed.
+    pub no_bid_reviewed: bool,
     /// Target-specific capabilities for this user instance.
     pub capabilities: UserCapabilities,
 }
@@ -687,6 +714,37 @@ pub struct UpdateUserResponse {
     pub message: String,
 }
 
+/// API request to update user participation flags.
+/// Phase 29A: Controls bid order derivation and leave calculation inclusion.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateUserParticipationRequest {
+    /// The user's canonical internal identifier.
+    pub user_id: i64,
+    /// Whether the user is excluded from bidding.
+    pub excluded_from_bidding: bool,
+    /// Whether the user is excluded from leave calculation.
+    pub excluded_from_leave_calculation: bool,
+}
+
+/// API response for successful participation flag update.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateUserParticipationResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The bid year (display value).
+    pub bid_year: u16,
+    /// The user's canonical internal identifier.
+    pub user_id: i64,
+    /// The user's initials.
+    pub initials: String,
+    /// Whether the user is excluded from bidding.
+    pub excluded_from_bidding: bool,
+    /// Whether the user is excluded from leave calculation.
+    pub excluded_from_leave_calculation: bool,
+    /// Success message.
+    pub message: String,
+}
+
 /// Blocking reason for bootstrap incompleteness.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BlockingReason {
@@ -1132,6 +1190,37 @@ pub struct TransitionToBootstrapCompleteResponse {
     pub message: String,
 }
 
+/// API request to confirm a bid year is ready to bid.
+///
+/// This transitions from `BootstrapComplete` to `Canonicalized`,
+/// materializing bid order and calculating bid windows.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct ConfirmReadyToBidRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// Explicit confirmation text (must match "I understand this action is irreversible").
+    pub confirmation: String,
+}
+
+/// API response for confirming a bid year is ready to bid.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ConfirmReadyToBidResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The year value.
+    pub year: u16,
+    /// The new lifecycle state.
+    pub lifecycle_state: String,
+    /// The audit event ID for this confirmation.
+    pub audit_event_id: i64,
+    /// A success message.
+    pub message: String,
+    /// Number of bid order positions materialized.
+    pub bid_order_count: usize,
+    /// Number of bid windows calculated.
+    pub bid_windows_calculated: usize,
+}
+
 /// API request to transition a bid year to `Canonicalized` state.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct TransitionToCanonicalizedRequest {
@@ -1218,6 +1307,49 @@ pub struct UpdateBidYearMetadataResponse {
     pub message: String,
 }
 
+/// API request to set the bid schedule for a bid year.
+///
+/// Phase 29C: All fields must be provided together.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct SetBidScheduleRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// IANA timezone identifier (e.g., `"America/New_York"`).
+    pub timezone: String,
+    /// Bid start date (ISO 8601 format, must be a Monday).
+    pub start_date: String,
+    /// Daily bid window start time (HH:MM:SS format).
+    pub window_start_time: String,
+    /// Daily bid window end time (HH:MM:SS format).
+    pub window_end_time: String,
+    /// Number of bidders per area per day (must be > 0).
+    pub bidders_per_day: u32,
+}
+
+/// API response for setting bid schedule.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SetBidScheduleResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The year value.
+    pub year: u16,
+    /// The configured bid schedule.
+    pub bid_schedule: BidScheduleInfo,
+    /// A success message.
+    pub message: String,
+}
+
+/// API response for getting bid schedule.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GetBidScheduleResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The year value.
+    pub year: u16,
+    /// The bid schedule if configured, None otherwise.
+    pub bid_schedule: Option<BidScheduleInfo>,
+}
+
 /// API request to override a user's area assignment.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct OverrideAreaAssignmentRequest {
@@ -1296,6 +1428,528 @@ pub struct OverrideBidWindowRequest {
 pub struct OverrideBidWindowResponse {
     /// The audit event ID.
     pub audit_event_id: i64,
+    /// A success message.
+    pub message: String,
+}
+
+// ============================================================================
+// Phase 29G: Post-Confirmation Bid Order Adjustments
+// ============================================================================
+
+/// Single bid order adjustment in a bulk request.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct BidOrderAdjustment {
+    /// The user's canonical identifier.
+    pub user_id: i64,
+    /// The new bid order position.
+    pub new_bid_order: i32,
+}
+
+/// API request to adjust bid order for multiple users.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct AdjustBidOrderRequest {
+    /// List of bid order adjustments to apply.
+    pub adjustments: Vec<BidOrderAdjustment>,
+    /// The reason for the adjustments (min 10 characters).
+    pub reason: String,
+}
+
+/// API response for bulk bid order adjustment.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct AdjustBidOrderResponse {
+    /// The audit event ID.
+    pub audit_event_id: i64,
+    /// Number of users whose bid order was adjusted.
+    pub users_adjusted: usize,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to adjust a single bid window for a specific round.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct AdjustBidWindowRequest {
+    /// The user's canonical identifier.
+    pub user_id: i64,
+    /// The round ID.
+    pub round_id: i64,
+    /// The new window start datetime (ISO 8601 format).
+    pub new_window_start: String,
+    /// The new window end datetime (ISO 8601 format).
+    pub new_window_end: String,
+    /// The reason for the adjustment (min 10 characters).
+    pub reason: String,
+}
+
+/// API response for bid window adjustment.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct AdjustBidWindowResponse {
+    /// The audit event ID.
+    pub audit_event_id: i64,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to recalculate bid windows for multiple users and rounds.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct RecalculateBidWindowsRequest {
+    /// List of user IDs to recalculate windows for.
+    pub user_ids: Vec<i64>,
+    /// List of round IDs to recalculate windows for.
+    pub rounds: Vec<i64>,
+    /// The reason for the recalculation (min 10 characters).
+    pub reason: String,
+}
+
+/// API response for bulk bid window recalculation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct RecalculateBidWindowsResponse {
+    /// The audit event ID.
+    pub audit_event_id: i64,
+    /// Number of bid windows recalculated.
+    pub windows_recalculated: usize,
+    /// Success message.
+    pub message: String,
+}
+
+// ============================================================================
+// Phase 29B: Round Groups and Rounds
+// ============================================================================
+
+/// API request to create a new round group.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CreateRoundGroupRequest {
+    /// The name of the round group (must be unique within bid year).
+    pub name: String,
+    /// Whether editing is enabled for this round group.
+    pub editing_enabled: bool,
+}
+
+/// API response for a successful round group creation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CreateRoundGroupResponse {
+    /// The canonical round group identifier.
+    pub round_group_id: i64,
+    /// The bid year ID this round group belongs to.
+    pub bid_year_id: i64,
+    /// The round group name.
+    pub name: String,
+    /// Whether editing is enabled.
+    pub editing_enabled: bool,
+    /// A success message.
+    pub message: String,
+}
+
+/// API request to update a round group.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateRoundGroupRequest {
+    /// The round group ID to update.
+    pub round_group_id: i64,
+    /// The new name (must be unique within bid year).
+    pub name: String,
+    /// Whether editing is enabled.
+    pub editing_enabled: bool,
+}
+
+/// API response for a successful round group update.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateRoundGroupResponse {
+    /// The canonical round group identifier.
+    pub round_group_id: i64,
+    /// The bid year ID this round group belongs to.
+    pub bid_year_id: i64,
+    /// The updated round group name.
+    pub name: String,
+    /// Whether editing is enabled.
+    pub editing_enabled: bool,
+    /// A success message.
+    pub message: String,
+}
+
+/// API response for round group list.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RoundGroupInfo {
+    /// The canonical round group identifier.
+    pub round_group_id: i64,
+    /// The bid year ID this round group belongs to.
+    pub bid_year_id: i64,
+    /// The round group name.
+    pub name: String,
+    /// Whether editing is enabled.
+    pub editing_enabled: bool,
+}
+
+/// API response for listing round groups.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ListRoundGroupsResponse {
+    /// The bid year ID.
+    pub bid_year_id: i64,
+    /// All round groups for this bid year.
+    pub round_groups: Vec<RoundGroupInfo>,
+}
+
+/// API response for deleting a round group.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeleteRoundGroupResponse {
+    /// A success message.
+    pub message: String,
+}
+
+/// API request to create a new round.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CreateRoundRequest {
+    /// The round group ID that defines this round's configuration.
+    pub round_group_id: i64,
+    /// The round number (must be unique within area).
+    pub round_number: u32,
+    /// The display name for this round.
+    pub name: String,
+    /// Maximum number of slots per day.
+    pub slots_per_day: u32,
+    /// Maximum number of groups.
+    pub max_groups: u32,
+    /// Maximum total hours.
+    pub max_total_hours: u32,
+    /// Whether holidays are included in groups.
+    pub include_holidays: bool,
+    /// Whether overbidding is allowed.
+    pub allow_overbid: bool,
+}
+
+/// API response for a successful round creation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CreateRoundResponse {
+    /// The canonical round identifier.
+    pub round_id: i64,
+    /// The round group ID this round belongs to.
+    pub round_group_id: i64,
+    /// The round number.
+    pub round_number: u32,
+    /// The display name.
+    pub name: String,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to update a round.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateRoundRequest {
+    /// The round ID to update.
+    pub round_id: i64,
+    /// The round group ID.
+    pub round_group_id: i64,
+    /// The round number (must be unique within area).
+    pub round_number: u32,
+    /// The display name.
+    pub name: String,
+    /// Maximum number of slots per day.
+    pub slots_per_day: u32,
+    /// Maximum number of groups.
+    pub max_groups: u32,
+    /// Maximum total hours.
+    pub max_total_hours: u32,
+    /// Whether holidays are included in groups.
+    pub include_holidays: bool,
+    /// Whether overbidding is allowed.
+    pub allow_overbid: bool,
+}
+
+/// API response for a successful round update.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateRoundResponse {
+    /// The canonical round identifier.
+    pub round_id: i64,
+    /// The round group ID this round belongs to.
+    pub round_group_id: i64,
+    /// The round number.
+    pub round_number: u32,
+    /// The display name.
+    pub name: String,
+    /// Success message.
+    pub message: String,
+}
+
+/// API response for round list.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RoundInfo {
+    /// The canonical round identifier.
+    pub round_id: i64,
+    /// The round group ID this round belongs to.
+    pub round_group_id: i64,
+    /// The round number.
+    pub round_number: u32,
+    /// The display name.
+    pub name: String,
+    /// Maximum number of slots per day.
+    pub slots_per_day: u32,
+    /// Maximum number of groups.
+    pub max_groups: u32,
+    /// Maximum total hours.
+    pub max_total_hours: u32,
+    /// Whether holidays are included in this round.
+    pub include_holidays: bool,
+    /// Whether overbidding is allowed in this round.
+    pub allow_overbid: bool,
+}
+
+/// API response for listing rounds.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ListRoundsResponse {
+    /// The round group ID.
+    pub round_group_id: i64,
+    /// All rounds in this round group.
+    pub rounds: Vec<RoundInfo>,
+}
+
+/// API response for deleting a round.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeleteRoundResponse {
+    /// A success message.
+    pub message: String,
+}
+
+/// API response for bid year readiness evaluation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub struct GetBidYearReadinessResponse {
+    /// The bid year ID being evaluated.
+    pub bid_year_id: i64,
+    /// The bid year value (for display).
+    pub year: u16,
+    /// Overall readiness flag.
+    pub is_ready: bool,
+    /// List of all unsatisfied criteria (empty if ready).
+    pub blocking_reasons: Vec<String>,
+    /// Detailed breakdown per criterion.
+    pub details: ReadinessDetailsInfo,
+}
+
+/// Detailed readiness breakdown.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub struct ReadinessDetailsInfo {
+    /// Areas that exist but have no rounds configured.
+    pub areas_missing_rounds: Vec<String>,
+    /// Number of users in No Bid area who have not been reviewed.
+    pub no_bid_users_pending_review: usize,
+    /// Number of users violating participation flag invariant.
+    pub participation_flag_violations: usize,
+    /// Number of seniority conflicts detected.
+    pub seniority_conflicts: usize,
+    /// Whether bid schedule is set and valid.
+    pub bid_schedule_set: bool,
+}
+
+/// API response for reviewing a No Bid user.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub struct ReviewNoBidUserResponse {
+    /// The user ID that was reviewed.
+    pub user_id: i64,
+    /// Success message.
+    pub message: String,
+}
+
+/// API response for bid order preview.
+///
+/// This is a read-only preview of the derived bid order that will be frozen at confirmation.
+/// No persistence or audit events are generated.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub struct GetBidOrderPreviewResponse {
+    /// The bid year ID.
+    pub bid_year_id: i64,
+    /// The area ID.
+    pub area_id: i64,
+    /// The area code (for display).
+    pub area_code: String,
+    /// Ordered list of users in bid order (1-based positions).
+    pub positions: Vec<BidOrderPositionInfo>,
+}
+
+/// Information about a user's position in the derived bid order.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub struct BidOrderPositionInfo {
+    /// The 1-based position in the bid order (1 = first to bid).
+    pub position: usize,
+    /// The user's canonical ID.
+    pub user_id: i64,
+    /// The user's initials (for display).
+    pub initials: String,
+    /// Seniority inputs used for ordering (for transparency).
+    pub seniority_inputs: SeniorityInputsInfo,
+}
+
+/// Seniority inputs used for bid order computation (API representation).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)] // Phase 29D: Will be used when wired up in server
+pub struct SeniorityInputsInfo {
+    /// Cumulative NATCA bargaining unit date.
+    pub cumulative_natca_bu_date: String,
+    /// NATCA bargaining unit date.
+    pub natca_bu_date: String,
+    /// Entry on Duty / FAA date.
+    pub eod_faa_date: String,
+    /// Service Computation Date.
+    pub service_computation_date: String,
+    /// Lottery value (deterministic tie-breaker).
+    pub lottery_value: Option<u32>,
+}
+
+// ========================================================================
+// Phase 29F: Bid Status Tracking
+// ========================================================================
+
+/// API request to get bid status for all users in an area across all rounds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+pub struct GetBidStatusForAreaRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The canonical area identifier.
+    pub area_id: i64,
+}
+
+/// API response containing bid status for all users in an area.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GetBidStatusForAreaResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The area code (for display).
+    pub area_code: String,
+    /// Bid status records for all users and rounds.
+    pub statuses: Vec<BidStatusInfo>,
+}
+
+/// API request to get bid status for a specific user and round.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_field_names)]
+#[allow(dead_code)]
+pub struct GetBidStatusRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The canonical user identifier.
+    pub user_id: i64,
+    /// The round identifier.
+    pub round_id: i64,
+}
+
+/// API response containing bid status for a specific user and round.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GetBidStatusResponse {
+    /// The bid status information.
+    pub status: BidStatusInfo,
+    /// History of status transitions.
+    pub history: Vec<BidStatusHistoryInfo>,
+}
+
+/// Information about a user's bid status for a specific round.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BidStatusInfo {
+    /// The bid status record identifier.
+    pub bid_status_id: i64,
+    /// The canonical user identifier.
+    pub user_id: i64,
+    /// The user's initials (for display).
+    pub initials: String,
+    /// The round identifier.
+    pub round_id: i64,
+    /// The round name (for display).
+    pub round_name: String,
+    /// The current status.
+    pub status: String,
+    /// When the status was last updated (ISO 8601).
+    pub updated_at: String,
+    /// The operator who last updated the status.
+    pub updated_by: String,
+    /// Optional notes about the status.
+    pub notes: Option<String>,
+}
+
+/// Information about a bid status transition.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BidStatusHistoryInfo {
+    /// The history record identifier.
+    pub history_id: i64,
+    /// The previous status (if any).
+    pub previous_status: Option<String>,
+    /// The new status.
+    pub new_status: String,
+    /// When the transition occurred (ISO 8601).
+    pub transitioned_at: String,
+    /// The operator who made the transition.
+    pub transitioned_by: String,
+    /// Optional notes about the transition.
+    pub notes: Option<String>,
+}
+
+/// API request to transition a bid status to a new state.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct TransitionBidStatusRequest {
+    /// The bid status record identifier.
+    pub bid_status_id: i64,
+    /// The new status value.
+    pub new_status: String,
+    /// Required notes explaining the transition (min 10 characters).
+    pub notes: String,
+}
+
+/// API response for a successful bid status transition.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TransitionBidStatusResponse {
+    /// The bid status record identifier.
+    pub bid_status_id: i64,
+    /// The canonical user identifier.
+    pub user_id: i64,
+    /// The round identifier.
+    pub round_id: i64,
+    /// The previous status.
+    pub previous_status: String,
+    /// The new status.
+    pub new_status: String,
+    /// When the transition occurred (ISO 8601).
+    pub transitioned_at: String,
+    /// Success message.
+    pub message: String,
+}
+
+/// API request to bulk update bid status for multiple users.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[allow(dead_code)]
+pub struct BulkUpdateBidStatusRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The canonical area identifier.
+    pub area_id: i64,
+    /// The list of user IDs to update.
+    pub user_ids: Vec<i64>,
+    /// The round identifier.
+    pub round_id: i64,
+    /// The new status value.
+    pub new_status: String,
+    /// Required notes explaining the bulk update (min 10 characters).
+    pub notes: String,
+}
+
+/// API response for a successful bulk bid status update.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BulkUpdateBidStatusResponse {
+    /// The number of records updated.
+    pub updated_count: usize,
+    /// The new status value.
+    pub new_status: String,
     /// Success message.
     pub message: String,
 }

@@ -397,6 +397,109 @@ pub fn translate_domain_error(err: DomainError) -> ApiError {
             field: String::from("bid_window"),
             message: reason,
         },
+        DomainError::ParticipationFlagViolation {
+            user_initials,
+            reason,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("participation_flag_invariant"),
+            message: format!("Participation flag violation for user '{user_initials}': {reason}"),
+        },
+        DomainError::RoundGroupNotFound { round_group_id } => ApiError::ResourceNotFound {
+            resource_type: String::from("Round group"),
+            message: format!("Round group with ID {round_group_id} not found"),
+        },
+        DomainError::DuplicateRoundGroupName { bid_year, name } => ApiError::DomainRuleViolation {
+            rule: String::from("unique_round_group_name"),
+            message: format!(
+                "Round group with name '{name}' already exists in bid year {bid_year}"
+            ),
+        },
+        DomainError::RoundNotFound { round_id } => ApiError::ResourceNotFound {
+            resource_type: String::from("Round"),
+            message: format!("Round with ID {round_id} not found"),
+        },
+        DomainError::DuplicateRoundNumber {
+            area_code,
+            round_number,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("unique_round_number"),
+            message: format!("Round number {round_number} already exists in area '{area_code}'"),
+        },
+        DomainError::CannotCreateRoundForSystemArea { area_code } => {
+            ApiError::DomainRuleViolation {
+                rule: String::from("no_rounds_for_system_areas"),
+                message: format!("Cannot create round for system area '{area_code}'"),
+            }
+        }
+        DomainError::InvalidRoundConfiguration { reason } => ApiError::InvalidInput {
+            field: String::from("round_configuration"),
+            message: reason,
+        },
+        DomainError::RoundGroupInUse {
+            round_group_id,
+            round_count,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("round_group_in_use"),
+            message: format!(
+                "Cannot delete round group {round_group_id}: referenced by {round_count} round(s)"
+            ),
+        },
+        DomainError::InvalidTimezone(tz) => ApiError::InvalidInput {
+            field: String::from("timezone"),
+            message: format!("Invalid timezone identifier: '{tz}'"),
+        },
+        DomainError::BidStartDateNotMonday(date) => ApiError::InvalidInput {
+            field: String::from("start_date"),
+            message: format!(
+                "Bid start date must be a Monday, but {date} is a {}",
+                date.weekday()
+            ),
+        },
+        DomainError::BidStartDateNotFuture {
+            start_date,
+            reference_date,
+        } => ApiError::InvalidInput {
+            field: String::from("start_date"),
+            message: format!(
+                "Bid start date {start_date} must be in the future (after {reference_date})"
+            ),
+        },
+        DomainError::InvalidBidWindowTimes { start, end } => ApiError::InvalidInput {
+            field: String::from("bid_window"),
+            message: format!("Bid window start time ({start}) must be before end time ({end})"),
+        },
+        DomainError::InvalidBiddersPerDay(count) => ApiError::InvalidInput {
+            field: String::from("bidders_per_day"),
+            message: format!("Bidders per day must be greater than 0, got {count}"),
+        },
+        DomainError::SeniorityConflict {
+            user1_initials,
+            user2_initials,
+            reason,
+        } => ApiError::DomainRuleViolation {
+            rule: String::from("seniority_total_ordering"),
+            message: format!(
+                "Seniority conflict between '{user1_initials}' and '{user2_initials}': {reason}"
+            ),
+        },
+        DomainError::InvalidBidStartDate { date, reason } => ApiError::InvalidInput {
+            field: String::from("bid_start_date"),
+            message: format!("Invalid bid start date '{date}': {reason}"),
+        },
+        DomainError::InvalidBidSchedule { reason } => ApiError::InvalidInput {
+            field: String::from("bid_schedule"),
+            message: format!("Invalid bid schedule: {reason}"),
+        },
+        DomainError::InvalidBidStatus { status } => ApiError::InvalidInput {
+            field: String::from("status"),
+            message: format!("Invalid bid status: '{status}'"),
+        },
+        DomainError::InvalidStatusTransition { from, to, reason } => {
+            ApiError::DomainRuleViolation {
+                rule: String::from("bid_status_transition"),
+                message: format!("Invalid status transition from '{from}' to '{to}': {reason}"),
+            }
+        }
     }
 }
 

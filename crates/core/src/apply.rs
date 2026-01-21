@@ -388,6 +388,50 @@ pub fn apply_bootstrap(
                 canonical_bid_year: None,
             })
         }
+        Command::ConfirmReadyToBid { year } => {
+            let bid_year = BidYear::new(year);
+
+            // Validate bid year exists
+            if !metadata.has_bid_year(&bid_year) {
+                return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
+                    year,
+                )));
+            }
+
+            // Create new metadata (unchanged - bid order materialization happens in persistence)
+            let new_metadata: BootstrapMetadata = metadata.clone();
+
+            // Create audit event recording the confirmation
+            let before: StateSnapshot =
+                StateSnapshot::new(String::from("lifecycle_state=BootstrapComplete"));
+            let after: StateSnapshot = StateSnapshot::new(String::from(
+                "lifecycle_state=Canonicalized,bid_order_materialized=true,bid_windows_calculated=true",
+            ));
+
+            let action: Action = Action::new(
+                String::from("ConfirmReadyToBid"),
+                Some(format!(
+                    "Confirmed bid year {year} ready to bid (materialized bid order and calculated bid windows)"
+                )),
+            );
+
+            let audit_event: AuditEvent = AuditEvent {
+                event_id: None,
+                actor,
+                cause,
+                action,
+                before,
+                after,
+                bid_year: Some(bid_year),
+                area: None,
+            };
+
+            Ok(BootstrapResult {
+                new_metadata,
+                audit_event,
+                canonical_bid_year: None,
+            })
+        }
         Command::TransitionToBiddingActive { year } => {
             let bid_year = BidYear::new(year);
 
@@ -550,6 +594,9 @@ pub fn apply(
                 user_type,
                 crew,
                 seniority_data,
+                false, // excluded_from_bidding: default to false
+                false, // excluded_from_leave_calculation: default to false
+                false, // no_bid_reviewed: default to false
             );
 
             // Validate user field constraints
@@ -716,8 +763,12 @@ pub fn apply(
                 })
             })?;
 
-            // Create the updated user object
-            let updated_user: User = User::new(
+            // Get existing user to preserve participation flags
+            let existing_user: &User = &state.users[user_index];
+
+            // Create the updated user object (preserve user_id and participation flags)
+            let updated_user: User = User::with_id(
+                user_id,
                 bid_year.clone(),
                 initials.clone(),
                 name,
@@ -725,6 +776,9 @@ pub fn apply(
                 user_type,
                 crew,
                 seniority_data,
+                existing_user.excluded_from_bidding,
+                existing_user.excluded_from_leave_calculation,
+                existing_user.no_bid_reviewed,
             );
 
             // Validate user field constraints
@@ -770,6 +824,90 @@ pub fn apply(
                 audit_event,
             })
         }
+        Command::UpdateUserParticipation {
+            user_id,
+            initials,
+            excluded_from_bidding,
+            excluded_from_leave_calculation,
+        } => {
+            // Use the active bid year
+            let bid_year = active_bid_year;
+
+            // Find the user to update by canonical user_id
+            let user_index: Option<usize> = state
+                .users
+                .iter()
+                .position(|u| u.user_id == Some(user_id) && &u.bid_year == bid_year);
+
+            let user_index: usize = user_index.ok_or_else(|| {
+                CoreError::DomainViolation(DomainError::UserNotFound {
+                    bid_year: bid_year.year(),
+                    area: state.area.id().to_string(),
+                    initials: initials.value().to_string(),
+                })
+            })?;
+
+            let existing_user: &User = &state.users[user_index];
+
+            // Create the updated user object with new participation flags (preserve user_id)
+            let updated_user: User = User::with_id(
+                user_id,
+                existing_user.bid_year.clone(),
+                existing_user.initials.clone(),
+                existing_user.name.clone(),
+                existing_user.area.clone(),
+                existing_user.user_type,
+                existing_user.crew,
+                existing_user.seniority_data.clone(),
+                excluded_from_bidding,
+                excluded_from_leave_calculation,
+                existing_user.no_bid_reviewed,
+            );
+
+            // Validate participation flag directional invariant
+            updated_user.validate_participation_flags()?;
+
+            // Capture state before transition
+            let before: StateSnapshot = state.to_snapshot();
+
+            // Create new state with the user updated
+            let mut new_users: Vec<User> = state.users.clone();
+            new_users[user_index] = updated_user;
+            let new_state: State = State {
+                bid_year: state.bid_year.clone(),
+                area: state.area.clone(),
+                users: new_users,
+            };
+
+            // Capture state after transition
+            let after: StateSnapshot = new_state.to_snapshot();
+
+            // Create audit event
+            let action: Action = Action::new(
+                String::from("UpdateUserParticipation"),
+                Some(format!(
+                    "Updated participation flags for user_id={} (initials '{}'): excluded_from_bidding={}, excluded_from_leave_calculation={}",
+                    user_id,
+                    initials.value(),
+                    excluded_from_bidding,
+                    excluded_from_leave_calculation
+                )),
+            );
+            let audit_event: AuditEvent = AuditEvent::new(
+                actor,
+                cause,
+                action,
+                before,
+                after,
+                state.bid_year.clone(),
+                state.area.clone(),
+            );
+
+            Ok(TransitionResult {
+                new_state,
+                audit_event,
+            })
+        }
         Command::CreateBidYear { .. }
         | Command::CreateArea { .. }
         | Command::SetActiveBidYear { .. }
@@ -777,6 +915,7 @@ pub fn apply(
         | Command::SetExpectedUserCount { .. }
         | Command::TransitionToBootstrapComplete { .. }
         | Command::TransitionToCanonicalized { .. }
+        | Command::ConfirmReadyToBid { .. }
         | Command::TransitionToBiddingActive { .. }
         | Command::TransitionToBiddingClosed { .. } => {
             // Bootstrap commands should use apply_bootstrap() instead
@@ -788,6 +927,15 @@ pub fn apply(
         | Command::OverrideBidWindow { .. } => {
             // Override commands work directly with persistence, not through apply()
             unreachable!("apply called with override command")
+        }
+        Command::CreateRoundGroup { .. }
+        | Command::UpdateRoundGroup { .. }
+        | Command::DeleteRoundGroup { .. }
+        | Command::CreateRound { .. }
+        | Command::UpdateRound { .. }
+        | Command::DeleteRound { .. } => {
+            // Round configuration commands are managed directly in API layer, not through apply()
+            unreachable!("apply called with round configuration command")
         }
     }
 }

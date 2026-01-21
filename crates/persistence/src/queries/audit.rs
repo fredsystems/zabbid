@@ -99,7 +99,7 @@ pub fn get_audit_event(conn: &mut _, event_id: i64) -> Result<AuditEvent, Persis
     // For CreateBidYear events, area_id might be NULL (use a sentinel area)
     let area: Area = row.area_id.map_or_else(
         || Area::new(&row.area_code),
-        |id| Area::with_id(id, &row.area_code, None, false),
+        |id| Area::with_id(id, &row.area_code, None, false, None),
     );
 
     Ok(AuditEvent::with_id(
@@ -178,7 +178,7 @@ pub fn get_events_after(
             // but handle None as a safety measure
             let area: Area = row.area_id.map_or_else(
                 || Area::new(&row.area_code),
-                |id| Area::with_id(id, &row.area_code, None, false),
+                |id| Area::with_id(id, &row.area_code, None, false, None),
             );
 
             Ok(AuditEvent::with_id(
@@ -299,7 +299,7 @@ pub fn get_audit_timeline(
                         serde_json::from_str::<StateSnapshotData>(&after_snapshot_json)?.data,
                     ),
                     BidYear::with_id(bid_year_id, year),
-                    Area::with_id(area_id, &area_code, None, false),
+                    Area::with_id(area_id, &area_code, None, false, None),
                 ))
             },
         )

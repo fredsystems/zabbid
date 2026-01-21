@@ -12,6 +12,7 @@ diesel::table! {
         area_name -> Nullable<Text>,
         expected_user_count -> Nullable<Integer>,
         is_system_area -> Integer,
+        round_group_id -> Nullable<BigInt>,
     }
 }
 
@@ -45,12 +46,44 @@ diesel::table! {
         lifecycle_state -> Text,
         label -> Nullable<Text>,
         notes -> Nullable<Text>,
+        bid_timezone -> Nullable<Text>,
+        bid_start_date -> Nullable<Text>,
+        bid_window_start_time -> Nullable<Text>,
+        bid_window_end_time -> Nullable<Text>,
+        bidders_per_area_per_day -> Nullable<Integer>,
+    }
+}
+
+diesel::table! {
+    bid_status (bid_status_id) {
+        bid_status_id -> BigInt,
+        bid_year_id -> BigInt,
+        area_id -> BigInt,
+        user_id -> BigInt,
+        round_id -> BigInt,
+        status -> Text,
+        updated_at -> Text,
+        updated_by -> BigInt,
+        notes -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    bid_status_history (history_id) {
+        history_id -> BigInt,
+        bid_status_id -> BigInt,
+        audit_event_id -> BigInt,
+        previous_status -> Nullable<Text>,
+        new_status -> Text,
+        transitioned_at -> Text,
+        transitioned_by -> BigInt,
+        notes -> Nullable<Text>,
     }
 }
 
 diesel::table! {
     canonical_area_membership (id) {
-        id -> Nullable<BigInt>,
+        id -> BigInt,
         bid_year_id -> BigInt,
         audit_event_id -> BigInt,
         user_id -> BigInt,
@@ -62,7 +95,7 @@ diesel::table! {
 
 diesel::table! {
     canonical_bid_order (id) {
-        id -> Nullable<BigInt>,
+        id -> BigInt,
         bid_year_id -> BigInt,
         audit_event_id -> BigInt,
         user_id -> BigInt,
@@ -73,8 +106,20 @@ diesel::table! {
 }
 
 diesel::table! {
+    bid_windows (bid_window_id) {
+        bid_window_id -> BigInt,
+        bid_year_id -> BigInt,
+        area_id -> BigInt,
+        user_id -> BigInt,
+        round_id -> BigInt,
+        window_start_datetime -> Text,
+        window_end_datetime -> Text,
+    }
+}
+
+diesel::table! {
     canonical_bid_windows (id) {
-        id -> Nullable<BigInt>,
+        id -> BigInt,
         bid_year_id -> BigInt,
         audit_event_id -> BigInt,
         user_id -> BigInt,
@@ -87,7 +132,7 @@ diesel::table! {
 
 diesel::table! {
     canonical_eligibility (id) {
-        id -> Nullable<BigInt>,
+        id -> BigInt,
         bid_year_id -> BigInt,
         audit_event_id -> BigInt,
         user_id -> BigInt,
@@ -108,6 +153,29 @@ diesel::table! {
         created_at -> Text,
         disabled_at -> Nullable<Text>,
         last_login_at -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    round_groups (round_group_id) {
+        round_group_id -> BigInt,
+        bid_year_id -> BigInt,
+        name -> Text,
+        editing_enabled -> Integer,
+    }
+}
+
+diesel::table! {
+    rounds (round_id) {
+        round_id -> BigInt,
+        round_group_id -> BigInt,
+        round_number -> Integer,
+        name -> Text,
+        slots_per_day -> Integer,
+        max_groups -> Integer,
+        max_total_hours -> Integer,
+        include_holidays -> Integer,
+        allow_overbid -> Integer,
     }
 }
 
@@ -147,17 +215,31 @@ diesel::table! {
         eod_faa_date -> Text,
         service_computation_date -> Text,
         lottery_value -> Nullable<Integer>,
+        excluded_from_bidding -> Integer,
+        excluded_from_leave_calculation -> Integer,
+        no_bid_reviewed -> Integer,
     }
 }
 
 diesel::joinable!(areas -> bid_years (bid_year_id));
+diesel::joinable!(areas -> round_groups (round_group_id));
 diesel::joinable!(audit_events -> areas (area_id));
 diesel::joinable!(audit_events -> bid_years (bid_year_id));
 diesel::joinable!(audit_events -> operators (actor_operator_id));
+diesel::joinable!(bid_status -> areas (area_id));
+diesel::joinable!(bid_status -> bid_years (bid_year_id));
+diesel::joinable!(bid_status -> rounds (round_id));
+diesel::joinable!(bid_status -> users (user_id));
+diesel::joinable!(bid_status_history -> audit_events (audit_event_id));
+diesel::joinable!(bid_status_history -> bid_status (bid_status_id));
 diesel::joinable!(canonical_area_membership -> areas (area_id));
 diesel::joinable!(canonical_area_membership -> audit_events (audit_event_id));
 diesel::joinable!(canonical_area_membership -> bid_years (bid_year_id));
 diesel::joinable!(canonical_area_membership -> users (user_id));
+diesel::joinable!(bid_windows -> areas (area_id));
+diesel::joinable!(bid_windows -> bid_years (bid_year_id));
+diesel::joinable!(bid_windows -> rounds (round_id));
+diesel::joinable!(bid_windows -> users (user_id));
 diesel::joinable!(canonical_bid_order -> audit_events (audit_event_id));
 diesel::joinable!(canonical_bid_order -> bid_years (bid_year_id));
 diesel::joinable!(canonical_bid_order -> users (user_id));
@@ -167,6 +249,8 @@ diesel::joinable!(canonical_bid_windows -> users (user_id));
 diesel::joinable!(canonical_eligibility -> audit_events (audit_event_id));
 diesel::joinable!(canonical_eligibility -> bid_years (bid_year_id));
 diesel::joinable!(canonical_eligibility -> users (user_id));
+diesel::joinable!(round_groups -> bid_years (bid_year_id));
+diesel::joinable!(rounds -> round_groups (round_group_id));
 diesel::joinable!(sessions -> operators (operator_id));
 diesel::joinable!(state_snapshots -> areas (area_id));
 diesel::joinable!(state_snapshots -> audit_events (event_id));
@@ -177,12 +261,17 @@ diesel::joinable!(users -> bid_years (bid_year_id));
 diesel::allow_tables_to_appear_in_same_query!(
     areas,
     audit_events,
+    bid_status,
+    bid_status_history,
     bid_years,
+    bid_windows,
     canonical_area_membership,
     canonical_bid_order,
     canonical_bid_windows,
     canonical_eligibility,
     operators,
+    round_groups,
+    rounds,
     sessions,
     state_snapshots,
     users,

@@ -124,6 +124,14 @@ pub enum Command {
         /// The year to transition.
         year: u16,
     },
+    /// Confirm a bid year is ready to bid, materializing bid order and windows.
+    ///
+    /// This transitions from `BootstrapComplete` to `Canonicalized`.
+    /// It materializes bid order, calculates bid windows, and locks editing.
+    ConfirmReadyToBid {
+        /// The year to confirm.
+        year: u16,
+    },
     /// Transition a bid year from `Canonicalized` to `BiddingActive`.
     TransitionToBiddingActive {
         /// The year to transition.
@@ -191,5 +199,108 @@ pub enum Command {
         window_end: Option<Date>,
         /// The reason for the override (must be non-empty, min 10 chars).
         reason: String,
+    },
+    /// Update a user's participation flags.
+    ///
+    /// Phase 29A: Controls bid order derivation and leave calculation inclusion.
+    /// The user is identified by `user_id` (canonical, immutable).
+    /// Initials are included for audit trail clarity only.
+    ///
+    /// Directional invariant enforced:
+    /// `excluded_from_leave_calculation == true` ⇒ `excluded_from_bidding == true`
+    UpdateUserParticipation {
+        /// The user's canonical identifier (immutable, authoritative).
+        user_id: i64,
+        /// The user's initials (metadata for audit trail only).
+        initials: Initials,
+        /// Whether the user is excluded from bidding.
+        excluded_from_bidding: bool,
+        /// Whether the user is excluded from leave calculation.
+        excluded_from_leave_calculation: bool,
+    },
+    /// Create a new round group for a bid year.
+    ///
+    /// Phase 29B: Round configuration infrastructure.
+    /// Round groups define reusable rule sets that can be applied to multiple rounds.
+    CreateRoundGroup {
+        /// The bid year this round group belongs to (canonical ID).
+        bid_year_id: i64,
+        /// The name of the round group (must be unique within bid year).
+        name: String,
+        /// Whether editing is enabled for this round group.
+        editing_enabled: bool,
+    },
+    /// Update an existing round group's configuration.
+    ///
+    /// Phase 29B: Round configuration infrastructure.
+    UpdateRoundGroup {
+        /// The round group's canonical identifier.
+        round_group_id: i64,
+        /// The new name (must be unique within bid year).
+        name: String,
+        /// Whether editing is enabled.
+        editing_enabled: bool,
+    },
+    /// Delete a round group.
+    ///
+    /// Phase 29B: Round configuration infrastructure.
+    /// Can only be deleted if no rounds reference it.
+    DeleteRoundGroup {
+        /// The round group's canonical identifier.
+        round_group_id: i64,
+    },
+    /// Create a new round for an area.
+    ///
+    /// Phase 29B: Round configuration infrastructure.
+    /// Rounds define specific bidding periods with constraints.
+    CreateRound {
+        /// The area this round belongs to (canonical ID).
+        area_id: i64,
+        /// The round group that defines this round's configuration.
+        round_group_id: i64,
+        /// The round number (must be unique within area).
+        round_number: u32,
+        /// The display name for this round.
+        name: String,
+        /// Maximum number of slots per day.
+        slots_per_day: u32,
+        /// Maximum number of groups.
+        max_groups: u32,
+        /// Maximum total hours.
+        max_total_hours: u32,
+        /// Whether holidays are included in groups.
+        include_holidays: bool,
+        /// Whether overbidding is allowed.
+        allow_overbid: bool,
+    },
+    /// Update an existing round's configuration.
+    ///
+    /// Phase 29B: Round configuration infrastructure.
+    UpdateRound {
+        /// The round's canonical identifier.
+        round_id: i64,
+        /// The round group that defines this round's configuration.
+        round_group_id: i64,
+        /// The round number (must be unique within area).
+        round_number: u32,
+        /// The display name for this round.
+        name: String,
+        /// Maximum number of slots per day.
+        slots_per_day: u32,
+        /// Maximum number of groups.
+        max_groups: u32,
+        /// Maximum total hours.
+        max_total_hours: u32,
+        /// Whether holidays are included in groups.
+        include_holidays: bool,
+        /// Whether overbidding is allowed.
+        allow_overbid: bool,
+    },
+    /// Delete a round.
+    ///
+    /// Phase 29B: Round configuration infrastructure.
+    DeleteRound {
+        /// The round's canonical identifier.
+        round_id: i64,
     },
 }

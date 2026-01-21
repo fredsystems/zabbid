@@ -11,7 +11,6 @@
 
 use diesel::prelude::*;
 use diesel::{MysqlConnection, SqliteConnection};
-use num_traits::ToPrimitive;
 use tracing::debug;
 use zab_bid::State;
 use zab_bid_audit::AuditEvent;
@@ -178,7 +177,8 @@ pub fn persist_audit_event_with_ids(
 
     // Extract display values (may be placeholders for global events)
     let year: i32 = event.bid_year.as_ref().map_or(0, |by| {
-        by.year().to_i32().expect("Year value out of i32 range")
+        // SAFETY: u16 always fits in i32
+        i32::from(by.year())
     });
     let area_code: &str = event.area.as_ref().map_or("", Area::id);
 

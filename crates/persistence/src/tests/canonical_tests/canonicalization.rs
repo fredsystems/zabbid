@@ -41,10 +41,10 @@ fn test_canonicalize_creates_tables_sqlite() {
             .expect("Failed to insert area");
 
             diesel::sql_query(
-                "INSERT INTO users (user_id, bid_year_id, area_id, initials, name, user_type, cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date)
+                "INSERT INTO users (user_id, bid_year_id, area_id, initials, name, user_type, cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date, excluded_from_bidding, excluded_from_leave_calculation)
                  VALUES
-                 (1, 1, 1, 'ABC', 'User One', 'CPC', '2020-01-01', '2020-01-01', '2020-01-01', '2020-01-01'),
-                 (2, 1, 1, 'DEF', 'User Two', 'CPC', '2021-01-01', '2021-01-01', '2021-01-01', '2021-01-01')",
+                 (1, 1, 1, 'ABC', 'User One', 'CPC', '2020-01-01', '2020-01-01', '2020-01-01', '2020-01-01', 0, 0),
+                 (2, 1, 1, 'DEF', 'User Two', 'CPC', '2021-01-01', '2021-01-01', '2021-01-01', '2021-01-01', 0, 0)",
             )
             .execute(conn)
             .expect("Failed to insert users");
@@ -234,8 +234,8 @@ fn test_canonicalize_idempotent_sqlite() {
             .expect("Failed to insert area");
 
             diesel::sql_query(
-                "INSERT INTO users (user_id, bid_year_id, area_id, initials, name, user_type, cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date)
-                 VALUES (1, 1, 1, 'ABC', 'User One', 'CPC', '2020-01-01', '2020-01-01', '2020-01-01', '2020-01-01')",
+                "INSERT INTO users (user_id, bid_year_id, area_id, initials, name, user_type, cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date, excluded_from_bidding, excluded_from_leave_calculation)
+                 VALUES (1, 1, 1, 'ABC', 'User One', 'CPC', '2020-01-01', '2020-01-01', '2020-01-01', '2020-01-01', 0, 0)",
             )
             .execute(conn)
             .expect("Failed to insert user");
@@ -319,8 +319,8 @@ fn test_read_routing_before_canonicalization_sqlite() {
             .expect("Failed to insert area");
 
             diesel::sql_query(
-                "INSERT INTO users (user_id, bid_year_id, area_id, initials, name, user_type, cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date)
-                 VALUES (1, 1, 1, 'ABC', 'User One', 'CPC', '2020-01-01', '2020-01-01', '2020-01-01', '2020-01-01')",
+                "INSERT INTO users (user_id, bid_year_id, area_id, initials, name, user_type, cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date, excluded_from_bidding, excluded_from_leave_calculation)
+                 VALUES (1, 1, 1, 'ABC', 'User One', 'CPC', '2020-01-01', '2020-01-01', '2020-01-01', '2020-01-01', 0, 0)",
             )
             .execute(conn)
             .expect("Failed to insert user");
@@ -372,8 +372,8 @@ fn test_read_routing_after_canonicalization_sqlite() {
             .expect("Failed to insert area");
 
             diesel::sql_query(
-                "INSERT INTO users (user_id, bid_year_id, area_id, initials, name, user_type, cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date)
-                 VALUES (1, 1, 1, 'ABC', 'User One', 'CPC', '2020-01-01', '2020-01-01', '2020-01-01', '2020-01-01')",
+                "INSERT INTO users (user_id, bid_year_id, area_id, initials, name, user_type, cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date, excluded_from_bidding, excluded_from_leave_calculation)
+                 VALUES (1, 1, 1, 'ABC', 'User One', 'CPC', '2020-01-01', '2020-01-01', '2020-01-01', '2020-01-01', 0, 0)",
             )
             .execute(conn)
             .expect("Failed to insert user");
@@ -475,11 +475,11 @@ fn test_canonicalize_audit_snapshot_sqlite() {
             .expect("Failed to insert areas");
 
             diesel::sql_query(
-                "INSERT INTO users (user_id, bid_year_id, area_id, initials, name, user_type, cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date)
+                "INSERT INTO users (user_id, bid_year_id, area_id, initials, name, user_type, cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date, excluded_from_bidding, excluded_from_leave_calculation)
                  VALUES
-                 (1, 1, 1, 'ABC', 'User One', 'CPC', '2020-01-01', '2020-01-01', '2020-01-01', '2020-01-01'),
-                 (2, 1, 1, 'DEF', 'User Two', 'CPC', '2021-01-01', '2021-01-01', '2021-01-01', '2021-01-01'),
-                 (3, 1, 2, 'GHI', 'User Three', 'CPC', '2022-01-01', '2022-01-01', '2022-01-01', '2022-01-01')",
+                 (1, 1, 1, 'ABC', 'User One', 'CPC', '2020-01-01', '2020-01-01', '2020-01-01', '2020-01-01', 0, 0),
+                 (2, 1, 1, 'DEF', 'User Two', 'CPC', '2021-01-01', '2021-01-01', '2021-01-01', '2021-01-01', 0, 0),
+                 (3, 1, 2, 'GHI', 'User Three', 'CPC', '2022-01-01', '2022-01-01', '2022-01-01', '2022-01-01', 0, 0)",
             )
             .execute(conn)
             .expect("Failed to insert users");

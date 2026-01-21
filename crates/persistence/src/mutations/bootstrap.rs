@@ -38,6 +38,17 @@ use crate::mutations::canonical::{
 };
 use crate::queries::canonical::{lookup_bid_year_id_mysql, lookup_bid_year_id_sqlite};
 
+/// Type alias for bid schedule fields returned from database queries.
+///
+/// Phase 29C: Represents the tuple of nullable bid schedule fields.
+pub type BidScheduleFields = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<i32>,
+);
+
 /// Result of persisting a transition.
 ///
 /// Contains the event ID assigned to the audit event, and optionally the
@@ -194,10 +205,12 @@ pub fn persist_bootstrap_sqlite(
     match result.audit_event.action.name.as_str() {
         "CreateBidYear" => {
             // Extract canonical bid year metadata
-            let canonical: &CanonicalBidYear = result
-                .canonical_bid_year
-                .as_ref()
-                .expect("CreateBidYear must include canonical_bid_year");
+            let canonical: &CanonicalBidYear =
+                result.canonical_bid_year.as_ref().ok_or_else(|| {
+                    PersistenceError::Other(
+                        "CreateBidYear must include canonical_bid_year".to_string(),
+                    )
+                })?;
 
             // Format date as ISO 8601 string for storage
             let start_date_str: String = canonical.start_date().to_string();
@@ -253,7 +266,9 @@ pub fn persist_bootstrap_sqlite(
                     .audit_event
                     .bid_year
                     .as_ref()
-                    .expect("CreateArea must have bid_year")
+                    .ok_or_else(|| {
+                        PersistenceError::Other("CreateArea must have bid_year".to_string())
+                    })?
                     .year(),
             )?;
 
@@ -265,7 +280,9 @@ pub fn persist_bootstrap_sqlite(
                         .audit_event
                         .area
                         .as_ref()
-                        .expect("CreateArea must have area")
+                        .ok_or_else(|| {
+                            PersistenceError::Other("CreateArea must have area".to_string())
+                        })?
                         .id()),
                 ))
                 .execute(conn)?;
@@ -279,7 +296,9 @@ pub fn persist_bootstrap_sqlite(
                     .audit_event
                     .area
                     .as_ref()
-                    .expect("CreateArea must have area")
+                    .ok_or_else(|| {
+                        PersistenceError::Other("CreateArea must have area".to_string())
+                    })?
                     .id(),
                 "Inserted area into canonical table"
             );
@@ -295,16 +314,12 @@ pub fn persist_bootstrap_sqlite(
 
             // Create an initial empty snapshot for new areas
             let initial_state: State = State::new(
-                result
-                    .audit_event
-                    .bid_year
-                    .clone()
-                    .expect("CreateArea must have bid_year"),
-                result
-                    .audit_event
-                    .area
-                    .clone()
-                    .expect("CreateArea must have area"),
+                result.audit_event.bid_year.clone().ok_or_else(|| {
+                    PersistenceError::Other("CreateArea must have bid_year".to_string())
+                })?,
+                result.audit_event.area.clone().ok_or_else(|| {
+                    PersistenceError::Other("CreateArea must have area".to_string())
+                })?,
             );
             persist_state_snapshot_sqlite(conn, &initial_state, event_id)?;
             debug!(event_id, "Created initial empty snapshot for new area");
@@ -348,10 +363,12 @@ pub fn persist_bootstrap_mysql(
     match result.audit_event.action.name.as_str() {
         "CreateBidYear" => {
             // Extract canonical bid year metadata
-            let canonical: &CanonicalBidYear = result
-                .canonical_bid_year
-                .as_ref()
-                .expect("CreateBidYear must include canonical_bid_year");
+            let canonical: &CanonicalBidYear =
+                result.canonical_bid_year.as_ref().ok_or_else(|| {
+                    PersistenceError::Other(
+                        "CreateBidYear must include canonical_bid_year".to_string(),
+                    )
+                })?;
 
             // Format date as ISO 8601 string for storage
             let start_date_str: String = canonical.start_date().to_string();
@@ -407,7 +424,9 @@ pub fn persist_bootstrap_mysql(
                     .audit_event
                     .bid_year
                     .as_ref()
-                    .expect("CreateArea must have bid_year")
+                    .ok_or_else(|| {
+                        PersistenceError::Other("CreateArea must have bid_year".to_string())
+                    })?
                     .year(),
             )?;
 
@@ -419,7 +438,9 @@ pub fn persist_bootstrap_mysql(
                         .audit_event
                         .area
                         .as_ref()
-                        .expect("CreateArea must have area")
+                        .ok_or_else(|| {
+                            PersistenceError::Other("CreateArea must have area".to_string())
+                        })?
                         .id()),
                 ))
                 .execute(conn)?;
@@ -433,7 +454,9 @@ pub fn persist_bootstrap_mysql(
                     .audit_event
                     .area
                     .as_ref()
-                    .expect("CreateArea must have area")
+                    .ok_or_else(|| {
+                        PersistenceError::Other("CreateArea must have area".to_string())
+                    })?
                     .id(),
                 "Inserted area into canonical table"
             );
@@ -449,16 +472,12 @@ pub fn persist_bootstrap_mysql(
 
             // Create an initial empty snapshot for new areas
             let initial_state: State = State::new(
-                result
-                    .audit_event
-                    .bid_year
-                    .clone()
-                    .expect("CreateArea must have bid_year"),
-                result
-                    .audit_event
-                    .area
-                    .clone()
-                    .expect("CreateArea must have area"),
+                result.audit_event.bid_year.clone().ok_or_else(|| {
+                    PersistenceError::Other("CreateArea must have bid_year".to_string())
+                })?,
+                result.audit_event.area.clone().ok_or_else(|| {
+                    PersistenceError::Other("CreateArea must have area".to_string())
+                })?,
             );
             persist_state_snapshot_mysql(conn, &initial_state, event_id)?;
             debug!(event_id, "Created initial empty snapshot for new area");
@@ -627,6 +646,95 @@ pub fn update_bid_year_metadata(
 }
 }
 
+backend_fn! {
+/// Gets the bid schedule for a bid year.
+///
+/// Phase 29C: Returns bid schedule fields if set, or None values if not configured.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The bid year ID
+///
+/// # Errors
+///
+/// Returns an error if the bid year doesn't exist or the database cannot be queried.
+pub fn get_bid_schedule(
+    conn: &mut _,
+    bid_year_id: i64,
+) -> Result<BidScheduleFields, PersistenceError> {
+    use diesel::prelude::*;
+
+    let result: Result<BidScheduleFields, _> = diesel_schema::bid_years::table
+        .select((
+            diesel_schema::bid_years::bid_timezone,
+            diesel_schema::bid_years::bid_start_date,
+            diesel_schema::bid_years::bid_window_start_time,
+            diesel_schema::bid_years::bid_window_end_time,
+            diesel_schema::bid_years::bidders_per_area_per_day,
+        ))
+        .filter(diesel_schema::bid_years::bid_year_id.eq(bid_year_id))
+        .first::<BidScheduleFields>(conn);
+
+    match result {
+        Ok(data) => Ok(data),
+        Err(diesel::result::Error::NotFound) => Err(PersistenceError::NotFound(format!(
+            "Bid year with ID {bid_year_id} not found"
+        ))),
+        Err(e) => Err(e.into()),
+    }
+}
+}
+
+backend_fn! {
+/// Updates the bid schedule for a bid year.
+///
+/// Phase 29C: Sets all bid schedule fields atomically.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `bid_year_id` - The bid year ID
+/// * `timezone` - IANA timezone identifier
+/// * `start_date` - Bid start date (ISO 8601 format)
+/// * `window_start_time` - Daily window start time (HH:MM:SS format)
+/// * `window_end_time` - Daily window end time (HH:MM:SS format)
+/// * `bidders_per_day` - Number of bidders per area per day
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be updated or the bid year doesn't exist.
+pub fn update_bid_schedule(
+    conn: &mut _,
+    bid_year_id: i64,
+    timezone: Option<&str>,
+    start_date: Option<&str>,
+    window_start_time: Option<&str>,
+    window_end_time: Option<&str>,
+    bidders_per_day: Option<i32>,
+) -> Result<(), PersistenceError> {
+    let rows_affected: usize = diesel::update(diesel_schema::bid_years::table)
+        .filter(diesel_schema::bid_years::bid_year_id.eq(bid_year_id))
+        .set((
+            diesel_schema::bid_years::bid_timezone.eq(timezone),
+            diesel_schema::bid_years::bid_start_date.eq(start_date),
+            diesel_schema::bid_years::bid_window_start_time.eq(window_start_time),
+            diesel_schema::bid_years::bid_window_end_time.eq(window_end_time),
+            diesel_schema::bid_years::bidders_per_area_per_day.eq(bidders_per_day),
+        ))
+        .execute(conn)?;
+
+    if rows_affected == 0 {
+        return Err(PersistenceError::NotFound(format!(
+            "Bid year with ID {bid_year_id} not found"
+        )));
+    }
+
+    debug!(bid_year_id, "Updated bid schedule");
+    Ok(())
+}
+}
+
 /// Canonicalize a bid year by populating canonical data tables (`SQLite` version).
 ///
 /// This function:
@@ -754,7 +862,7 @@ fn build_canonical_records_and_snapshot(
             use std::time::{SystemTime, UNIX_EPOCH};
             let duration = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .expect("System time before UNIX epoch");
+                .map_err(|e| PersistenceError::Other(format!("SystemTime error: {e}")))?;
             format!("unix_{}", duration.as_secs())
         },
     };

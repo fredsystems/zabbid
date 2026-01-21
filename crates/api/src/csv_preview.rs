@@ -214,7 +214,11 @@ fn parse_csv_row(
     }
 
     // All validations passed - build the user
-    let user_type: UserType = user_type_opt.expect("user_type validated above");
+    let user_type: UserType = user_type_opt.ok_or_else(|| {
+        vec![String::from(
+            "user_type missing after validation (internal error)",
+        )]
+    })?;
 
     let seniority_data: SeniorityData = SeniorityData::new(
         cumulative_natca_bu_date,
@@ -232,6 +236,9 @@ fn parse_csv_row(
         user_type,
         crew,
         seniority_data,
+        false, // excluded_from_bidding: default to false
+        false, // excluded_from_leave_calculation: default to false
+        false, // no_bid_reviewed: default to false
     );
 
     Ok(user)
@@ -477,6 +484,7 @@ pub fn preview_csv_users(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use zab_bid::{BootstrapResult, Command, apply_bootstrap};

@@ -117,12 +117,17 @@ pub fn get_bootstrap_metadata(conn: &mut _) -> Result<BootstrapMetadata, Persist
         .load::<(i64, i32)>(conn)?;
 
     for (bid_year_id, year_value) in bid_year_rows {
-        let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
+        let year: u16 = u16::try_from(year_value).map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "bid_year value out of u16 range: {year_value}"
+            ))
+        })?;
         metadata.bid_years.push(BidYear::with_id(bid_year_id, year));
     }
 
     // Query canonical areas table
-    let area_rows: Vec<(i64, i64, i32, String, Option<String>, i32)> = areas::table
+    #[allow(clippy::type_complexity)]
+    let area_rows = areas::table
         .inner_join(bid_years::table)
         .select((
             areas::area_id,
@@ -131,14 +136,19 @@ pub fn get_bootstrap_metadata(conn: &mut _) -> Result<BootstrapMetadata, Persist
             areas::area_code,
             areas::area_name,
             areas::is_system_area,
+            areas::round_group_id,
         ))
         .order((bid_years::year.asc(), areas::area_code.asc()))
-        .load::<(i64, i64, i32, String, Option<String>, i32)>(conn)?;
+        .load::<(i64, i64, i32, String, Option<String>, i32, Option<i64>)>(conn)?;
 
-    for (area_id, bid_year_id_val, year_value, code, name, is_sys) in area_rows {
-        let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
+    for (area_id, bid_year_id_val, year_value, code, name, is_sys, rg_id) in area_rows {
+        let year: u16 = u16::try_from(year_value).map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "bid_year value out of u16 range: {year_value}"
+            ))
+        })?;
         let bid_year: BidYear = BidYear::with_id(bid_year_id_val, year);
-        let area: Area = Area::with_id(area_id, &code, name, is_sys != 0);
+        let area: Area = Area::with_id(area_id, &code, name, is_sys != 0, rg_id);
         metadata.areas.push((bid_year, area));
     }
 
@@ -177,7 +187,11 @@ pub fn list_bid_years(conn: &mut _) -> Result<Vec<CanonicalBidYear>, Persistence
 
     let mut bid_years_list: Vec<CanonicalBidYear> = Vec::new();
     for (year_value, start_date_str, num_pay_periods_value) in rows {
-        let year: u16 = u16::try_from(year_value).expect("bid_year value out of u16 range");
+        let year: u16 = u16::try_from(year_value).map_err(|_| {
+            PersistenceError::ReconstructionError(format!(
+                "bid_year value out of u16 range: {year_value}"
+            ))
+        })?;
         let num_pay_periods: u8 = u8::try_from(num_pay_periods_value).map_err(|_| {
             PersistenceError::ReconstructionError(format!(
                 "Invalid num_pay_periods value: {num_pay_periods_value}"
@@ -224,18 +238,45 @@ backend_fn! {
 ///
 /// Returns an error if the database cannot be queried.
 pub fn list_areas(conn: &mut _, bid_year_id: i64) -> Result<Vec<Area>, PersistenceError> {
-    let rows: Vec<(i64, String, Option<String>, i32)> = areas::table
-        .select((areas::area_id, areas::area_code, areas::area_name, areas::is_system_area))
+    #[allow(clippy::type_complexity)]
+    let rows = areas::table
+        .select((areas::area_id, areas::area_code, areas::area_name, areas::is_system_area, areas::round_group_id))
         .filter(areas::bid_year_id.eq(bid_year_id))
         .order(areas::area_code.asc())
-        .load::<(i64, String, Option<String>, i32)>(conn)?;
+        .load::<(i64, String, Option<String>, i32, Option<i64>)>(conn)?;
 
     let areas_list: Vec<Area> = rows
         .into_iter()
-        .map(|(area_id, code, name, is_sys)| Area::with_id(area_id, &code, name, is_sys != 0))
+        .map(|(area_id, code, name, is_sys, rg_id)| Area::with_id(area_id, &code, name, is_sys != 0, rg_id))
         .collect();
 
     Ok(areas_list)
+}
+}
+
+backend_fn! {
+/// Gets a single area by its canonical ID, returning both the Area and its `bid_year_id`.
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `area_id` - The canonical area ID
+///
+/// # Errors
+///
+/// Returns an error if the area does not exist or the database cannot be queried.
+pub fn get_area_by_id(conn: &mut _, area_id: i64) -> Result<(Area, i64), PersistenceError> {
+    #[allow(clippy::type_complexity)]
+    let (aid, bid_year_id, code, name, is_sys, rg_id) = areas::table
+        .select((areas::area_id, areas::bid_year_id, areas::area_code, areas::area_name, areas::is_system_area, areas::round_group_id))
+        .filter(areas::area_id.eq(area_id))
+        .first::<(i64, i64, String, Option<String>, i32, Option<i64>)>(conn)?;
+
+    // Area doesn't have a bid_year field - it's tracked in the database
+    // Return both the area and its bid_year_id for round validation
+    let area = Area::with_id(aid, &code, name, is_sys != 0, rg_id);
+
+    Ok((area, bid_year_id))
 }
 }
 
@@ -273,6 +314,9 @@ pub fn list_users(
         String,
         String,
         Option<i32>,
+        i32,
+        i32,
+        i32,
     );
 
     let rows: Vec<UserRowTuple> = users::table
@@ -287,6 +331,9 @@ pub fn list_users(
             users::eod_faa_date,
             users::service_computation_date,
             users::lottery_value,
+            users::excluded_from_bidding,
+            users::excluded_from_leave_calculation,
+            users::no_bid_reviewed,
         ))
         .filter(users::bid_year_id.eq(bid_year_id))
         .filter(users::area_id.eq(area_id))
@@ -305,6 +352,9 @@ pub fn list_users(
         eod_faa_date,
         service_computation_date,
         lottery_value,
+        excluded_from_bidding,
+        excluded_from_leave_calculation,
+        no_bid_reviewed,
     ) in rows
     {
         let initials: Initials = Initials::new(&initials_str);
@@ -329,6 +379,9 @@ pub fn list_users(
             user_type,
             crew,
             seniority_data,
+            excluded_from_bidding != 0,
+            excluded_from_leave_calculation != 0,
+            no_bid_reviewed != 0,
         );
         users_list.push(user);
     }
@@ -858,6 +911,9 @@ pub fn list_users_canonical(
         String,
         Option<i32>,
         i32, // can_bid from canonical_eligibility
+        i32, // excluded_from_bidding
+        i32, // excluded_from_leave_calculation
+        i32, // no_bid_reviewed
     );
 
     let rows: Vec<UserRowTuple> = users::table
@@ -886,6 +942,9 @@ pub fn list_users_canonical(
             users::service_computation_date,
             users::lottery_value,
             canonical_eligibility::can_bid,
+            users::excluded_from_bidding,
+            users::excluded_from_leave_calculation,
+            users::no_bid_reviewed,
         ))
         .filter(users::bid_year_id.eq(bid_year_id))
         .order(users::initials.asc())
@@ -904,6 +963,9 @@ pub fn list_users_canonical(
         service_computation_date,
         lottery_value,
         _can_bid,
+        excluded_from_bidding,
+        excluded_from_leave_calculation,
+        no_bid_reviewed,
     ) in rows
     {
         let initials: Initials = Initials::new(&initials_str);
@@ -928,6 +990,9 @@ pub fn list_users_canonical(
             user_type,
             crew,
             seniority_data,
+            excluded_from_bidding != 0,
+            excluded_from_leave_calculation != 0,
+            no_bid_reviewed != 0,
         );
         users_list.push(user);
     }

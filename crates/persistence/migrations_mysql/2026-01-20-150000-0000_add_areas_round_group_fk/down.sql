@@ -1,0 +1,3 @@
+-- No-op down migration for MySQL
+-- The foreign key constraint for areas.round_group_id should not be removed
+-- as it was part of the core Phase 29B semantic correction

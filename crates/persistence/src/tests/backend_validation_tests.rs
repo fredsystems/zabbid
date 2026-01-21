@@ -332,9 +332,10 @@ fn test_mariadb_user_composite_unique_constraint() {
     diesel::sql_query(format!(
         "INSERT INTO users
          (bid_year_id, area_id, initials, name, user_type,
-          cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date)
+          cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date,
+          excluded_from_bidding, excluded_from_leave_calculation)
          VALUES ({bid_year_id}, {area_id}, 'ABC', 'Test User', 'CPC',
-                 '2020-01-01', '2020-01-01', '2020-01-01', '2020-01-01')"
+                 '2020-01-01', '2020-01-01', '2020-01-01', '2020-01-01', 0, 0)"
     ))
     .execute(&mut conn)
     .expect("Failed to insert user");
@@ -343,9 +344,10 @@ fn test_mariadb_user_composite_unique_constraint() {
     let result = diesel::sql_query(format!(
         "INSERT INTO users
          (bid_year_id, area_id, initials, name, user_type,
-          cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date)
+          cumulative_natca_bu_date, natca_bu_date, eod_faa_date, service_computation_date,
+          excluded_from_bidding, excluded_from_leave_calculation)
          VALUES ({bid_year_id}, {area_id}, 'ABC', 'Another User', 'CPC',
-                 '2021-01-01', '2021-01-01', '2021-01-01', '2021-01-01')"
+                 '2021-01-01', '2021-01-01', '2021-01-01', '2021-01-01', 0, 0)"
     ))
     .execute(&mut conn);
 

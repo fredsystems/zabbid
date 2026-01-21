@@ -48,7 +48,7 @@ All changes must advance these goals. If unsure, stop and ask.
 
 ## Code Style
 
-- Rust: idiomatic, clippy-clean, no `.unwrap()` in library code
+- Rust: idiomatic, clippy-clean, no `.unwrap()` or `.expect()` in production code
 - Prefer small, composable functions
 - Avoid macros unless justified
 - Document public functions, methods, types, and non-obvious logic
@@ -62,6 +62,28 @@ All changes must advance these goals. If unsure, stop and ask.
 - All markdown must comply with existing rules enforced by `pre-commit run --all-files`
 - Before completing a phase, or any work, ensure git add has been run on all of the modified files, and `cargo xtask ci` and `pre-commit run --all-files` pass without errors.
 - For casting primitive types that don't fit within each other, use `num-traits`.
+
+### Panic-Free Production Code (Non-Negotiable)
+
+- `unwrap()` and `expect()` are **forbidden** in all production code
+- Panics must never be used to enforce domain invariants
+- All invariant violations must surface as typed, recoverable errors
+- The only permitted use of `unwrap()` / `expect()` is in:
+  - test code (explicitly marked with `#[cfg(test)]` or in `tests/` modules)
+  - test-only helpers
+- Any production `unwrap` / `expect` is a correctness bug, not a shortcut
+
+**Rationale:**
+
+- Panics erase recoverable error paths and prevent graceful degradation
+- Panics cause non-deterministic production failures that cannot be handled
+- Panics hide future refactor bugs by masking invariant violations
+- Clippy is configured to enforce this invariant at compile time via `clippy::unwrap_used` and `clippy::expect_used`
+
+This rule is enforced through:
+
+- `#![deny(clippy::unwrap_used, clippy::expect_used)]` in all production crate roots
+- `#![allow(clippy::unwrap_used, clippy::expect_used)]` in test module roots only
 
 ## Code Semantics & Readability
 
