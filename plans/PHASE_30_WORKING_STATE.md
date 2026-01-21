@@ -7,20 +7,23 @@
 
 ## Current Status
 
-- Status: Planning Complete
+- Status: Blocked
 - Last Updated: 2025-01-27
-- Reason: Planning pass complete, awaiting user approval to proceed with execution
+- Reason: Sub-Phase 30A complete - Critical blocking gap identified in Phase 29
 
 ## Active Sub-Phase
 
-- Sub-Phase: Planning Pass
-- State: Complete
+- Sub-Phase: 30A - Phase 29 Gap Analysis
+- State: Complete (Blocked - awaiting user decision)
 
 ## Completed Sub-Phases
 
 - [x] Planning Pass
+- [x] Sub-Phase 30A: Phase 29 Gap Analysis
 
 ## Work Completed
+
+### Planning Pass
 
 - Analyzed existing codebase structure
 - Identified Phase 29 API surface:
@@ -48,12 +51,32 @@
   - PHASE_30H.md: End-to-End Validation
   - PHASE_30I.md: API Surface Audit & Documentation
 
+### Sub-Phase 30A: Phase 29 Gap Analysis
+
+- Systematically enumerated all Phase 29 backend APIs from crates/server/src/main.rs router
+- Verified frontend API bindings in ui/src/api.ts (none exist for Phase 29 features)
+- Examined database schema (crates/persistence/src/diesel_schema.rs)
+- Created comprehensive capability coverage matrix
+- Identified CRITICAL BLOCKING GAP:
+  - areas.round_group_id column exists in schema
+  - NO API endpoint to assign round group to area
+  - NO persistence mutation function for assignment
+  - This blocks Sub-Phase 30C (Area → Round Group Assignment UI)
+- Documented all findings in plans/PHASE_30/PHASE_29_GAP_ANALYSIS.md
+- Provided three options for user decision:
+  1. Implement missing API now (Phase 29 gap-fill)
+  2. Defer round group assignment (reduce Phase 30 scope)
+  3. Stop Phase 30 until Phase 29 is complete
+- Committed gap analysis document
+
 ## Outstanding Work
 
-- Await user approval of planning
-- Execute Sub-Phase 30A: Phase 29 Gap Analysis
+### BLOCKED - Awaiting User Decision on Critical Gap
+
+Once gap is resolved:
+
 - Execute Sub-Phase 30B: Round Groups & Rounds UI
-- Execute Sub-Phase 30C: Area → Round Group Assignment UI
+- Execute Sub-Phase 30C: Area → Round Group Assignment UI (BLOCKED without API)
 - Execute Sub-Phase 30D: Bootstrap UI Restructure
 - Execute Sub-Phase 30E: Bid Schedule UI
 - Execute Sub-Phase 30F: Readiness Review & Confirmation UI
@@ -64,21 +87,59 @@
 
 ## Known Failures / Breakages
 
-None at this time.
+None. All code compiles and tests pass.
+
+However, Phase 30C cannot be implemented without the missing API.
 
 ## Stop-and-Ask Items
 
-None at this time.
+### CRITICAL: Area → Round Group Assignment API Missing
+
+See plans/PHASE_30/PHASE_29_GAP_ANALYSIS.md for full details.
+
+User must decide on one of three options:
+
+1. **Implement missing API now (recommended)**
+   - Add POST /areas/{area_id}/assign-round-group endpoint
+   - Add persistence mutation: update_area_round_group(area_id, round_group_id)
+   - Enforce lifecycle constraints (immutable after confirmation)
+   - Enforce validation (non-system areas only, same bid year, round group exists)
+   - Add audit event for assignment
+   - Add frontend binding
+   - Then proceed with Phase 30B → 30C → ...
+
+2. **Defer round group assignment**
+   - Skip Sub-Phase 30C entirely
+   - Document limitation
+   - Proceed with remaining sub-phases (30B, 30D-30I)
+   - Mark 30C as future work
+
+3. **Stop Phase 30 until Phase 29 is complete**
+   - Return to Phase 29 to implement missing capability
+   - Resume Phase 30 once gap is filled
+
+**Awaiting user guidance before proceeding.**
 
 ## Resume Instructions
 
-1. User should review all sub-phase documents in `plans/PHASE_30/`
-2. User approves or requests changes to planning
-3. Begin execution with Sub-Phase 30A (Gap Analysis)
-4. Execute sub-phases in order (30A → 30B → ... → 30I)
-5. Update this document after each sub-phase completion
-6. Commit progress frequently
-7. Stop and ask if any sub-phase encounters blocking issues
+### CURRENT STATE: Blocked on user decision
+
+1. User reviews plans/PHASE_30/PHASE_29_GAP_ANALYSIS.md
+2. User decides on one of three options (see Stop-and-Ask Items above)
+3. If Option 1 (implement API):
+   - Implement area → round group assignment API
+   - Update this working state document
+   - Proceed with Sub-Phase 30B
+4. If Option 2 (defer):
+   - Update sub-phase plan to skip 30C
+   - Update this working state document
+   - Proceed with Sub-Phase 30B
+5. If Option 3 (stop):
+   - Return to Phase 29 implementation
+   - Resume Phase 30 once gap is filled
+6. Continue executing sub-phases in order
+7. Update this document after each sub-phase completion
+8. Commit progress frequently
 
 ## Planning Notes
 
