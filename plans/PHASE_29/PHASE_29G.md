@@ -1,5 +1,17 @@
 # Phase 29G — Post-Confirmation Bid Order Adjustments
 
+## Schema Correction Note
+
+**Phase 29E schema has been corrected (2026-01-21):**
+
+The `bid_windows` table now correctly includes `round_id` to support per-round windows.
+
+- UNIQUE constraint is `(bid_year_id, area_id, user_id, round_id)`
+- All domain and persistence code updated accordingly
+- This Phase 29G specification is now consistent with the implemented schema
+
+---
+
 ## Purpose
 
 Implement administrative bid order and bid window adjustment capabilities that operate **after confirmation**.

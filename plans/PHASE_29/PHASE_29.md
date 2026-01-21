@@ -294,13 +294,18 @@ This is configuration only in Phase 29.
 At confirmation:
 
 - bid order is **materialized** per area
-- each record includes:
+- bid windows are **calculated per user, per round**
+- each bid order record includes:
   - `user_id`
   - order position
-  - bid window start
-  - bid window end
+- each bid window record includes:
+  - `user_id`
+  - `round_id`
+  - window start (UTC timestamp)
+  - window end (UTC timestamp)
 - this becomes the authoritative schedule
-- derive and store canonical bid order + windows
+- derive and store canonical bid order
+- calculate and store bid windows (one per user per round)
 
 #### Post-Confirmation Adjustments
 
@@ -326,10 +331,23 @@ This supports operational reality without corrupting domain truth.
 
 ### G. Bid Windows and Status Tracking (Structure Only)
 
+#### Bid Windows (Per-Round)
+
+Bid windows are calculated **per user, per round**.
+
+Each user receives a separate window for each round based on:
+
 - bid start date (Monday)
 - M–F weeks
 - daily window (default 08:00–18:00)
 - bidders per area per day
+- bid order position
+
+The same calendar window is replicated across all rounds initially.
+Post-confirmation adjustments may modify windows per-round.
+
+#### Bid Status Tracking
+
 - Bid status transitions are operator-initiated only.
 - The system never advances status based on time alone.
 
@@ -375,7 +393,8 @@ Once Domain-Ready:
 - editing locks engage
 - bid order history starts
 - action cannot be undone
-- derive and store canonical bid order + windows
+- derive and store canonical bid order
+- calculate and store bid windows (one per user per round)
 
 ---
 
