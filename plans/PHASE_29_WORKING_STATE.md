@@ -930,7 +930,7 @@ None
 
 ### 29F Current State Summary
 
-**All Work Complete ✅**
+#### Phase 29F Implementation Complete ✅
 
 - ✅ Database schema (bid_status and bid_status_history tables)
 - ✅ Domain logic (BidStatus enum, transition validation)
@@ -1001,9 +1001,22 @@ All required deliverables have been implemented:
 
 Ready to proceed to **Phase 29G** - Post-Confirmation Bid Order Adjustments
 
-1. Wire up API endpoints in server routes
-2. Integrate initial status creation with Phase 29E confirmation
-3. Add comprehensive API and integration tests
-4. OR proceed to Phase 29G (Post-Confirmation Adjustments) if server wiring is deferred
+**Notes:**
+
+Phase 29G involves implementing administrative capabilities to adjust bid order and bid windows after confirmation. Before proceeding, should verify:
+
+1. Integration with existing `override_bid_order` functionality (found in `crates/api/src/handlers.rs`)
+2. Whether Phase 29G should extend existing override functionality or create separate adjustment endpoints
+3. Clarify scope: Phase 29G appears to overlap with existing override capabilities
+
+**Stop-and-Ask:**
+
+The existing `override_bid_order` function already exists and appears to provide similar functionality to what Phase 29G specifies. Should we:
+
+- Extend the existing override functionality with additional features?
+- Create separate "adjustment" endpoints that complement the override system?
+- Review the overlap and determine if Phase 29G adds new requirements beyond existing overrides?
+
+This warrants clarification before beginning Phase 29G implementation.
 
 **Commit:** 6aee2d0 - Phase 29F: Add bid status API layer
