@@ -1300,11 +1300,9 @@ Deferred route wiring from Phase 29A, 29C, and 29G has been successfully complet
 
 ### Top Level: Outstanding Work
 
-#### Phase 29H — Docker Compose Deployment
+#### Phase 29H — Docker Compose Deployment ✅ COMPLETE
 
-- Create production-ready Docker Compose configuration
-- MariaDB, backend, UI, NGINX services
-- Health checks, volume management, networking
+See Phase 29H completion section below.
 
 #### Phase 29I — Dead Code Cleanup and Route Wiring
 
@@ -1318,4 +1316,158 @@ Deferred route wiring from Phase 29A, 29C, and 29G has been successfully complet
 
 ### Next Steps
 
-Continue with Phase 29H (Docker Compose Deployment), then Phase 29I (Dead Code Cleanup).
+**Proceed with Phase 29I** — Dead Code Cleanup and Route Wiring
+
+---
+
+## Phase 29H Complete - 2026-01-21
+
+### 29H Implementation Summary
+
+Phase 29H successfully created a production-ready Docker Compose deployment configuration
+with all required services, health checks, and comprehensive documentation.
+
+**Status:** ✅ Complete
+**Completed:** 2026-01-21
+
+### 29H Completed Work
+
+#### Docker Compose Configuration ✅ Complete
+
+- Created `docker-compose.yml` with four services:
+  - MariaDB 11.4 with health checks and persistent volumes
+  - Backend (Rust) with multi-stage build
+  - UI (React + Vite) with multi-stage build
+  - NGINX reverse proxy and static file server
+- Internal network (`zabbid_network`) for inter-service communication
+- Only NGINX port 80 exposed to host
+- Proper service dependencies with health check conditions
+- MariaDB volume persistence (`mariadb_data`)
+
+#### Backend Dockerfile ✅ Complete
+
+- Multi-stage build using rust:1.83-bookworm
+- Minimal runtime image (debian:bookworm-slim)
+- Non-root user execution
+- Health check support via wget
+- Binary: `zab-bid-server`
+
+#### UI Dockerfile ✅ Complete
+
+- Multi-stage build using node:20-bookworm
+- Production build with Vite
+- Static files served via nginx:1.27-alpine
+- Optimized build context via `.dockerignore`
+
+#### NGINX Configuration ✅ Complete
+
+- Reverse proxy for `/api/*` → backend:8080
+- Static file serving for UI
+- Compression (gzip) enabled
+- Security headers configured
+- Health check endpoint at `/health`
+- Proper timeouts and buffer settings
+
+#### Environment Configuration ✅ Complete
+
+- Created `.env.example` with all required variables:
+  - MariaDB credentials
+  - JWT secret
+  - Backend configuration
+  - UI API URL
+- Security warnings and generation instructions
+- Updated `.gitignore` to exclude `.env` files
+
+#### Docker Build Context Optimization ✅ Complete
+
+- Root `.dockerignore` for backend build
+- `ui/.dockerignore` for UI build
+- Excludes unnecessary files (target/, node_modules/, docs/, plans/)
+- Reduces build context size significantly
+
+#### Comprehensive Documentation ✅ Complete
+
+- Created `docs/DEPLOYMENT.md` with:
+  - Quick start guide
+  - Service architecture overview
+  - Database migration instructions
+  - Service management commands (start, stop, restart, logs)
+  - Data persistence and backup instructions
+  - Networking configuration
+  - Troubleshooting guide (common issues and solutions)
+  - Security considerations and warnings
+  - Advanced configuration examples
+  - Health check details
+  - Update and uninstall procedures
+
+#### Backend Health Check Endpoint ✅ Complete
+
+- Added `/api/health` endpoint to `crates/server/src/main.rs`
+- Simple HTTP 200 response with "healthy\n" body
+- Used by Docker health checks
+- No authentication required
+
+#### Build & CI Verification ✅ Complete
+
+- All files added to git
+- Backend builds successfully
+- All tests pass
+- `cargo xtask ci` passes
+- `pre-commit run --all-files` passes
+- Markdown linting passes
+- No new dead code warnings
+
+### 29H Files Created
+
+- `docker-compose.yml` — Service orchestration
+- `Dockerfile` — Backend multi-stage build
+- `ui/Dockerfile` — UI multi-stage build
+- `nginx.conf` — Reverse proxy configuration
+- `.env.example` — Environment variable template
+- `.dockerignore` — Backend build context exclusions
+- `ui/.dockerignore` — UI build context exclusions
+- `docs/DEPLOYMENT.md` — Deployment guide (532 lines)
+
+### 29H Files Modified
+
+- `crates/server/src/main.rs` — Added health check endpoint
+- `.gitignore` — Added .env and Docker-related exclusions
+
+### 29H Key Implementation Details
+
+#### Service Startup Order
+
+1. MariaDB starts first with 30s startup period
+2. Backend waits for MariaDB health check (40s startup period)
+3. UI builds and starts (depends on backend)
+4. NGINX starts last (depends on backend health + UI started)
+
+#### Health Checks
+
+- **MariaDB:** `healthcheck.sh --connect --innodb_initialized`
+- **Backend:** `wget http://localhost:8080/api/health`
+- **NGINX:** `wget http://localhost/`
+
+#### Security Considerations
+
+- HTTP only (no SSL/TLS) — documented in deployment guide
+- Strong password generation instructions provided
+- JWT secret generation examples included
+- Warning about plaintext credential transmission
+- Production deployment security checklist provided
+
+### Deployment Readiness
+
+The system can now be deployed with:
+
+```bash
+cp .env.example .env
+# Edit .env with secure values
+docker compose up -d
+```
+
+Services accessible at `http://localhost`
+
+### 29H Next Phase
+
+**Proceed to Phase 29I** — Dead Code Cleanup and Remaining Route Wiring
