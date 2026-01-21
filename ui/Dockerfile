@@ -1,5 +1,5 @@
 # Stage 1: Build the UI
-FROM node:20-bookworm as builder
+FROM node:25.4.0-trixie as builder
 
 WORKDIR /app
 
@@ -16,13 +16,17 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Serve with nginx
-FROM nginx:1.27-alpine
+FROM nginx:1.29.4-trixie
 
-# Copy built assets from builder
+# Remove default config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy SPA nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy built assets
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Expose port
 EXPOSE 80
 
-# nginx will run as default user
 CMD ["nginx", "-g", "daemon off;"]

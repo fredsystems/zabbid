@@ -3957,7 +3957,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app: Router = build_router(app_state);
 
     // Bind to address
-    let addr: std::net::SocketAddr = format!("127.0.0.1:{}", args.port).parse()?;
+    let addr: std::net::SocketAddr = format!("0.0.0.0:{}", args.port).parse()?;
     info!("Server listening on {}", addr);
 
     // Run server

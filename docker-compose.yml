@@ -9,7 +9,7 @@ services:
       MYSQL_USER: zabbid
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
-      - mariadb_data:/var/lib/mysql
+      - ./mariadb_data:/var/lib/mysql
       - ./crates/persistence/migrations_mysql:/docker-entrypoint-initdb.d/migrations:ro
     networks:
       - zabbid_network
@@ -29,6 +29,8 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
+    ports:
+      - "8080:8080"
     environment:
       DATABASE_URL: mysql://zabbid:${MYSQL_PASSWORD}@mariadb:3306/zabbid
       RUST_LOG: ${RUST_LOG:-info}
@@ -65,7 +67,7 @@ services:
       - zabbid_network
 
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.29.4-trixie
     container_name: zabbid-nginx
     restart: unless-stopped
     depends_on:

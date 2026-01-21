@@ -15,3 +15,4 @@ data/
 
 # Node modules (if UI dependencies installed locally)
 node_modules/
+mariadb_data

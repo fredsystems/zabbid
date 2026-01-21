@@ -16,7 +16,7 @@ COPY xtask ./xtask
 RUN cargo build --release
 
 # Stage 2: Create minimal runtime image
-FROM debian:trixie-slim
+FROM debian:trixie-20260112-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -42,4 +42,6 @@ USER zabbid
 EXPOSE 8080
 
 # Run the server
-CMD ["zab-bid-server"]
+CMD zab-bid-server \
+    --db-backend mysql \
+    --database-url "$DATABASE_URL"
