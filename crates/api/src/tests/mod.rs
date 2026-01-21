@@ -10,6 +10,7 @@
 mod api_tests;
 mod authorization_tests;
 mod helpers;
+mod lifecycle_enforcement_tests;
 mod operator_tests;
 mod password_tests;
 mod round_tests;

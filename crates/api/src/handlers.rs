@@ -157,6 +157,35 @@ pub fn register_user(
     // Resolve the active bid year from canonical state
     let bid_year: BidYear = resolve_active_bid_year(persistence)?;
 
+    // Enforce lifecycle constraints: user registration blocked after Canonicalized
+    // Get bid_year_id from metadata (if bid year has no ID, assume Draft state and allow)
+    if let Some(bid_year_id) = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == bid_year.year())
+        .and_then(BidYear::bid_year_id)
+    {
+        let lifecycle_state_str: String =
+            persistence
+                .get_lifecycle_state(bid_year_id)
+                .map_err(|e| ApiError::Internal {
+                    message: format!("Failed to get lifecycle state: {e}"),
+                })?;
+
+        let lifecycle_state: BidYearLifecycle = lifecycle_state_str
+            .parse()
+            .map_err(translate_domain_error)?;
+
+        if lifecycle_state.is_locked() {
+            return Err(ApiError::DomainRuleViolation {
+                rule: String::from("user_registration_lifecycle"),
+                message: format!(
+                    "Cannot register user in state '{lifecycle_state}': structural changes locked after confirmation"
+                ),
+            });
+        }
+    }
+
     // Convert authenticated actor to audit actor with operator information
     let actor: Actor = authenticated_actor.to_audit_actor(operator);
     // Translate API request into domain types
@@ -474,6 +503,35 @@ pub fn create_area(
 
     // Resolve the active bid year from canonical state
     let active_bid_year: BidYear = resolve_active_bid_year(persistence)?;
+
+    // Enforce lifecycle constraints: area creation blocked after Canonicalized
+    // Get bid_year_id from metadata (if bid year has no ID, assume Draft state and allow)
+    if let Some(bid_year_id) = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.year() == active_bid_year.year())
+        .and_then(BidYear::bid_year_id)
+    {
+        let lifecycle_state_str: String =
+            persistence
+                .get_lifecycle_state(bid_year_id)
+                .map_err(|e| ApiError::Internal {
+                    message: format!("Failed to get lifecycle state: {e}"),
+                })?;
+
+        let lifecycle_state: BidYearLifecycle = lifecycle_state_str
+            .parse()
+            .map_err(translate_domain_error)?;
+
+        if lifecycle_state.is_locked() {
+            return Err(ApiError::DomainRuleViolation {
+                rule: String::from("area_creation_lifecycle"),
+                message: format!(
+                    "Cannot create area in state '{lifecycle_state}': structural changes locked after confirmation"
+                ),
+            });
+        }
+    }
 
     // Convert authenticated actor to audit actor with operator information
     let actor: Actor = authenticated_actor.to_audit_actor(operator);
@@ -5006,17 +5064,14 @@ pub fn update_user_participation(
     authenticated_actor: &Actor,
     lifecycle_state: zab_bid_domain::BidYearLifecycle,
 ) -> Result<crate::request_response::UpdateUserParticipationResponse, ApiError> {
-    use zab_bid_domain::{BidYearLifecycle, DomainError};
+    use zab_bid_domain::DomainError;
 
-    // Enforce lifecycle constraints: only allow in Draft or BootstrapComplete
-    if !matches!(
-        lifecycle_state,
-        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
-    ) {
+    // Enforce lifecycle constraints: participation flags locked after Canonicalized
+    if lifecycle_state.is_locked() {
         return Err(ApiError::DomainRuleViolation {
             rule: String::from("participation_flags_lifecycle"),
             message: format!(
-                "Cannot update participation flags in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+                "Cannot update participation flags in state '{lifecycle_state}': structural changes locked after confirmation"
             ),
         });
     }
@@ -5183,7 +5238,7 @@ pub fn create_round_group(
         });
     }
 
-    // Enforce lifecycle constraints: only allow in Draft or BootstrapComplete
+    // Enforce lifecycle constraints: round configuration locked after Canonicalized
     let lifecycle_state_str: String =
         persistence
             .get_lifecycle_state(bid_year_id)
@@ -5195,14 +5250,11 @@ pub fn create_round_group(
         .parse()
         .map_err(translate_domain_error)?;
 
-    if !matches!(
-        lifecycle_state,
-        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
-    ) {
+    if lifecycle_state.is_locked() {
         return Err(ApiError::DomainRuleViolation {
             rule: String::from("round_group_lifecycle"),
             message: format!(
-                "Cannot create round group in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+                "Cannot create round group in state '{lifecycle_state}': structural changes locked after confirmation"
             ),
         });
     }
@@ -5387,14 +5439,11 @@ pub fn update_round_group(
         .parse()
         .map_err(translate_domain_error)?;
 
-    if !matches!(
-        lifecycle_state,
-        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
-    ) {
+    if lifecycle_state.is_locked() {
         return Err(ApiError::DomainRuleViolation {
             rule: String::from("round_group_lifecycle"),
             message: format!(
-                "Cannot update round group in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+                "Cannot update round group in state '{lifecycle_state}': structural changes locked after confirmation"
             ),
         });
     }
@@ -5518,14 +5567,11 @@ pub fn delete_round_group(
         .parse()
         .map_err(translate_domain_error)?;
 
-    if !matches!(
-        lifecycle_state,
-        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
-    ) {
+    if lifecycle_state.is_locked() {
         return Err(ApiError::DomainRuleViolation {
             rule: String::from("round_group_lifecycle"),
             message: format!(
-                "Cannot delete round group in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+                "Cannot delete round group in state '{lifecycle_state}': structural changes locked after confirmation"
             ),
         });
     }
@@ -5635,14 +5681,11 @@ pub fn create_round(
         .parse()
         .map_err(translate_domain_error)?;
 
-    if !matches!(
-        lifecycle_state,
-        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
-    ) {
+    if lifecycle_state.is_locked() {
         return Err(ApiError::DomainRuleViolation {
             rule: String::from("round_lifecycle"),
             message: format!(
-                "Cannot create round in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+                "Cannot create round in state '{lifecycle_state}': structural changes locked after confirmation"
             ),
         });
     }
@@ -5877,14 +5920,11 @@ pub fn update_round(
         .parse()
         .map_err(translate_domain_error)?;
 
-    if !matches!(
-        lifecycle_state,
-        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
-    ) {
+    if lifecycle_state.is_locked() {
         return Err(ApiError::DomainRuleViolation {
             rule: String::from("round_lifecycle"),
             message: format!(
-                "Cannot update round in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+                "Cannot update round in state '{lifecycle_state}': structural changes locked after confirmation"
             ),
         });
     }
@@ -6037,14 +6077,11 @@ pub fn delete_round(
         .parse()
         .map_err(translate_domain_error)?;
 
-    if !matches!(
-        lifecycle_state,
-        BidYearLifecycle::Draft | BidYearLifecycle::BootstrapComplete
-    ) {
+    if lifecycle_state.is_locked() {
         return Err(ApiError::DomainRuleViolation {
             rule: String::from("round_lifecycle"),
             message: format!(
-                "Cannot delete round in state '{lifecycle_state}': only allowed in Draft or BootstrapComplete"
+                "Cannot delete round in state '{lifecycle_state}': structural changes locked after confirmation"
             ),
         });
     }

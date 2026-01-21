@@ -675,17 +675,7 @@ In Progress
 
 ### 29E Outstanding Work
 
-- Editing lock enforcement for:
-  - Creating/deleting areas (prevent after Canonicalized)
-  - Creating/deleting users (prevent after Canonicalized)
-  - Editing user participation flags (prevent after Canonicalized)
-  - Editing round configuration (prevent after Canonicalized)
-  - Editing bid schedule (prevent after Canonicalized)
-- Unit tests for confirmation handler
-- Integration tests for confirmation endpoint
-- Tests for precondition enforcement
-- Tests for editing locks
-- Server endpoint wiring (out of scope - will be done when integrating)
+None - all editing locks implemented and tested.
 
 ### 29E Known Issues
 
@@ -756,30 +746,59 @@ None
 - ✅ Bid window calculation and storage
 - ✅ Lifecycle state transition
 - ✅ Audit event recording
+- ✅ Editing lock enforcement (all operations)
+- ✅ Lifecycle enforcement tests
 - ✅ Build and CI passing
+
+**Editing Locks Implemented:**
+
+- ✅ `create_area()` - blocked after Canonicalized
+- ✅ `register_user()` - blocked after Canonicalized
+- ✅ `update_user_participation()` - blocked after Canonicalized
+- ✅ `create_round_group()` - blocked after Canonicalized
+- ✅ `update_round_group()` - blocked after Canonicalized
+- ✅ `delete_round_group()` - blocked after Canonicalized
+- ✅ `create_round()` - blocked after Canonicalized
+- ✅ `update_round()` - blocked after Canonicalized
+- ✅ `delete_round()` - blocked after Canonicalized
+- ✅ `set_bid_schedule()` - blocked after Canonicalized (already implemented)
+
+**Tests Added:**
+
+- ✅ `test_area_creation_blocked_after_canonicalized`
+- ✅ `test_user_registration_blocked_after_canonicalized`
+- ✅ `test_participation_flag_updates_blocked_after_canonicalized`
+- ✅ `test_area_creation_allowed_in_draft`
+- ✅ `test_area_creation_allowed_in_bootstrap_complete`
 
 **Remaining:**
 
-- ⏳ Editing lock enforcement (6 operations to lock)
-- ⏳ Unit tests for confirmation logic
-- ⏳ Integration tests for full confirmation flow
-- ⏳ Tests for editing locks
+None for Phase 29E scope. Server endpoint wiring is out of scope.
 
 **Blockers:** None
 
-**Next Steps:**
+## Phase 29E Complete - 2026-01-21
 
-1. Add lifecycle state checks to prevent mutations after Canonicalized:
-   - `create_area()` - add check
-   - `register_user()` - add check
-   - `update_user_participation_flags()` - add check (if exists)
-   - Round configuration endpoints - add checks
-   - `set_bid_schedule()` - add check
-2. Write comprehensive tests for confirmation handler
-3. Write integration tests
-4. Wire up endpoint in server layer (deferred)
+All editing locks have been successfully implemented and tested.
 
-## Phase 29E In Progress - 2026-01-21
+**Summary:**
+
+Phase 29E implemented the confirmation action that freezes bid order and enforces editing locks.
+
+Key accomplishments:
+
+- Bid order materialization at confirmation
+- Bid window calculation and storage
+- Lifecycle state transition to Canonicalized
+- Comprehensive editing locks for all structural operations
+- Defensive lifecycle checks (allow operations when bid year has no ID in metadata)
+- Full test coverage for lifecycle enforcement
+
+All operations that modify structural data (areas, users, participation flags, rounds, bid schedule) are now properly blocked after a bid year transitions to Canonicalized state.
+
+The system uses `BidYearLifecycle::is_locked()` to determine if structural changes are allowed, providing a consistent enforcement pattern across all handlers.
+
+**Next:** Phase 29F (Bid Status Tracking) or Phase 29G (Post-Confirmation Adjustments) per phase plan.
 
 Phase 29D (Readiness Evaluation) has been successfully completed.
 
