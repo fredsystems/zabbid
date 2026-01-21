@@ -9,7 +9,7 @@
 
 - Status: In Progress
 - Last Updated: 2026-01-21
-- Reason: Sub-Phase 29D complete, Phase 29E in progress
+- Reason: Sub-Phase 29E core implementation complete, editing locks and tests remain
 
 ## Active Sub-Phase
 
@@ -675,11 +675,17 @@ In Progress
 
 ### 29E Outstanding Work
 
-- Bid order materialization persistence layer
-- Confirmation core logic implementation
-- Confirmation API endpoint
-- Editing lock enforcement
-- Integration tests
+- Editing lock enforcement for:
+  - Creating/deleting areas (prevent after Canonicalized)
+  - Creating/deleting users (prevent after Canonicalized)
+  - Editing user participation flags (prevent after Canonicalized)
+  - Editing round configuration (prevent after Canonicalized)
+  - Editing bid schedule (prevent after Canonicalized)
+- Unit tests for confirmation handler
+- Integration tests for confirmation endpoint
+- Tests for precondition enforcement
+- Tests for editing locks
+- Server endpoint wiring (out of scope - will be done when integrating)
 
 ### 29E Known Issues
 
@@ -688,6 +694,90 @@ None
 ### 29E Stop-and-Ask Items
 
 None
+
+### 29E Persistence Layer ✅ Complete
+
+- ✅ Added `NewBidWindow` data model for `bid_windows` table
+- ✅ Added `bulk_insert_bid_windows_sqlite()` function
+- ✅ Added `bulk_insert_bid_windows_mysql()` function
+- ✅ Added `bulk_insert_canonical_bid_order()` wrapper in Persistence struct
+- ✅ Added `bulk_insert_bid_windows()` wrapper in Persistence struct
+- ✅ Exported `NewBidWindow` and `NewCanonicalBidOrder` from persistence crate
+
+### 29E Core Layer ✅ Complete
+
+- ✅ Added `ConfirmReadyToBid` command to core
+- ✅ Implemented command handling in `apply_bootstrap()`
+- ✅ Creates audit event with confirmation semantics
+- ✅ Records state transition from BootstrapComplete to Canonicalized
+
+### 29E API Layer ✅ Complete
+
+- ✅ Added `ConfirmReadyToBidRequest` with explicit confirmation text validation
+- ✅ Added `ConfirmReadyToBidResponse` with statistics
+- ✅ Implemented `confirm_ready_to_bid()` handler function:
+  - Validates admin authorization
+  - Validates explicit confirmation text
+  - Checks readiness preconditions via `get_bid_year_readiness()`
+  - Parses bid schedule from persistence
+  - Retrieves users grouped by area
+  - Computes bid order using `compute_bid_order()`
+  - Calculates bid windows using `calculate_bid_windows()`
+  - Persists audit event and gets event ID
+  - Materializes bid order to `canonical_bid_order` table
+  - Stores bid windows to `bid_windows` table
+  - Updates lifecycle state to Canonicalized
+  - Returns confirmation response with counts
+- ✅ Handler properly parses date/time strings from persistence
+- ✅ Handler converts i32 to u32 for bidders_per_day
+- ✅ All clippy checks pass
+- ✅ Added to API exports
+
+### 29E Build & CI ✅ Complete
+
+- ✅ All tests pass (602 tests)
+- ✅ `cargo xtask ci` passes
+- ✅ `pre-commit run --all-files` passes
+- ✅ All clippy warnings resolved
+- ✅ No schema migration issues
+- ✅ All files staged with `git add`
+
+### 29E Current State Summary
+
+**Completed:**
+
+- ✅ Database schema (bid_windows table)
+- ✅ Domain logic (bid window calculation)
+- ✅ Persistence layer (bulk insert functions)
+- ✅ Core command (ConfirmReadyToBid)
+- ✅ API handler (confirm_ready_to_bid)
+- ✅ Request/response types
+- ✅ Bid order materialization
+- ✅ Bid window calculation and storage
+- ✅ Lifecycle state transition
+- ✅ Audit event recording
+- ✅ Build and CI passing
+
+**Remaining:**
+
+- ⏳ Editing lock enforcement (6 operations to lock)
+- ⏳ Unit tests for confirmation logic
+- ⏳ Integration tests for full confirmation flow
+- ⏳ Tests for editing locks
+
+**Blockers:** None
+
+**Next Steps:**
+
+1. Add lifecycle state checks to prevent mutations after Canonicalized:
+   - `create_area()` - add check
+   - `register_user()` - add check
+   - `update_user_participation_flags()` - add check (if exists)
+   - Round configuration endpoints - add checks
+   - `set_bid_schedule()` - add check
+2. Write comprehensive tests for confirmation handler
+3. Write integration tests
+4. Wire up endpoint in server layer (deferred)
 
 ## Phase 29E In Progress - 2026-01-21
 

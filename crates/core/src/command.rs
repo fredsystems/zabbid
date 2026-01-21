@@ -124,6 +124,14 @@ pub enum Command {
         /// The year to transition.
         year: u16,
     },
+    /// Confirm a bid year is ready to bid, materializing bid order and windows.
+    ///
+    /// This transitions from `BootstrapComplete` to `Canonicalized`.
+    /// It materializes bid order, calculates bid windows, and locks editing.
+    ConfirmReadyToBid {
+        /// The year to confirm.
+        year: u16,
+    },
     /// Transition a bid year from `Canonicalized` to `BiddingActive`.
     TransitionToBiddingActive {
         /// The year to transition.

@@ -696,6 +696,50 @@ pub fn bulk_insert_canonical_bid_windows_mysql(
     Ok(())
 }
 
+/// Bulk inserts bid window records (`SQLite` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `records` - The bid window records to insert
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn bulk_insert_bid_windows_sqlite(
+    conn: &mut SqliteConnection,
+    records: &[crate::data_models::NewBidWindow],
+) -> Result<(), PersistenceError> {
+    diesel::insert_into(diesel_schema::bid_windows::table)
+        .values(records)
+        .execute(conn)?;
+
+    debug!(count = records.len(), "Bulk inserted bid windows");
+    Ok(())
+}
+
+/// Bulk inserts bid window records (`MySQL` version).
+///
+/// # Arguments
+///
+/// * `conn` - The database connection
+/// * `records` - The bid window records to insert
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
+pub fn bulk_insert_bid_windows_mysql(
+    conn: &mut MysqlConnection,
+    records: &[crate::data_models::NewBidWindow],
+) -> Result<(), PersistenceError> {
+    diesel::insert_into(diesel_schema::bid_windows::table)
+        .values(records)
+        .execute(conn)?;
+
+    debug!(count = records.len(), "Bulk inserted bid windows");
+    Ok(())
+}
+
 /// Override a user's area assignment (`SQLite` version).
 ///
 /// # Arguments

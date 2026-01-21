@@ -167,6 +167,30 @@ pub struct NewCanonicalBidOrder {
     pub override_reason: Option<String>,
 }
 
+/// Bid window row (diesel queryable).
+#[allow(dead_code)]
+#[derive(Debug, Clone, diesel::Queryable, diesel::Selectable)]
+#[diesel(table_name = crate::diesel_schema::bid_windows)]
+pub struct BidWindowRow {
+    pub bid_window_id: Option<i64>,
+    pub bid_year_id: i64,
+    pub area_id: i64,
+    pub user_id: i64,
+    pub window_start_datetime: String,
+    pub window_end_datetime: String,
+}
+
+/// Bid window insertable (diesel insertable).
+#[derive(Debug, Clone, diesel::Insertable)]
+#[diesel(table_name = crate::diesel_schema::bid_windows)]
+pub struct NewBidWindow {
+    pub bid_year_id: i64,
+    pub area_id: i64,
+    pub user_id: i64,
+    pub window_start_datetime: String,
+    pub window_end_datetime: String,
+}
+
 /// Canonical bid windows row (diesel queryable).
 #[allow(dead_code)]
 #[derive(Debug, Clone, diesel::Queryable, diesel::Selectable)]

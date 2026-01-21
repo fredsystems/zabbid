@@ -388,6 +388,50 @@ pub fn apply_bootstrap(
                 canonical_bid_year: None,
             })
         }
+        Command::ConfirmReadyToBid { year } => {
+            let bid_year = BidYear::new(year);
+
+            // Validate bid year exists
+            if !metadata.has_bid_year(&bid_year) {
+                return Err(CoreError::DomainViolation(DomainError::BidYearNotFound(
+                    year,
+                )));
+            }
+
+            // Create new metadata (unchanged - bid order materialization happens in persistence)
+            let new_metadata: BootstrapMetadata = metadata.clone();
+
+            // Create audit event recording the confirmation
+            let before: StateSnapshot =
+                StateSnapshot::new(String::from("lifecycle_state=BootstrapComplete"));
+            let after: StateSnapshot = StateSnapshot::new(String::from(
+                "lifecycle_state=Canonicalized,bid_order_materialized=true,bid_windows_calculated=true",
+            ));
+
+            let action: Action = Action::new(
+                String::from("ConfirmReadyToBid"),
+                Some(format!(
+                    "Confirmed bid year {year} ready to bid (materialized bid order and calculated bid windows)"
+                )),
+            );
+
+            let audit_event: AuditEvent = AuditEvent {
+                event_id: None,
+                actor,
+                cause,
+                action,
+                before,
+                after,
+                bid_year: Some(bid_year),
+                area: None,
+            };
+
+            Ok(BootstrapResult {
+                new_metadata,
+                audit_event,
+                canonical_bid_year: None,
+            })
+        }
         Command::TransitionToBiddingActive { year } => {
             let bid_year = BidYear::new(year);
 
@@ -871,6 +915,7 @@ pub fn apply(
         | Command::SetExpectedUserCount { .. }
         | Command::TransitionToBootstrapComplete { .. }
         | Command::TransitionToCanonicalized { .. }
+        | Command::ConfirmReadyToBid { .. }
         | Command::TransitionToBiddingActive { .. }
         | Command::TransitionToBiddingClosed { .. } => {
             // Bootstrap commands should use apply_bootstrap() instead

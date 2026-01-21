@@ -1190,6 +1190,37 @@ pub struct TransitionToBootstrapCompleteResponse {
     pub message: String,
 }
 
+/// API request to confirm a bid year is ready to bid.
+///
+/// This transitions from `BootstrapComplete` to `Canonicalized`,
+/// materializing bid order and calculating bid windows.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct ConfirmReadyToBidRequest {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// Explicit confirmation text (must match "I understand this action is irreversible").
+    pub confirmation: String,
+}
+
+/// API response for confirming a bid year is ready to bid.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ConfirmReadyToBidResponse {
+    /// The canonical bid year identifier.
+    pub bid_year_id: i64,
+    /// The year value.
+    pub year: u16,
+    /// The new lifecycle state.
+    pub lifecycle_state: String,
+    /// The audit event ID for this confirmation.
+    pub audit_event_id: i64,
+    /// A success message.
+    pub message: String,
+    /// Number of bid order positions materialized.
+    pub bid_order_count: usize,
+    /// Number of bid windows calculated.
+    pub bid_windows_calculated: usize,
+}
+
 /// API request to transition a bid year to `Canonicalized` state.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct TransitionToCanonicalizedRequest {

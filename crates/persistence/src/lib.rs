@@ -162,7 +162,7 @@ macro_rules! backend_fn {
 }
 
 mod backend;
-mod data_models;
+pub mod data_models;
 mod diesel_schema;
 mod error;
 mod mutations;
@@ -171,7 +171,7 @@ mod queries;
 #[cfg(test)]
 mod tests;
 
-pub use data_models::{OperatorData, SessionData};
+pub use data_models::{NewBidWindow, NewCanonicalBidOrder, OperatorData, SessionData};
 pub use error::PersistenceError;
 pub use mutations::PersistTransitionResult;
 
@@ -2092,6 +2092,52 @@ impl Persistence {
     /// * `bid_order` - The new bid order (or `None` to clear)
     /// * `reason` - The reason for the override
     ///
+    /// Bulk inserts canonical bid order records.
+    ///
+    /// # Arguments
+    ///
+    /// * `records` - The canonical bid order records to insert
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database operation fails.
+    pub fn bulk_insert_canonical_bid_order(
+        &mut self,
+        records: &[data_models::NewCanonicalBidOrder],
+    ) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::canonical::bulk_insert_canonical_bid_order_sqlite(conn, records)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::canonical::bulk_insert_canonical_bid_order_mysql(conn, records)
+            }
+        }
+    }
+
+    /// Bulk inserts bid window records.
+    ///
+    /// # Arguments
+    ///
+    /// * `records` - The bid window records to insert
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database operation fails.
+    pub fn bulk_insert_bid_windows(
+        &mut self,
+        records: &[data_models::NewBidWindow],
+    ) -> Result<(), PersistenceError> {
+        match &mut self.conn {
+            BackendConnection::Sqlite(conn) => {
+                mutations::canonical::bulk_insert_bid_windows_sqlite(conn, records)
+            }
+            BackendConnection::Mysql(conn) => {
+                mutations::canonical::bulk_insert_bid_windows_mysql(conn, records)
+            }
+        }
+    }
+
     /// # Returns
     ///
     /// Returns a tuple of (`previous_bid_order`, `was_already_overridden`).

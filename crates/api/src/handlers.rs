@@ -26,9 +26,10 @@ use crate::error::{ApiError, AuthError, translate_core_error, translate_domain_e
 use crate::password_policy::PasswordPolicy;
 use crate::request_response::{
     AreaCompletenessInfo, BidOrderPositionInfo, BidScheduleInfo, BidYearCompletenessInfo,
-    BidYearInfo, BlockingReason, ChangePasswordRequest, ChangePasswordResponse, CreateAreaRequest,
-    CreateBidYearRequest, CreateOperatorRequest, CreateOperatorResponse, CsvImportRowResult,
-    CsvImportRowStatus, CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
+    BidYearInfo, BlockingReason, ChangePasswordRequest, ChangePasswordResponse,
+    ConfirmReadyToBidRequest, ConfirmReadyToBidResponse, CreateAreaRequest, CreateBidYearRequest,
+    CreateOperatorRequest, CreateOperatorResponse, CsvImportRowResult, CsvImportRowStatus,
+    CsvRowPreview, CsvRowStatus, DeleteOperatorRequest, DeleteOperatorResponse,
     DisableOperatorRequest, DisableOperatorResponse, EnableOperatorRequest, EnableOperatorResponse,
     GetActiveBidYearResponse, GetBidOrderPreviewResponse, GetBidScheduleResponse,
     GetBidYearReadinessResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse,
@@ -6267,6 +6268,315 @@ pub fn get_bid_year_readiness(
             seniority_conflicts,
             bid_schedule_set,
         },
+    })
+}
+
+/// Confirms a bid year is ready to bid, materializing bid order and calculating bid windows.
+///
+/// This is the irreversible confirmation action that:
+/// - Validates readiness preconditions
+/// - Computes and stores bid order for all eligible users
+/// - Calculates and stores bid windows based on bid schedule
+/// - Transitions lifecycle state from `BootstrapComplete` to `Canonicalized`
+/// - Engages editing locks
+///
+/// # Arguments
+///
+/// * `persistence` - The persistence layer
+/// * `metadata` - The bootstrap metadata
+/// * `request` - The confirmation request
+/// * `authenticated_actor` - The authenticated actor performing the action
+/// * `operator` - The operator data
+/// * `cause` - The audit cause
+///
+/// # Returns
+///
+/// A response containing confirmation details and statistics.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Authorization fails (only admins can confirm)
+/// - Confirmation text doesn't match
+/// - Bid year doesn't exist
+/// - Current state is not `BootstrapComplete`
+/// - Readiness evaluation fails
+/// - Bid schedule is missing or invalid
+/// - Bid order computation fails
+/// - Bid window calculation fails
+/// - Database operations fail
+#[allow(clippy::too_many_lines)]
+#[allow(dead_code)] // Phase 29E: Will be wired up in server layer
+pub fn confirm_ready_to_bid(
+    persistence: &mut SqlitePersistence,
+    metadata: &BootstrapMetadata,
+    request: &ConfirmReadyToBidRequest,
+    authenticated_actor: &AuthenticatedActor,
+    operator: &OperatorData,
+    cause: Cause,
+) -> Result<ConfirmReadyToBidResponse, ApiError> {
+    const REQUIRED_CONFIRMATION: &str = "I understand this action is irreversible";
+
+    // Enforce authorization - only admins can confirm
+    if authenticated_actor.role != Role::Admin {
+        return Err(ApiError::Unauthorized {
+            action: String::from("confirm_ready_to_bid"),
+            required_role: String::from("Admin"),
+        });
+    }
+
+    // Validate confirmation text
+    if request.confirmation != REQUIRED_CONFIRMATION {
+        return Err(ApiError::InvalidInput {
+            field: String::from("confirmation"),
+            message: format!("Confirmation text must be exactly: '{REQUIRED_CONFIRMATION}'"),
+        });
+    }
+
+    // Resolve bid_year_id to BidYear from metadata
+    let bid_year: &BidYear = metadata
+        .bid_years
+        .iter()
+        .find(|by| by.bid_year_id() == Some(request.bid_year_id))
+        .ok_or_else(|| ApiError::ResourceNotFound {
+            resource_type: String::from("BidYear"),
+            message: format!("Bid year with ID {} not found", request.bid_year_id),
+        })?;
+
+    let year: u16 = bid_year.year();
+
+    // Load current lifecycle state
+    let current_state_str: String = persistence
+        .get_lifecycle_state(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get lifecycle state: {e}"),
+        })?;
+
+    let current_state: zab_bid_domain::BidYearLifecycle =
+        current_state_str.parse().map_err(translate_domain_error)?;
+
+    // Validate current state is BootstrapComplete
+    if current_state != zab_bid_domain::BidYearLifecycle::BootstrapComplete {
+        return Err(ApiError::DomainRuleViolation {
+            rule: String::from("ConfirmReadyToBid requires BootstrapComplete state"),
+            message: format!(
+                "Cannot confirm bid year in state '{}' (must be 'BootstrapComplete')",
+                current_state.as_str()
+            ),
+        });
+    }
+
+    // Check readiness
+    let readiness: GetBidYearReadinessResponse =
+        get_bid_year_readiness(persistence, metadata, request.bid_year_id)?;
+
+    if !readiness.is_ready {
+        return Err(ApiError::DomainRuleViolation {
+            rule: String::from("Readiness criteria must be satisfied"),
+            message: format!(
+                "Bid year {} is not ready for confirmation. Blocking reasons: {}",
+                year,
+                readiness.blocking_reasons.join(", ")
+            ),
+        });
+    }
+
+    // Get bid schedule
+    let bid_schedule_result = persistence
+        .get_bid_schedule(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get bid schedule: {e}"),
+        })?;
+
+    let bid_schedule: zab_bid_domain::BidSchedule = match bid_schedule_result {
+        (
+            Some(timezone),
+            Some(start_date_str),
+            Some(window_start_time_str),
+            Some(window_end_time_str),
+            Some(bidders_per_day),
+        ) => {
+            // Parse date and times from strings
+            let start_date = time::Date::parse(
+                &start_date_str,
+                &time::format_description::well_known::Iso8601::DEFAULT,
+            )
+            .map_err(|_| ApiError::Internal {
+                message: format!("Failed to parse bid start date: {start_date_str}"),
+            })?;
+
+            let window_start_time = time::Time::parse(
+                &window_start_time_str,
+                &time::format_description::well_known::Iso8601::DEFAULT,
+            )
+            .map_err(|_| ApiError::Internal {
+                message: format!("Failed to parse window start time: {window_start_time_str}"),
+            })?;
+
+            let window_end_time = time::Time::parse(
+                &window_end_time_str,
+                &time::format_description::well_known::Iso8601::DEFAULT,
+            )
+            .map_err(|_| ApiError::Internal {
+                message: format!("Failed to parse window end time: {window_end_time_str}"),
+            })?;
+
+            let bidders_per_day_u32 =
+                bidders_per_day.to_u32().ok_or_else(|| ApiError::Internal {
+                    message: format!("Invalid bidders_per_day value: {bidders_per_day}"),
+                })?;
+
+            zab_bid_domain::BidSchedule::new(
+                timezone,
+                start_date,
+                window_start_time,
+                window_end_time,
+                bidders_per_day_u32,
+            )
+            .map_err(translate_domain_error)?
+        }
+        _ => {
+            return Err(ApiError::DomainRuleViolation {
+                rule: String::from("Bid schedule must be set before confirmation"),
+                message: format!("No bid schedule configured for bid year {year}"),
+            });
+        }
+    };
+
+    // Get all users grouped by area for this bid year
+    let users_by_area = persistence
+        .get_users_by_area_for_conflict_detection(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get users for bid year {year}: {e}"),
+        })?;
+
+    // Materialize bid order and calculate windows for each area
+    let mut total_bid_order_count: usize = 0;
+    let mut total_bid_windows_count: usize = 0;
+
+    for (_area_id, _area_code, users_in_area) in &users_by_area {
+        if users_in_area.is_empty() {
+            continue;
+        }
+
+        // Compute bid order
+        let bid_order_positions: Vec<zab_bid_domain::BidOrderPosition> =
+            zab_bid_domain::compute_bid_order(users_in_area).map_err(translate_domain_error)?;
+
+        if bid_order_positions.is_empty() {
+            continue;
+        }
+
+        // Calculate bid windows
+        let user_positions: Vec<(i64, usize)> = bid_order_positions
+            .iter()
+            .map(|pos| (pos.user_id, pos.position))
+            .collect();
+
+        let bid_windows: Vec<zab_bid_domain::BidWindow> =
+            zab_bid_domain::calculate_bid_windows(&user_positions, &bid_schedule)
+                .map_err(translate_domain_error)?;
+
+        total_bid_order_count += bid_order_positions.len();
+        total_bid_windows_count += bid_windows.len();
+    }
+
+    // Apply the core command
+    let command = Command::ConfirmReadyToBid { year };
+    let actor: Actor = authenticated_actor.to_audit_actor(operator);
+    let result: BootstrapResult =
+        apply_bootstrap(metadata, bid_year, command, actor, cause).map_err(translate_core_error)?;
+
+    // Persist audit event first to get the audit_event_id
+    let audit_event_id: i64 = persistence
+        .persist_audit_event(&result.audit_event)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to persist audit event: {e}"),
+        })?;
+
+    // Now materialize bid order and windows with the audit_event_id
+    for (area_id, _area_code, users_in_area) in &users_by_area {
+        if users_in_area.is_empty() {
+            continue;
+        }
+
+        // Compute bid order again (deterministic, so same result)
+        let bid_order_positions: Vec<zab_bid_domain::BidOrderPosition> =
+            zab_bid_domain::compute_bid_order(users_in_area).map_err(translate_domain_error)?;
+
+        if bid_order_positions.is_empty() {
+            continue;
+        }
+
+        // Convert to persistence records
+        let bid_order_records: Vec<zab_bid_persistence::data_models::NewCanonicalBidOrder> =
+            bid_order_positions
+                .iter()
+                .map(
+                    |pos| zab_bid_persistence::data_models::NewCanonicalBidOrder {
+                        bid_year_id: request.bid_year_id,
+                        audit_event_id,
+                        user_id: pos.user_id,
+                        bid_order: pos.position.to_i32(),
+                        is_overridden: 0,
+                        override_reason: None,
+                    },
+                )
+                .collect();
+
+        // Persist bid order
+        persistence
+            .bulk_insert_canonical_bid_order(&bid_order_records)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to persist bid order: {e}"),
+            })?;
+
+        // Calculate bid windows
+        let user_positions: Vec<(i64, usize)> = bid_order_positions
+            .iter()
+            .map(|pos| (pos.user_id, pos.position))
+            .collect();
+
+        let bid_windows: Vec<zab_bid_domain::BidWindow> =
+            zab_bid_domain::calculate_bid_windows(&user_positions, &bid_schedule)
+                .map_err(translate_domain_error)?;
+
+        // Convert to persistence records
+        let bid_window_records: Vec<zab_bid_persistence::data_models::NewBidWindow> = bid_windows
+            .iter()
+            .map(|window| zab_bid_persistence::data_models::NewBidWindow {
+                bid_year_id: request.bid_year_id,
+                area_id: *area_id,
+                user_id: window.user_id,
+                window_start_datetime: window.window_start_datetime.clone(),
+                window_end_datetime: window.window_end_datetime.clone(),
+            })
+            .collect();
+
+        // Persist bid windows
+        persistence
+            .bulk_insert_bid_windows(&bid_window_records)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to persist bid windows: {e}"),
+            })?;
+    }
+
+    // Update lifecycle state to Canonicalized
+    let target_state = zab_bid_domain::BidYearLifecycle::Canonicalized;
+    persistence
+        .update_lifecycle_state(request.bid_year_id, target_state.as_str())
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to update lifecycle state: {e}"),
+        })?;
+
+    Ok(ConfirmReadyToBidResponse {
+        bid_year_id: request.bid_year_id,
+        year,
+        lifecycle_state: target_state.as_str().to_string(),
+        audit_event_id,
+        message: format!("Bid year {year} confirmed ready to bid"),
+        bid_order_count: total_bid_order_count,
+        bid_windows_calculated: total_bid_windows_count,
     })
 }
 
