@@ -1,20 +1,21 @@
-Resume Phase 29.
+Resume Phase 30.
 
 Refer to:
 
-plans/PHASE_29.md
+plans/PHASE_30.md
 
-all Phase 29 sub-phase documents
+all Phase 30 sub-phase documents
 
 AGENTS.md
 
-plans/PHASE_29_WORKING_STATE.md
+plans/PHASE_30_WORKING_STATE.md
 
 Follow the Phase Planning & Execution Protocol.
 
 Continue from the current working state.
 Update the working state document before pausing or completing a sub-phase.
 When using git commands, be mindful the system auto uses pagers, so commands may appear to hang. Use no-pager as appropriate.
+If we need to pause for a new context window, ensure CI passes. If there is too much work for the CI to be able to pass, commit with "--no-verify" and note in the commit message.
 
 Do not reinterpret scope or invariants.
 
