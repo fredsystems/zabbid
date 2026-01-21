@@ -90,7 +90,7 @@
             javascript = {
               enableBiome = true;
               enableTsc = true;
-              tsConfig = "ui/tsconfig.json$";
+              tsConfig = "ui/tsconfig.json";
             };
 
             enableXtask = true;
