@@ -59,11 +59,8 @@ data/
 *.log
 
 # Other config files not needed in container
-deny.toml
 renovate.json
-typos.toml
 biome.json
-diesel.toml
 .markdownlint-cli2.yaml
 .dictionary.txt
 

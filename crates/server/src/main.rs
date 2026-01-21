@@ -26,7 +26,7 @@ use axum::{
     extract::{Path, Query, State as AxumState},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use clap::Parser;
 use live::{LiveEvent, LiveEventBroadcaster};
@@ -37,30 +37,40 @@ use tracing::{error, info};
 use zab_bid::{BootstrapMetadata, BootstrapResult, State, TransitionResult};
 use zab_bid_api::{
     AdjustBidOrderRequest, AdjustBidOrderResponse, AdjustBidWindowRequest, AdjustBidWindowResponse,
-    ApiError, ApiResult, BidOrderAdjustment, BootstrapStatusResponse, CreateAreaRequest,
-    CreateAreaResponse, CreateBidYearRequest, CreateBidYearResponse, CsvImportRowStatus,
-    GetActiveBidYearResponse, GetBidScheduleResponse, GetBootstrapCompletenessResponse,
-    GetLeaveAvailabilityResponse, ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest,
-    ListAreasResponse, ListBidYearsResponse, ListUsersResponse, OverrideAreaAssignmentRequest,
-    OverrideAreaAssignmentResponse, PreviewCsvUsersRequest, PreviewCsvUsersResponse,
-    RecalculateBidWindowsRequest, RecalculateBidWindowsResponse, RegisterUserRequest,
-    RegisterUserResponse, RegisterUserResult, SetActiveBidYearRequest, SetActiveBidYearResponse,
-    SetBidScheduleRequest, SetBidScheduleResponse, SetExpectedAreaCountRequest,
-    SetExpectedAreaCountResponse, SetExpectedUserCountRequest, SetExpectedUserCountResponse,
-    TransitionToBiddingActiveRequest, TransitionToBiddingActiveResponse,
-    TransitionToBiddingClosedRequest, TransitionToBiddingClosedResponse,
-    TransitionToBootstrapCompleteRequest, TransitionToBootstrapCompleteResponse,
-    TransitionToCanonicalizedRequest, TransitionToCanonicalizedResponse, UpdateAreaRequest,
-    UpdateAreaResponse, UpdateBidYearMetadataRequest, UpdateBidYearMetadataResponse,
+    ApiError, ApiResult, BidOrderAdjustment, BootstrapStatusResponse, ConfirmReadyToBidRequest,
+    ConfirmReadyToBidResponse, CreateAreaRequest, CreateAreaResponse, CreateBidYearRequest,
+    CreateBidYearResponse, CreateRoundGroupRequest, CreateRoundGroupResponse, CreateRoundRequest,
+    CreateRoundResponse, CsvImportRowStatus, DeleteRoundGroupResponse, DeleteRoundResponse,
+    GetActiveBidYearResponse, GetBidOrderPreviewResponse, GetBidScheduleResponse,
+    GetBidYearReadinessResponse, GetBootstrapCompletenessResponse, GetLeaveAvailabilityResponse,
+    ImportCsvUsersRequest, ImportCsvUsersResponse, ListAreasRequest, ListAreasResponse,
+    ListBidYearsResponse, ListRoundGroupsResponse, ListRoundsResponse, ListUsersResponse,
+    OverrideAreaAssignmentRequest, OverrideAreaAssignmentResponse, OverrideBidOrderRequest,
+    OverrideBidOrderResponse, OverrideBidWindowRequest, OverrideBidWindowResponse,
+    OverrideEligibilityRequest, OverrideEligibilityResponse, PreviewCsvUsersRequest,
+    PreviewCsvUsersResponse, RecalculateBidWindowsRequest, RecalculateBidWindowsResponse,
+    RegisterUserRequest, RegisterUserResponse, RegisterUserResult, ReviewNoBidUserResponse,
+    SetActiveBidYearRequest, SetActiveBidYearResponse, SetBidScheduleRequest,
+    SetBidScheduleResponse, SetExpectedAreaCountRequest, SetExpectedAreaCountResponse,
+    SetExpectedUserCountRequest, SetExpectedUserCountResponse, TransitionToBiddingActiveRequest,
+    TransitionToBiddingActiveResponse, TransitionToBiddingClosedRequest,
+    TransitionToBiddingClosedResponse, TransitionToBootstrapCompleteRequest,
+    TransitionToBootstrapCompleteResponse, TransitionToCanonicalizedRequest,
+    TransitionToCanonicalizedResponse, UpdateAreaRequest, UpdateAreaResponse,
+    UpdateBidYearMetadataRequest, UpdateBidYearMetadataResponse, UpdateRoundGroupRequest,
+    UpdateRoundGroupResponse, UpdateRoundRequest, UpdateRoundResponse,
     UpdateUserParticipationRequest, UpdateUserParticipationResponse, UpdateUserRequest,
-    UpdateUserResponse, adjust_bid_order, adjust_bid_window, checkpoint, create_area,
-    create_bid_year, finalize, get_active_bid_year, get_bid_schedule, get_bootstrap_completeness,
-    get_bootstrap_status, get_current_state, get_historical_state, get_leave_availability,
-    import_csv_users, list_areas, list_bid_years, list_users, override_area_assignment,
-    preview_csv_users, recalculate_bid_windows, register_user, rollback, set_active_bid_year,
-    set_bid_schedule, set_expected_area_count, set_expected_user_count,
-    transition_to_bidding_active, transition_to_bidding_closed, transition_to_bootstrap_complete,
-    transition_to_canonicalized, update_area, update_bid_year_metadata, update_user,
+    UpdateUserResponse, adjust_bid_order, adjust_bid_window, checkpoint, confirm_ready_to_bid,
+    create_area, create_bid_year, create_round, create_round_group, delete_round,
+    delete_round_group, finalize, get_active_bid_year, get_bid_order_preview, get_bid_schedule,
+    get_bid_year_readiness, get_bootstrap_completeness, get_bootstrap_status, get_current_state,
+    get_historical_state, get_leave_availability, import_csv_users, list_areas, list_bid_years,
+    list_round_groups, list_rounds, list_users, override_area_assignment, override_bid_order,
+    override_bid_window, override_eligibility, preview_csv_users, recalculate_bid_windows,
+    register_user, review_no_bid_user, rollback, set_active_bid_year, set_bid_schedule,
+    set_expected_area_count, set_expected_user_count, transition_to_bidding_active,
+    transition_to_bidding_closed, transition_to_bootstrap_complete, transition_to_canonicalized,
+    update_area, update_bid_year_metadata, update_round, update_round_group, update_user,
     update_user_participation,
 };
 use zab_bid_audit::{AuditEvent, Cause};
@@ -2811,6 +2821,136 @@ struct RecalculateBidWindowsApiRequest {
     reason: String,
 }
 
+/// Request for creating a round group (Phase 29B)
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct CreateRoundGroupApiRequest {
+    cause_id: String,
+    cause_description: String,
+    bid_year_id: i64,
+    name: String,
+    editing_enabled: bool,
+}
+
+/// Query for listing round groups (Phase 29B)
+#[derive(serde::Deserialize)]
+struct ListRoundGroupsQuery {
+    bid_year_id: i64,
+}
+
+/// Request for updating a round group (Phase 29B)
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct UpdateRoundGroupApiRequest {
+    cause_id: String,
+    cause_description: String,
+    name: String,
+    editing_enabled: bool,
+}
+
+/// Request for deleting a round group (Phase 29B)
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct DeleteRoundGroupApiRequest {
+    cause_id: String,
+    cause_description: String,
+}
+
+/// Request for creating a round (Phase 29B)
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct CreateRoundApiRequest {
+    cause_id: String,
+    cause_description: String,
+    round_group_id: i64,
+    round_number: u32,
+    name: String,
+    slots_per_day: u32,
+    max_groups: u32,
+    max_total_hours: u32,
+    include_holidays: bool,
+    allow_overbid: bool,
+}
+
+/// Query for listing rounds (Phase 29B)
+#[derive(serde::Deserialize)]
+struct ListRoundsQuery {
+    round_group_id: i64,
+}
+
+/// Request for updating a round (Phase 29B)
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct UpdateRoundApiRequest {
+    cause_id: String,
+    cause_description: String,
+    round_group_id: i64,
+    round_number: u32,
+    name: String,
+    slots_per_day: u32,
+    max_groups: u32,
+    max_total_hours: u32,
+    include_holidays: bool,
+    allow_overbid: bool,
+}
+
+/// Request for deleting a round (Phase 29B)
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct DeleteRoundApiRequest {
+    cause_id: String,
+    cause_description: String,
+}
+
+/// Request for reviewing a No Bid user (Phase 29D)
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct ReviewNoBidUserApiRequest {
+    cause_id: String,
+    cause_description: String,
+}
+
+/// Query for getting bid order preview (Phase 29D)
+#[derive(serde::Deserialize)]
+struct GetBidOrderPreviewQuery {
+    bid_year_id: i64,
+    area_id: i64,
+}
+
+/// Request for confirming ready to bid (Phase 29E)
+#[derive(serde::Deserialize)]
+struct ConfirmReadyToBidApiRequest {
+    cause_id: String,
+    cause_description: String,
+    bid_year_id: i64,
+    confirmation: String,
+}
+
+/// Request for overriding user eligibility
+#[derive(serde::Deserialize)]
+struct OverrideEligibilityApiRequest {
+    user_id: i64,
+    can_bid: bool,
+    reason: String,
+}
+
+/// Request for overriding user bid order
+#[derive(serde::Deserialize)]
+struct OverrideBidOrderApiRequest {
+    user_id: i64,
+    bid_order: Option<i32>,
+    reason: String,
+}
+
+/// Request for overriding user bid window
+#[derive(serde::Deserialize)]
+struct OverrideBidWindowApiRequest {
+    user_id: i64,
+    window_start: Option<String>,
+    window_end: Option<String>,
+    reason: String,
+}
+
 /// Handler for POST `/users/participation` endpoint (Phase 29A).
 ///
 /// Updates user participation flags. Admin only.
@@ -3129,6 +3269,478 @@ async fn handle_recalculate_bid_windows(
     Ok(Json(response))
 }
 
+/// Handler for POST `/api/round-groups` endpoint.
+///
+/// Creates a new round group. Admin only.
+async fn handle_create_round_group(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, _operator): session::SessionOperator,
+    Json(req): Json<CreateRoundGroupApiRequest>,
+) -> Result<Json<CreateRoundGroupResponse>, HttpError> {
+    info!(
+        bid_year_id = req.bid_year_id,
+        name = %req.name,
+        "Handling create_round_group request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    let request: CreateRoundGroupRequest = CreateRoundGroupRequest {
+        name: req.name,
+        editing_enabled: req.editing_enabled,
+    };
+
+    let response: CreateRoundGroupResponse =
+        create_round_group(&mut persistence, req.bid_year_id, &request, &actor)?;
+    drop(persistence);
+
+    info!(
+        round_group_id = response.round_group_id,
+        "Successfully created round group"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for GET `/api/round-groups` endpoint.
+///
+/// Lists all round groups for a bid year. Authenticated.
+async fn handle_list_round_groups(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, _operator): session::SessionOperator,
+    Query(query): Query<ListRoundGroupsQuery>,
+) -> Result<Json<ListRoundGroupsResponse>, HttpError> {
+    info!(
+        bid_year_id = query.bid_year_id,
+        "Handling list_round_groups request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    let response: ListRoundGroupsResponse =
+        list_round_groups(&mut persistence, query.bid_year_id, &actor)?;
+    drop(persistence);
+
+    info!(
+        round_group_count = response.round_groups.len(),
+        "Successfully listed round groups"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for PUT `/api/round-groups/{id}` endpoint.
+///
+/// Updates a round group. Admin only.
+async fn handle_update_round_group(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, _operator): session::SessionOperator,
+    Path(round_group_id): Path<i64>,
+    Json(req): Json<UpdateRoundGroupApiRequest>,
+) -> Result<Json<UpdateRoundGroupResponse>, HttpError> {
+    info!(
+        round_group_id = round_group_id,
+        "Handling update_round_group request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    let request: UpdateRoundGroupRequest = UpdateRoundGroupRequest {
+        round_group_id,
+        name: req.name,
+        editing_enabled: req.editing_enabled,
+    };
+
+    let response: UpdateRoundGroupResponse =
+        update_round_group(&mut persistence, &request, &actor)?;
+    drop(persistence);
+
+    info!(
+        round_group_id = response.round_group_id,
+        "Successfully updated round group"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for DELETE `/api/round-groups/{id}` endpoint.
+///
+/// Deletes a round group. Admin only.
+async fn handle_delete_round_group(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, _operator): session::SessionOperator,
+    Path(round_group_id): Path<i64>,
+    Json(_req): Json<DeleteRoundGroupApiRequest>,
+) -> Result<Json<DeleteRoundGroupResponse>, HttpError> {
+    info!(
+        round_group_id = round_group_id,
+        "Handling delete_round_group request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    let response: DeleteRoundGroupResponse =
+        delete_round_group(&mut persistence, round_group_id, &actor)?;
+    drop(persistence);
+
+    info!(
+        round_group_id = round_group_id,
+        "Successfully deleted round group"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/api/rounds` endpoint.
+///
+/// Creates a new round. Admin only.
+async fn handle_create_round(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, _operator): session::SessionOperator,
+    Json(req): Json<CreateRoundApiRequest>,
+) -> Result<Json<CreateRoundResponse>, HttpError> {
+    info!(
+        round_group_id = req.round_group_id,
+        "Handling create_round request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    let request: CreateRoundRequest = CreateRoundRequest {
+        round_group_id: req.round_group_id,
+        round_number: req.round_number,
+        name: req.name,
+        slots_per_day: req.slots_per_day,
+        max_groups: req.max_groups,
+        max_total_hours: req.max_total_hours,
+        include_holidays: req.include_holidays,
+        allow_overbid: req.allow_overbid,
+    };
+
+    let response: CreateRoundResponse =
+        create_round(&mut persistence, req.round_group_id, &request, &actor)?;
+    drop(persistence);
+
+    info!(round_id = response.round_id, "Successfully created round");
+
+    Ok(Json(response))
+}
+
+/// Handler for GET `/api/rounds` endpoint.
+///
+/// Lists all rounds for a round group. Authenticated.
+async fn handle_list_rounds(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, _operator): session::SessionOperator,
+    Query(query): Query<ListRoundsQuery>,
+) -> Result<Json<ListRoundsResponse>, HttpError> {
+    info!(
+        round_group_id = query.round_group_id,
+        "Handling list_rounds request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    let response: ListRoundsResponse = list_rounds(&mut persistence, query.round_group_id, &actor)?;
+    drop(persistence);
+
+    info!(
+        round_count = response.rounds.len(),
+        "Successfully listed rounds"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for PUT `/api/rounds/{id}` endpoint.
+///
+/// Updates a round. Admin only.
+async fn handle_update_round(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, _operator): session::SessionOperator,
+    Path(round_id): Path<i64>,
+    Json(req): Json<UpdateRoundApiRequest>,
+) -> Result<Json<UpdateRoundResponse>, HttpError> {
+    info!(round_id = round_id, "Handling update_round request");
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    let request: UpdateRoundRequest = UpdateRoundRequest {
+        round_id,
+        round_group_id: req.round_group_id,
+        round_number: req.round_number,
+        name: req.name,
+        slots_per_day: req.slots_per_day,
+        max_groups: req.max_groups,
+        max_total_hours: req.max_total_hours,
+        include_holidays: req.include_holidays,
+        allow_overbid: req.allow_overbid,
+    };
+
+    let response: UpdateRoundResponse = update_round(&mut persistence, &request, &actor)?;
+    drop(persistence);
+
+    info!(round_id = response.round_id, "Successfully updated round");
+
+    Ok(Json(response))
+}
+
+/// Handler for DELETE `/api/rounds/{id}` endpoint.
+///
+/// Deletes a round. Admin only.
+async fn handle_delete_round(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, _operator): session::SessionOperator,
+    Path(round_id): Path<i64>,
+    Json(_req): Json<DeleteRoundApiRequest>,
+) -> Result<Json<DeleteRoundResponse>, HttpError> {
+    info!(round_id = round_id, "Handling delete_round request");
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    let response: DeleteRoundResponse = delete_round(&mut persistence, round_id, &actor)?;
+    drop(persistence);
+
+    info!(round_id = round_id, "Successfully deleted round");
+
+    Ok(Json(response))
+}
+
+/// Handler for GET `/api/readiness/{bid_year_id}` endpoint.
+///
+/// Gets readiness evaluation for a bid year. Admin only.
+async fn handle_get_bid_year_readiness(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(_actor, _operator): session::SessionOperator,
+    Path(bid_year_id): Path<i64>,
+) -> Result<Json<GetBidYearReadinessResponse>, HttpError> {
+    info!(
+        bid_year_id = bid_year_id,
+        "Handling get_bid_year_readiness request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    let response: GetBidYearReadinessResponse =
+        get_bid_year_readiness(&mut persistence, &metadata, bid_year_id)?;
+    drop(persistence);
+
+    info!(
+        is_ready = response.is_ready,
+        blocking_count = response.blocking_reasons.len(),
+        "Successfully evaluated readiness"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/api/users/{user_id}/review-no-bid` endpoint.
+///
+/// Marks a No Bid user as reviewed. Admin only.
+async fn handle_review_no_bid_user(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, _operator): session::SessionOperator,
+    Path(user_id): Path<i64>,
+    Json(_req): Json<ReviewNoBidUserApiRequest>,
+) -> Result<Json<ReviewNoBidUserResponse>, HttpError> {
+    info!(user_id = user_id, "Handling review_no_bid_user request");
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    let response: ReviewNoBidUserResponse = review_no_bid_user(&mut persistence, user_id, &actor)?;
+    drop(persistence);
+
+    info!(
+        user_id = response.user_id,
+        "Successfully reviewed No Bid user"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for GET `/api/bid-order/preview` endpoint.
+///
+/// Previews bid order without persisting. Authenticated.
+async fn handle_get_bid_order_preview(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(_actor, _operator): session::SessionOperator,
+    Query(query): Query<GetBidOrderPreviewQuery>,
+) -> Result<Json<GetBidOrderPreviewResponse>, HttpError> {
+    info!(
+        bid_year_id = query.bid_year_id,
+        area_id = query.area_id,
+        "Handling get_bid_order_preview request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    let response: GetBidOrderPreviewResponse = get_bid_order_preview(
+        &mut persistence,
+        &metadata,
+        query.bid_year_id,
+        query.area_id,
+    )?;
+    drop(persistence);
+
+    info!(
+        position_count = response.positions.len(),
+        "Successfully generated bid order preview"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/api/confirm-ready-to-bid` endpoint.
+///
+/// Confirms readiness and enters bidding phase. Admin only. IRREVERSIBLE.
+async fn handle_confirm_ready_to_bid(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<ConfirmReadyToBidApiRequest>,
+) -> Result<Json<ConfirmReadyToBidResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        bid_year_id = req.bid_year_id,
+        "Handling confirm_ready_to_bid request (IRREVERSIBLE)"
+    );
+
+    let cause: Cause = Cause::new(req.cause_id, req.cause_description);
+
+    let mut persistence = app_state.persistence.lock().await;
+    let metadata: BootstrapMetadata = persistence.get_bootstrap_metadata()?;
+
+    let request: ConfirmReadyToBidRequest = ConfirmReadyToBidRequest {
+        bid_year_id: req.bid_year_id,
+        confirmation: req.confirmation,
+    };
+
+    let response: ConfirmReadyToBidResponse = confirm_ready_to_bid(
+        &mut persistence,
+        &metadata,
+        &request,
+        &actor,
+        &operator,
+        cause,
+    )?;
+    drop(persistence);
+
+    info!(
+        bid_year_id = response.bid_year_id,
+        "Successfully confirmed ready to bid - SYSTEM NOW IN BIDDING PHASE"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/api/users/override-eligibility` endpoint.
+///
+/// Overrides user eligibility status. Admin only.
+async fn handle_override_eligibility(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<OverrideEligibilityApiRequest>,
+) -> Result<Json<OverrideEligibilityResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        user_id = req.user_id,
+        "Handling override_eligibility request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    let request: OverrideEligibilityRequest = OverrideEligibilityRequest {
+        user_id: req.user_id,
+        can_bid: req.can_bid,
+        reason: req.reason,
+    };
+
+    let response: OverrideEligibilityResponse =
+        override_eligibility(&mut persistence, &request, &actor, &operator)?;
+    drop(persistence);
+
+    info!(
+        audit_event_id = response.audit_event_id,
+        "Successfully overrode user eligibility"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/api/users/override-bid-order` endpoint.
+///
+/// Overrides user bid order position. Admin only.
+async fn handle_override_bid_order(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<OverrideBidOrderApiRequest>,
+) -> Result<Json<OverrideBidOrderResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        user_id = req.user_id,
+        "Handling override_bid_order request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    let request: OverrideBidOrderRequest = OverrideBidOrderRequest {
+        user_id: req.user_id,
+        bid_order: req.bid_order,
+        reason: req.reason,
+    };
+
+    let response: OverrideBidOrderResponse =
+        override_bid_order(&mut persistence, &request, &actor, &operator)?;
+    drop(persistence);
+
+    info!(
+        audit_event_id = response.audit_event_id,
+        "Successfully overrode user bid order"
+    );
+
+    Ok(Json(response))
+}
+
+/// Handler for POST `/api/users/override-bid-window` endpoint.
+///
+/// Overrides user bid window dates. Admin only.
+async fn handle_override_bid_window(
+    AxumState(app_state): AxumState<AppState>,
+    session::SessionOperator(actor, operator): session::SessionOperator,
+    Json(req): Json<OverrideBidWindowApiRequest>,
+) -> Result<Json<OverrideBidWindowResponse>, HttpError> {
+    info!(
+        actor_login = %operator.login_name,
+        role = ?actor.role,
+        user_id = req.user_id,
+        "Handling override_bid_window request"
+    );
+
+    let mut persistence = app_state.persistence.lock().await;
+
+    let request: OverrideBidWindowRequest = OverrideBidWindowRequest {
+        user_id: req.user_id,
+        window_start: req.window_start,
+        window_end: req.window_end,
+        reason: req.reason,
+    };
+
+    let response: OverrideBidWindowResponse =
+        override_bid_window(&mut persistence, &request, &actor, &operator)?;
+    drop(persistence);
+
+    info!(
+        audit_event_id = response.audit_event_id,
+        "Successfully overrode user bid window"
+    );
+
+    Ok(Json(response))
+}
+
 /// Health check endpoint for Docker and load balancers
 async fn handle_health() -> impl IntoResponse {
     (axum::http::StatusCode::OK, "healthy\n")
@@ -3248,6 +3860,37 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/bid-windows/recalculate",
             post(handle_recalculate_bid_windows),
+        )
+        // Phase 29B: Round management
+        .route("/round-groups", post(handle_create_round_group))
+        .route("/round-groups", get(handle_list_round_groups))
+        .route("/round-groups/{id}", post(handle_update_round_group))
+        .route("/round-groups/{id}", delete(handle_delete_round_group))
+        .route("/rounds", post(handle_create_round))
+        .route("/rounds", get(handle_list_rounds))
+        .route("/rounds/{id}", post(handle_update_round))
+        .route("/rounds/{id}", delete(handle_delete_round))
+        // Phase 29D: Readiness evaluation
+        .route(
+            "/readiness/{bid_year_id}",
+            get(handle_get_bid_year_readiness),
+        )
+        .route(
+            "/users/{user_id}/review-no-bid",
+            post(handle_review_no_bid_user),
+        )
+        .route("/bid-order/preview", get(handle_get_bid_order_preview))
+        // Phase 29E: Confirmation (IRREVERSIBLE)
+        .route("/confirm-ready-to-bid", post(handle_confirm_ready_to_bid))
+        // Override endpoints
+        .route(
+            "/users/override-eligibility",
+            post(handle_override_eligibility),
+        )
+        .route("/users/override-bid-order", post(handle_override_bid_order))
+        .route(
+            "/users/override-bid-window",
+            post(handle_override_bid_window),
         )
         .with_state(state);
 

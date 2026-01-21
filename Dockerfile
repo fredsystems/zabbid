@@ -1,21 +1,22 @@
 # Stage 1: Build the Rust binary
-FROM rust:1.83-bookworm as builder
+FROM rust:1.92-trixie as builder
 
 WORKDIR /app
 
 # Copy workspace configuration
 COPY Cargo.toml Cargo.lock ./
 COPY deny.toml ./
+COPY diesel.toml ./
 
 # Copy all crates
 COPY crates ./crates
 COPY xtask ./xtask
 
 # Build the server binary in release mode
-RUN cargo build --release --bin zab-bid-server
+RUN cargo build --release
 
 # Stage 2: Create minimal runtime image
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
