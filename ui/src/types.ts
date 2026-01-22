@@ -464,9 +464,9 @@ export interface GetBootstrapCompletenessResponse {
  */
 export interface GetActiveBidYearResponse {
   /** The canonical ID of the currently active bid year, if any */
-  active_bid_year_id: number | null;
+  bid_year_id: number | null;
   /** The currently active bid year (display value), if any */
-  active_bid_year: number | null;
+  year: number | null;
 }
 
 /**

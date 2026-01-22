@@ -31,6 +31,49 @@
     margin-bottom: $spacing-md;
     line-height: 1.5;
   }
+
+  // Standalone action buttons (not in card headers or forms)
+  > .btn-primary {
+    margin-bottom: $spacing-lg;
+  }
+
+  .header {
+    margin-bottom: $spacing-xl;
+
+    h2 {
+      margin: 0 0 $spacing-sm 0;
+    }
+
+    .lifecycle-badge {
+      display: inline-block;
+      padding: $spacing-xs $spacing-sm;
+      border-radius: $radius-sm;
+      font-size: $font-size-sm;
+      font-weight: 600;
+      margin-top: $spacing-sm;
+      margin-left: $spacing-sm;
+
+      &.active {
+        background: rgba($color-accent-primary, 0.2);
+        color: $color-accent-primary;
+      }
+
+      &.canonicalized {
+        background: rgba($color-accent-teal, 0.2);
+        color: $color-accent-teal;
+      }
+
+      &.bidding-active {
+        background: rgba($color-success, 0.2);
+        color: $color-success;
+      }
+
+      &.bidding-closed {
+        background: rgba($color-text-secondary, 0.2);
+        color: $color-text-secondary;
+      }
+    }
+  }
 }
 
 .round-groups-header {
@@ -81,7 +124,7 @@
   .card-header {
     display: flex;
     flex-direction: column;
-    gap: $spacing-sm;
+    gap: $spacing-md;
     padding-bottom: $spacing-md;
     border-bottom: 1px solid $color-border;
     margin-bottom: $spacing-md;
@@ -125,12 +168,13 @@
   }
 }
 
-.round-group-create-form {
+.create-form {
   background: $color-bg-surface-elevated;
   border: 2px solid $color-accent-primary;
   border-radius: $radius-md;
   padding: $spacing-lg;
   margin-bottom: $spacing-xl;
+  margin-top: $spacing-lg;
 
   h3 {
     margin-top: 0;
@@ -186,12 +230,13 @@
 
   .form-actions {
     display: flex;
-    gap: $spacing-sm;
+    gap: $spacing-md;
     flex-wrap: wrap;
+    margin-top: $spacing-md;
   }
 }
 
-.round-group-edit-form {
+.edit-form {
   margin-top: $spacing-md;
   padding-top: $spacing-md;
   border-top: 1px solid $color-border;
@@ -243,17 +288,50 @@
 
   .form-actions {
     display: flex;
-    gap: $spacing-sm;
+    gap: $spacing-md;
     flex-wrap: wrap;
+    margin-top: $spacing-md;
   }
+}
+
+// ============================================================================
+// Utility Classes
+// ============================================================================
+
+.empty-state {
+  background: $color-bg-surface;
+  border: 2px dashed $color-border;
+  border-radius: $radius-md;
+  padding: $spacing-xl;
+  text-align: center;
+  color: $color-text-secondary;
+  margin-bottom: $spacing-lg;
+}
+
+.loading-message {
+  background: $color-bg-surface;
+  border: 2px solid $color-border;
+  border-radius: $radius-md;
+  padding: $spacing-xl;
+  text-align: center;
+  color: $color-text-primary;
+  margin-bottom: $spacing-lg;
+}
+
+.error-message {
+  background: rgba($color-error, 0.1);
+  border: 2px solid $color-error;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  color: $color-error;
+  margin-bottom: $spacing-lg;
 }
 
 // ============================================================================
 // Button Styles
 // ============================================================================
 
-.btn-create-round-group,
-.btn-manage-rounds {
+.btn-primary {
   background: $color-accent-primary;
   color: $color-bg-base;
   border: none;
@@ -266,7 +344,7 @@
   box-shadow: $shadow-sm;
 
   &:hover:not(:disabled) {
-    background: lighten($color-accent-primary, 10%);
+    background: color.scale($color-accent-primary, $lightness: 10%);
     box-shadow: $shadow-md;
   }
 
@@ -276,7 +354,96 @@
   }
 }
 
-.btn-edit-round-group {
+.btn-edit {
+  background: $color-accent-primary;
+  color: $color-bg-base;
+  border: none;
+  border-radius: $radius-md;
+  padding: $spacing-sm $spacing-md;
+  font-size: $font-size-base;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all $transition-fast;
+  box-shadow: $shadow-sm;
+
+  &:hover:not(:disabled) {
+    background: color.scale($color-accent-primary, $lightness: 10%);
+    box-shadow: $shadow-md;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btn-secondary {
+  background: $color-bg-surface;
+  color: $color-bg-base;
+  border: 2px solid $color-border;
+  border-radius: $radius-md;
+  padding: $spacing-sm $spacing-md;
+  font-size: $font-size-base;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover:not(:disabled) {
+    border-color: $color-text-secondary;
+    background: color.scale($color-bg-surface, $lightness: 5%);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btn-save {
+  background: $color-accent-teal;
+  color: $color-bg-base;
+  border: none;
+  border-radius: $radius-md;
+  padding: $spacing-sm $spacing-md;
+  font-size: $font-size-base;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all $transition-fast;
+  box-shadow: $shadow-sm;
+
+  &:hover:not(:disabled) {
+    background: color.scale($color-accent-teal, $lightness: 10%);
+    box-shadow: $shadow-md;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btn-danger {
+  background: transparent;
+  color: $color-error;
+  border: 2px solid $color-error;
+  border-radius: $radius-md;
+  padding: $spacing-sm $spacing-md;
+  font-size: $font-size-base;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover:not(:disabled) {
+    background: rgba($color-error, 0.1);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btn-back {
   background: transparent;
   color: $color-text-primary;
   border: 2px solid $color-border;
@@ -290,72 +457,6 @@
   &:hover:not(:disabled) {
     border-color: $color-accent-primary;
     color: $color-accent-primary;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-
-.btn-save-round-group {
-  background: $color-accent-teal;
-  color: $color-bg-base;
-  border: none;
-  border-radius: $radius-md;
-  padding: $spacing-sm $spacing-md;
-  font-size: $font-size-base;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all $transition-fast;
-  box-shadow: $shadow-sm;
-
-  &:hover:not(:disabled) {
-    background: lighten($color-accent-teal, 10%);
-    box-shadow: $shadow-md;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-
-.btn-cancel-round-group {
-  background: transparent;
-  color: $color-text-primary;
-  border: 2px solid $color-border;
-  border-radius: $radius-md;
-  padding: $spacing-sm $spacing-md;
-  font-size: $font-size-base;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all $transition-fast;
-
-  &:hover:not(:disabled) {
-    border-color: $color-text-secondary;
-    color: $color-text-secondary;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-
-.btn-delete-round-group {
-  background: transparent;
-  color: $color-error;
-  border: 2px solid $color-error;
-  border-radius: $radius-md;
-  padding: $spacing-sm $spacing-md;
-  font-size: $font-size-base;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all $transition-fast;
-
-  &:hover:not(:disabled) {
-    background: rgba($color-error, 0.1);
   }
 
   &:disabled {

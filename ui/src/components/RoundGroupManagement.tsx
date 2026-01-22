@@ -79,16 +79,16 @@ export function RoundGroupManagement({
         const activeBidYearResponse = await getActiveBidYear();
 
         if (
-          !activeBidYearResponse.active_bid_year_id ||
-          !activeBidYearResponse.active_bid_year
+          activeBidYearResponse.bid_year_id === null ||
+          activeBidYearResponse.year === null
         ) {
           setError("No active bid year. Please set one first.");
           setLoading(false);
           return;
         }
 
-        const activeBidYearId = activeBidYearResponse.active_bid_year_id;
-        const activeYear = activeBidYearResponse.active_bid_year;
+        const activeBidYearId = activeBidYearResponse.bid_year_id;
+        const activeYear = activeBidYearResponse.year;
 
         // Get full bid year info including lifecycle state
         const bidYearsResponse = await listBidYears();
@@ -448,7 +448,7 @@ export function RoundGroupManagement({
                       <>
                         <button
                           type="button"
-                          className="btn-secondary"
+                          className="btn-edit"
                           onClick={() => handleEditClick(rg)}
                         >
                           Edit

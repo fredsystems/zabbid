@@ -107,6 +107,34 @@ button {
   }
 }
 
+.btn-cancel {
+  background-color: $color-bg-surface;
+  color: $color-bg-base;
+  border: 2px solid $color-border;
+  border-radius: $radius-sm;
+  padding: $spacing-sm $spacing-md;
+  cursor: pointer;
+  font-size: $font-size-base;
+  font-family: $font-family-base;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: $spacing-xs;
+
+  &:hover:not(:disabled) {
+    border-color: $color-text-secondary;
+    background-color: rgba($color-bg-surface, 0.8);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
 // ============================================================================
 // Inputs
 // ============================================================================
