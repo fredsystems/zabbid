@@ -9,12 +9,12 @@
 
 - Status: In Progress
 - Last Updated: 2025-01-27
-- Reason: Gap-fill complete - resuming Phase 30 execution
+- Reason: Sub-Phase 30D in progress - shared components created
 
 ## Active Sub-Phase
 
 - Sub-Phase: 30D (Bootstrap UI Restructure)
-- State: Ready to begin
+- State: In Progress
 
 ## Completed Sub-Phases
 
@@ -216,6 +216,42 @@
 - `8b3a27a` - "Phase 30C: Add round group fields to AreaInfo (backend)"
 - `49843ad` - "Complete Phase 30C: Area → Round Group Assignment UI"
 
+### Sub-Phase 30D: Bootstrap UI Restructure (IN PROGRESS)
+
+**Progress:**
+
+- ✅ Created BootstrapNavigation component (step-by-step workflow navigation)
+- ✅ Created ReadinessWidget component (lifecycle and blocker display)
+- ✅ Created SCSS modules for navigation and readiness widget
+- ✅ Created BidYearSetup component (extracts bid year management from BootstrapCompleteness)
+- ✅ Created AreaSetup component (extracts area management from BootstrapCompleteness)
+- ⏳ Created placeholder SCSS module for bid-year-setup (needs cleanup - using global styles instead)
+- ⏳ Need to create remaining section components:
+  - UserManagement component (extract user management + CSV import)
+  - NoBidReviewWrapper component (wrap existing NoBidReview with navigation)
+  - RoundGroupSetupWrapper component (wrap Phase 30B components with navigation)
+  - AreaRoundGroupAssignmentWrapper component (wrap Phase 30C components with navigation)
+  - BidScheduleSetup component (NEW - needs implementation)
+  - ReadinessReview component (extract readiness display and confirm ready to bid)
+- ⏳ Need to update routing in App.tsx
+- ⏳ Need to update Navigation.tsx
+- ⏳ Need to remove old BootstrapCompleteness.tsx
+- ⏳ Need to validate and test
+
+**Current Status:**
+
+- Shared components complete and ready to use
+- Two section components created (BidYearSetup, AreaSetup)
+- Reusing existing global styles from `_bootstrap.scss` to reduce duplication
+- Remaining work: 6 more section components + routing updates + cleanup
+
+**Notes:**
+
+- This is a large refactor (~1900 lines of existing code to restructure)
+- Taking incremental approach: shared components → section components → routing → cleanup
+- Reusing existing CSS from \_bootstrap.scss where possible
+- May need to commit intermediate state and continue in next iteration
+
 ## Outstanding Work
 
 ### Ready to Execute
@@ -234,18 +270,22 @@ None. All code compiles and tests pass.
 
 ## Stop-and-Ask Items
 
-None.
+None. Phase 30D is in progress but paused for potential context window management.
 
 ## Resume Instructions
 
-1. Begin Sub-Phase 30D: Bootstrap UI Restructure
-   - Read `plans/PHASE_30/PHASE_30D.md` for full requirements
-   - This is a major refactor of the monolithic BootstrapCompleteness component
-   - HIGH RISK: Component is ~1900 lines
-   - May need to split into two parts if too large for context
-   - Follow existing patterns and maintain all functionality
-   - Ensure all existing routes and navigation continue to work
-2. Execute remaining sub-phases in order (30D → 30E → ... → 30I)
+1. Continue Sub-Phase 30D: Bootstrap UI Restructure
+   - Shared components created (BootstrapNavigation, ReadinessWidget)
+   - Two section components created (BidYearSetup, AreaSetup)
+   - Next steps:
+     a. Create remaining 6 section components
+     b. Update routing in App.tsx to add all bootstrap workflow routes
+     c. Update Navigation.tsx to link to new workflow entry point
+     d. Test all components work together
+     e. Remove old BootstrapCompleteness.tsx
+     f. Clean up unused SCSS module files (using global styles instead)
+   - Consider committing intermediate state if context pressure becomes an issue
+2. After 30D completion, execute remaining sub-phases in order (30E → 30F → ... → 30I)
 3. Update this document after each sub-phase completion
 4. Run `cargo xtask ci` and `pre-commit run --all-files` after each sub-phase
 

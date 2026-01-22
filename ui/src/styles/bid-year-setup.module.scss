@@ -1,0 +1,501 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Bid Year Setup workflow page styles.
+ * Mobile-first design for bid year configuration.
+ */
+
+@use "variables" as *;
+
+.bootstrap-workflow {
+  padding: $spacing-md;
+  max-width: 1200px;
+  margin: 0 auto;
+
+  @media (min-width: 768px) {
+    padding: $spacing-xl;
+  }
+
+  h2 {
+    font-size: $font-size-2xl;
+    margin-bottom: $spacing-lg;
+    color: $color-text-primary;
+  }
+
+  h3.section-title {
+    font-size: $font-size-xl;
+    margin-bottom: $spacing-md;
+    color: $color-text-primary;
+    padding-bottom: $spacing-sm;
+    border-bottom: 2px solid $color-border;
+  }
+
+  .section-description {
+    color: $color-text-secondary;
+    margin-bottom: $spacing-md;
+    line-height: 1.5;
+  }
+
+  .bootstrap-section {
+    margin-bottom: $spacing-2xl;
+
+    .empty-state {
+      padding: $spacing-lg;
+      text-align: center;
+      color: $color-text-muted;
+      background: $color-bg-surface;
+      border: 1px dashed $color-border;
+      border-radius: $radius-md;
+      margin-bottom: $spacing-md;
+    }
+  }
+
+  .error-banner {
+    position: fixed;
+    bottom: $spacing-lg;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 90%;
+    padding: $spacing-md $spacing-lg;
+    background: $color-error;
+    color: $color-bg-base;
+    border-radius: $radius-md;
+    box-shadow: $shadow-lg;
+    font-size: $font-size-base;
+    z-index: 1000;
+
+    @media (min-width: 768px) {
+      max-width: 600px;
+    }
+
+    strong {
+      font-weight: 700;
+    }
+  }
+
+  .error-banner-spaced {
+    position: static;
+    transform: none;
+    max-width: 100%;
+    margin-bottom: $spacing-md;
+
+    p {
+      margin: $spacing-sm 0 0 0;
+    }
+  }
+
+  .bid-years-list {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-md;
+    margin-bottom: $spacing-lg;
+  }
+
+  .bid-year-item {
+    background: $color-bg-surface;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+    transition: border-color $transition-base;
+
+    &.complete {
+      border-color: $color-success;
+    }
+
+    &.incomplete {
+      border-color: $color-warning;
+    }
+
+    @media (min-width: 768px) {
+      padding: $spacing-lg;
+    }
+
+    .item-header {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-md;
+      margin-bottom: $spacing-md;
+      padding-bottom: $spacing-md;
+      border-bottom: 1px solid $color-border;
+
+      @media (min-width: 600px) {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+
+      .item-title-group {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-sm;
+
+        h4 {
+          margin: 0;
+          font-size: $font-size-lg;
+          color: $color-text-primary;
+        }
+
+        .badges {
+          display: flex;
+          gap: $spacing-sm;
+          flex-wrap: wrap;
+        }
+      }
+    }
+
+    .item-body {
+      .item-details {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-md;
+
+        @media (min-width: 600px) {
+          flex-direction: row;
+          justify-content: space-between;
+          align-items: flex-start;
+        }
+
+        dl {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: $spacing-sm $spacing-md;
+          margin: 0;
+
+          dt {
+            font-weight: 600;
+            color: $color-text-muted;
+          }
+
+          dd {
+            margin: 0;
+            color: $color-text-primary;
+          }
+        }
+      }
+
+      .item-edit-form {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-md;
+      }
+
+      .item-issues {
+        margin-top: $spacing-md;
+        padding: $spacing-md;
+        background: rgba($color-error, 0.08);
+        border-left: 3px solid $color-error;
+        border-radius: $radius-sm;
+
+        strong {
+          display: block;
+          margin-bottom: $spacing-sm;
+          color: $color-error;
+        }
+
+        ul {
+          margin: 0;
+          padding-left: $spacing-lg;
+
+          li {
+            margin-bottom: $spacing-xs;
+            color: $color-text-primary;
+
+            &:last-child {
+              margin-bottom: 0;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: $radius-sm;
+    font-size: $font-size-sm;
+    font-weight: 600;
+    white-space: nowrap;
+
+    &.complete {
+      background: $color-success;
+      color: $color-bg-base;
+    }
+
+    &.incomplete {
+      background: $color-warning;
+      color: $color-bg-base;
+    }
+
+    &.active {
+      background: $color-accent-primary;
+      color: $color-bg-base;
+    }
+
+    &.lifecycle-draft {
+      background: $color-bg-surface-overlay;
+      color: $color-text-secondary;
+    }
+
+    &.lifecycle-bootstrapcomplete {
+      background: $color-info;
+      color: $color-bg-base;
+    }
+
+    &.lifecycle-canonicalized {
+      background: $color-success;
+      color: $color-bg-base;
+    }
+
+    &.lifecycle-biddingactive {
+      background: $color-accent-teal;
+      color: $color-bg-base;
+    }
+
+    &.lifecycle-biddingclosed {
+      background: $color-text-muted;
+      color: $color-bg-base;
+    }
+  }
+
+  .create-form {
+    background: $color-bg-surface-elevated;
+    border: 2px solid $color-accent-primary;
+    border-radius: $radius-md;
+    padding: $spacing-md;
+    margin-top: $spacing-md;
+
+    @media (min-width: 768px) {
+      padding: $spacing-lg;
+    }
+
+    h4 {
+      margin: 0 0 $spacing-md 0;
+      color: $color-accent-primary;
+    }
+  }
+
+  .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-sm;
+    margin-bottom: $spacing-md;
+
+    @media (min-width: 600px) {
+      flex-direction: row;
+      align-items: center;
+
+      label {
+        min-width: 200px;
+        flex-shrink: 0;
+      }
+    }
+
+    label {
+      font-weight: 600;
+      color: $color-text-primary;
+      font-size: $font-size-base;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="date"],
+    select {
+      flex: 1;
+      box-sizing: border-box;
+      padding: $spacing-sm $spacing-md;
+      border: 2px solid $color-border;
+      border-radius: $radius-sm;
+      background: $color-bg-base;
+      color: $color-text-primary;
+      font-size: $font-size-base;
+      font-family: $font-family-base;
+      transition: border-color $transition-base;
+
+      &:focus {
+        outline: none;
+        border-color: $color-accent-primary;
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      &::placeholder {
+        color: $color-text-muted;
+      }
+    }
+
+    select {
+      cursor: pointer;
+
+      &:disabled {
+        cursor: not-allowed;
+      }
+    }
+  }
+
+  .form-actions {
+    display: flex;
+    gap: $spacing-sm;
+    margin-top: $spacing-md;
+    flex-wrap: wrap;
+
+    button {
+      flex: 1;
+      min-width: 120px;
+
+      @media (min-width: 600px) {
+        flex: 0 0 auto;
+      }
+    }
+  }
+
+  .btn-create {
+    width: 100%;
+    padding: $spacing-md;
+    background: $color-accent-primary;
+    color: $color-bg-base;
+    border: none;
+    border-radius: $radius-md;
+    font-size: $font-size-base;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background $transition-base;
+    box-shadow: $shadow-sm;
+
+    @media (min-width: 600px) {
+      width: auto;
+      padding: $spacing-sm $spacing-lg;
+    }
+
+    &:hover:not(:disabled) {
+      background: $color-accent-secondary;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .btn-edit {
+    padding: $spacing-xs $spacing-md;
+    background: $color-bg-surface-elevated;
+    color: $color-text-primary;
+    border: 2px solid $color-border;
+    border-radius: $radius-sm;
+    font-size: $font-size-sm;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all $transition-base;
+
+    &:hover:not(:disabled) {
+      background: $color-bg-surface-overlay;
+      border-color: $color-accent-primary;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .btn-save {
+    padding: $spacing-sm $spacing-lg;
+    background: $color-accent-teal;
+    color: $color-bg-base;
+    border: none;
+    border-radius: $radius-sm;
+    font-size: $font-size-base;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background $transition-base;
+    box-shadow: $shadow-sm;
+
+    &:hover:not(:disabled) {
+      background: darken($color-accent-teal, 10%);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .btn-cancel {
+    padding: $spacing-sm $spacing-lg;
+    background: $color-bg-surface-elevated;
+    color: $color-text-primary;
+    border: 2px solid $color-border;
+    border-radius: $radius-sm;
+    font-size: $font-size-base;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all $transition-base;
+
+    &:hover:not(:disabled) {
+      background: $color-bg-surface-overlay;
+      border-color: $color-text-muted;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .btn-toggle-active {
+    padding: $spacing-sm $spacing-md;
+    background: $color-accent-primary;
+    color: $color-bg-base;
+    border: none;
+    border-radius: $radius-sm;
+    font-size: $font-size-sm;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background $transition-base;
+    white-space: nowrap;
+
+    @media (min-width: 600px) {
+      font-size: $font-size-base;
+    }
+
+    &:hover:not(:disabled) {
+      background: $color-accent-secondary;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .loading,
+  .error {
+    text-align: center;
+    padding: $spacing-xl;
+    color: $color-text-muted;
+    font-size: $font-size-lg;
+  }
+
+  .error {
+    color: $color-error;
+    background: rgba($color-error, 0.1);
+    border: 2px solid $color-error;
+    border-radius: $radius-md;
+
+    h2 {
+      color: $color-error;
+      margin-top: 0;
+    }
+
+    p {
+      color: $color-text-primary;
+    }
+  }
+}

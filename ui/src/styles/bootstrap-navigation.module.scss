@@ -1,0 +1,118 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Bootstrap Navigation styles.
+ * Mobile-first step-by-step navigation for bootstrap workflow.
+ */
+
+@use "variables" as *;
+
+.bootstrap-navigation {
+  background: $color-bg-surface;
+  border: 2px solid $color-border;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  margin-bottom: $spacing-lg;
+
+  @media (min-width: 768px) {
+    padding: $spacing-lg;
+  }
+
+  .nav-title {
+    margin: 0 0 $spacing-md 0;
+    font-size: $font-size-lg;
+    color: $color-text-primary;
+    padding-bottom: $spacing-sm;
+    border-bottom: 1px solid $color-border;
+  }
+
+  .nav-steps {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-xs;
+
+    @media (min-width: 768px) {
+      gap: $spacing-sm;
+    }
+  }
+
+  .nav-step {
+    display: block;
+
+    &.active {
+      .step-link,
+      .step-link-active {
+        font-weight: 700;
+      }
+    }
+  }
+
+  .step-link,
+  .step-link-active {
+    display: flex;
+    align-items: center;
+    gap: $spacing-md;
+    padding: $spacing-sm $spacing-md;
+    border-radius: $radius-sm;
+    text-decoration: none;
+    color: $color-text-primary;
+    transition: all $transition-base;
+    border: 2px solid transparent;
+
+    &:hover {
+      background: $color-bg-surface-elevated;
+      border-color: $color-accent-primary;
+    }
+
+    @media (min-width: 768px) {
+      padding: $spacing-md $spacing-lg;
+    }
+  }
+
+  .step-link-active {
+    background: $color-bg-surface-elevated;
+    border-color: $color-accent-primary;
+    font-weight: 700;
+  }
+
+  .step-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 50%;
+    background: $color-bg-surface-overlay;
+    color: $color-text-secondary;
+    font-size: $font-size-sm;
+    font-weight: 700;
+
+    @media (min-width: 768px) {
+      width: 32px;
+      height: 32px;
+      min-width: 32px;
+      font-size: $font-size-base;
+    }
+  }
+
+  .step-link-active .step-number {
+    background: $color-accent-primary;
+    color: $color-bg-base;
+  }
+
+  .step-label {
+    flex: 1;
+    font-size: $font-size-sm;
+
+    @media (min-width: 768px) {
+      font-size: $font-size-base;
+    }
+  }
+}

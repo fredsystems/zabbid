@@ -1,0 +1,153 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Readiness Widget styles.
+ * Mobile-first status widget for bootstrap workflow.
+ */
+
+@use "variables" as *;
+
+.readiness-widget {
+  background: $color-bg-surface;
+  border: 2px solid $color-border;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  margin-bottom: $spacing-lg;
+  box-shadow: $shadow-sm;
+
+  @media (min-width: 768px) {
+    padding: $spacing-lg;
+  }
+
+  .widget-header {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-sm;
+    margin-bottom: $spacing-md;
+    padding-bottom: $spacing-md;
+    border-bottom: 1px solid $color-border;
+
+    @media (min-width: 600px) {
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+    }
+  }
+
+  .widget-title {
+    margin: 0;
+    font-size: $font-size-lg;
+    color: $color-text-primary;
+  }
+
+  .lifecycle-badge {
+    display: inline-block;
+    padding: $spacing-xs $spacing-md;
+    border-radius: $radius-sm;
+    font-size: $font-size-sm;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .lifecycle-draft {
+    background: $color-bg-surface-overlay;
+    color: $color-text-secondary;
+  }
+
+  .lifecycle-canonicalized {
+    background: $color-info;
+    color: $color-bg-base;
+  }
+
+  .lifecycle-active {
+    background: $color-success;
+    color: $color-bg-base;
+  }
+
+  .lifecycle-closed {
+    background: $color-text-muted;
+    color: $color-bg-base;
+  }
+
+  .widget-body {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-md;
+  }
+
+  .status-ready,
+  .status-incomplete {
+    display: flex;
+    align-items: center;
+    gap: $spacing-md;
+    padding: $spacing-md;
+    border-radius: $radius-sm;
+  }
+
+  .status-ready {
+    background: rgba($color-success, 0.1);
+    border: 2px solid $color-success;
+  }
+
+  .status-incomplete {
+    background: rgba($color-warning, 0.1);
+    border: 2px solid $color-warning;
+  }
+
+  .status-icon {
+    font-size: $font-size-xl;
+    line-height: 1;
+  }
+
+  .status-ready .status-icon {
+    color: $color-success;
+  }
+
+  .status-incomplete .status-icon {
+    color: $color-warning;
+  }
+
+  .status-content {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-xs;
+    flex: 1;
+  }
+
+  .status-text {
+    font-size: $font-size-base;
+    font-weight: 700;
+    color: $color-text-primary;
+  }
+
+  .blocker-count {
+    font-size: $font-size-sm;
+    color: $color-text-secondary;
+  }
+
+  .review-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: $spacing-sm $spacing-lg;
+    background: $color-accent-primary;
+    color: $color-bg-base;
+    text-decoration: none;
+    border-radius: $radius-sm;
+    font-weight: 600;
+    transition: all $transition-base;
+    box-shadow: $shadow-sm;
+
+    &:hover {
+      background: $color-accent-secondary;
+      box-shadow: $shadow-md;
+    }
+
+    &:visited {
+      color: $color-bg-base;
+    }
+  }
+}
