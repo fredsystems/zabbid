@@ -703,6 +703,8 @@ pub fn list_areas(
                 area_name: area.area_name().map(String::from),
                 user_count: 0, // Will be populated by server layer with actual counts
                 is_system_area: area.is_system_area(),
+                round_group_id: area.round_group_id(),
+                round_group_name: None, // Will be populated by server layer with actual names
             })
         })
         .collect::<Result<Vec<_>, ApiError>>()?;

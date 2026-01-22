@@ -161,6 +161,10 @@ export interface AreaInfo {
   user_count: number;
   /** Whether this is a system-managed area (e.g., "No Bid") */
   is_system_area: boolean;
+  /** The assigned round group ID (Phase 29B) */
+  round_group_id: number | null;
+  /** The assigned round group name (for display) */
+  round_group_name: string | null;
 }
 
 /**

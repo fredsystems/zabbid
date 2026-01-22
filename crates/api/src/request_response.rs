@@ -177,6 +177,12 @@ pub struct AreaInfo {
     pub user_count: usize,
     /// Whether this is a system-managed area (e.g., "No Bid").
     pub is_system_area: bool,
+    /// The assigned round group ID (Phase 29B).
+    /// Non-system areas should have exactly one round group assigned.
+    /// System areas must not have a round group.
+    pub round_group_id: Option<i64>,
+    /// The assigned round group name (for display convenience).
+    pub round_group_name: Option<String>,
 }
 
 /// API response for listing areas.

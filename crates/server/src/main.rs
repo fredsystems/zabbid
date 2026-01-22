@@ -821,6 +821,19 @@ async fn handle_list_areas(
 
     // Get user counts per area
     let user_counts: Vec<(String, usize)> = persistence.count_users_by_area(bid_year)?;
+
+    // Get round group names for enrichment
+    let round_groups = persistence
+        .list_round_groups(query.bid_year_id)
+        .map_err(|e| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: format!("Failed to list round groups: {e}"),
+        })?;
+    let round_group_names: std::collections::HashMap<i64, String> = round_groups
+        .into_iter()
+        .filter_map(|rg| rg.round_group_id().map(|id| (id, rg.name().to_string())))
+        .collect();
+
     drop(persistence);
 
     let request: ListAreasRequest = ListAreasRequest {
@@ -828,12 +841,16 @@ async fn handle_list_areas(
     };
     let mut response: ListAreasResponse = list_areas(&metadata, &request)?;
 
-    // Enrich with user counts
+    // Enrich with user counts and round group names
     for area_info in &mut response.areas {
         area_info.user_count = user_counts
             .iter()
             .find(|(area_code, _)| area_code == &area_info.area_code)
             .map_or(0, |(_, count)| *count);
+
+        if let Some(round_group_id) = area_info.round_group_id {
+            area_info.round_group_name = round_group_names.get(&round_group_id).cloned();
+        }
     }
 
     Ok(Json(response))
