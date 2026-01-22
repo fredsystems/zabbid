@@ -12,6 +12,7 @@ import type {
   AssignAreaRoundGroupResponse,
   BidYearInfo,
   BootstrapStatusResponse,
+  ConfirmReadyToBidResponse,
   CreateAreaResponse,
   CreateBidYearResponse,
   CreateRoundGroupResponse,
@@ -20,6 +21,7 @@ import type {
   DeleteRoundResponse,
   ErrorResponse,
   GetActiveBidYearResponse,
+  GetBidScheduleResponse,
   GetBootstrapCompletenessResponse,
   ImportCsvUsersResponse,
   LeaveAvailabilityResponse,
@@ -33,6 +35,7 @@ import type {
   PreviewCsvUsersResponse,
   RegisterUserResponse,
   SetActiveBidYearResponse,
+  SetBidScheduleResponse,
   SetExpectedAreaCountResponse,
   SetExpectedUserCountResponse,
   UpdateAreaResponse,
@@ -975,9 +978,9 @@ export async function updateRound(
 }
 
 /**
- * Delete a round.
+ * Deletes a round.
  *
- * @param sessionToken - The session token for authentication
+ * @param sessionToken - Authentication token
  * @param roundId - The round ID to delete
  * @returns Promise resolving to the delete response
  */
@@ -997,4 +1000,98 @@ export async function deleteRound(
       round_id: roundId,
     }),
   });
+}
+
+/**
+ * Sets the bid schedule for a bid year.
+ *
+ * @param sessionToken - Authentication token
+ * @param bidYearId - The canonical bid year identifier
+ * @param timezone - IANA timezone identifier (e.g., "America/New_York")
+ * @param startDate - Bid start date (ISO 8601 format, must be a Monday)
+ * @param windowStartTime - Daily bid window start time (HH:MM:SS format)
+ * @param windowEndTime - Daily bid window end time (HH:MM:SS format)
+ * @param biddersPerDay - Number of bidders per area per day
+ * @returns Promise resolving to the set bid schedule response
+ */
+export async function setBidSchedule(
+  sessionToken: string,
+  bidYearId: number,
+  timezone: string,
+  startDate: string,
+  windowStartTime: string,
+  windowEndTime: string,
+  biddersPerDay: number,
+): Promise<SetBidScheduleResponse> {
+  return fetchJson<SetBidScheduleResponse>(`${API_BASE}/bid-schedule`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      cause_id: `set-bid-schedule-${Date.now()}`,
+      cause_description: `Set bid schedule for bid year ${bidYearId}`,
+      bid_year_id: bidYearId,
+      timezone,
+      start_date: startDate,
+      window_start_time: windowStartTime,
+      window_end_time: windowEndTime,
+      bidders_per_day: biddersPerDay,
+    }),
+  });
+}
+
+/**
+ * Gets the bid schedule for a bid year.
+ *
+ * @param sessionToken - Authentication token
+ * @param bidYearId - The canonical bid year identifier
+ * @returns Promise resolving to the get bid schedule response
+ */
+export async function getBidSchedule(
+  sessionToken: string,
+  bidYearId: number,
+): Promise<GetBidScheduleResponse> {
+  return fetchJson<GetBidScheduleResponse>(
+    `${API_BASE}/bid-schedule/${bidYearId}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+    },
+  );
+}
+
+/**
+ * Confirms ready to bid for a bid year (IRREVERSIBLE).
+ *
+ * @param sessionToken - Authentication token
+ * @param bidYearId - The canonical bid year identifier
+ * @param confirmation - Must be "I understand this action is irreversible"
+ * @returns Promise resolving to the confirm ready to bid response
+ */
+export async function confirmReadyToBid(
+  sessionToken: string,
+  bidYearId: number,
+  confirmation: string,
+): Promise<ConfirmReadyToBidResponse> {
+  return fetchJson<ConfirmReadyToBidResponse>(
+    `${API_BASE}/confirm-ready-to-bid`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        cause_id: `confirm-ready-to-bid-${Date.now()}`,
+        cause_description: `Confirm ready to bid for bid year ${bidYearId}`,
+        bid_year_id: bidYearId,
+        confirmation,
+      }),
+    },
+  );
 }

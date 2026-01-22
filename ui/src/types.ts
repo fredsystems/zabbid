@@ -800,3 +800,61 @@ export interface DeleteRoundResponse {
   /** Success message */
   message: string;
 }
+
+/**
+ * Bid schedule configuration information.
+ */
+export interface BidScheduleInfo {
+  /** IANA timezone identifier (e.g., "America/New_York") */
+  timezone: string;
+  /** Bid start date (ISO 8601 format) */
+  start_date: string;
+  /** Daily bid window start time (HH:MM:SS format) */
+  window_start_time: string;
+  /** Daily bid window end time (HH:MM:SS format) */
+  window_end_time: string;
+  /** Number of bidders per area per day */
+  bidders_per_day: number;
+}
+
+/**
+ * Response for setting bid schedule.
+ */
+export interface SetBidScheduleResponse {
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The year value */
+  year: number;
+  /** The configured bid schedule */
+  bid_schedule: BidScheduleInfo;
+  /** Success message */
+  message: string;
+}
+
+/**
+ * Response for getting bid schedule.
+ */
+export interface GetBidScheduleResponse {
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The year value */
+  year: number;
+  /** The bid schedule if configured, null otherwise */
+  bid_schedule: BidScheduleInfo | null;
+}
+
+/**
+ * Response for confirming ready to bid (IRREVERSIBLE).
+ */
+export interface ConfirmReadyToBidResponse {
+  /** The canonical bid year identifier */
+  bid_year_id: number;
+  /** The year value */
+  year: number;
+  /** The new lifecycle state */
+  lifecycle_state: string;
+  /** The audit event ID for this confirmation */
+  audit_event_id: number;
+  /** Success message */
+  message: string;
+}

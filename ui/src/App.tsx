@@ -22,18 +22,26 @@ import {
   useNavigate,
 } from "react-router-dom";
 import * as api from "./api";
+import { AreaRoundGroupAssignmentWrapper } from "./components/AreaRoundGroupAssignmentWrapper";
+import { AreaSetup } from "./components/AreaSetup";
 import { AreaView } from "./components/AreaView";
+import { BidScheduleSetup } from "./components/BidScheduleSetup";
+import { BidYearSetup } from "./components/BidYearSetup";
 import { BootstrapCompleteness } from "./components/BootstrapCompleteness";
 import { BootstrapOverview } from "./components/BootstrapOverview";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 import { Navigation } from "./components/Navigation";
 import { NoBidReview } from "./components/NoBidReview";
+import { NoBidReviewWrapper } from "./components/NoBidReviewWrapper";
 import { OperatorManagement } from "./components/OperatorManagement";
+import { ReadinessReview } from "./components/ReadinessReview";
 import { RoundGroupManagement } from "./components/RoundGroupManagement";
+import { RoundGroupSetupWrapper } from "./components/RoundGroupSetupWrapper";
 import { RoundManagement } from "./components/RoundManagement";
 import { UserDetailView } from "./components/UserDetailView";
 import { UserEditView } from "./components/UserEditView";
 import { UserListView } from "./components/UserListView";
+import { UserManagement } from "./components/UserManagement";
 import type { GlobalCapabilities, LiveEvent } from "./types";
 import { useLiveEvents } from "./useLiveEvents";
 import "./styles/main.scss";
@@ -618,13 +626,126 @@ function AuthenticatedAdminApp({
           />
           <Route
             path="bootstrap"
+            element={<Navigate to="/admin/bootstrap/bid-years" replace />}
+          />
+          <Route
+            path="bootstrap/bid-years"
             element={
-              <BootstrapCompleteness
-                sessionToken={authState.sessionToken}
-                capabilities={authState.capabilities}
-                connectionState={connectionState}
-                lastEvent={lastEvent}
-              />
+              authState.role === "Admin" && authState.sessionToken ? (
+                <BidYearSetup
+                  sessionToken={authState.sessionToken}
+                  capabilities={authState.capabilities}
+                  connectionState={connectionState}
+                  lastEvent={lastEvent}
+                />
+              ) : (
+                <Navigate to="/admin" replace />
+              )
+            }
+          />
+          <Route
+            path="bootstrap/areas"
+            element={
+              authState.role === "Admin" && authState.sessionToken ? (
+                <AreaSetup
+                  sessionToken={authState.sessionToken}
+                  capabilities={authState.capabilities}
+                  connectionState={connectionState}
+                  lastEvent={lastEvent}
+                />
+              ) : (
+                <Navigate to="/admin" replace />
+              )
+            }
+          />
+          <Route
+            path="bootstrap/users"
+            element={
+              authState.role === "Admin" && authState.sessionToken ? (
+                <UserManagement
+                  sessionToken={authState.sessionToken}
+                  capabilities={authState.capabilities}
+                  connectionState={connectionState}
+                  lastEvent={lastEvent}
+                />
+              ) : (
+                <Navigate to="/admin" replace />
+              )
+            }
+          />
+          <Route
+            path="bootstrap/no-bid-review"
+            element={
+              authState.role === "Admin" && authState.sessionToken ? (
+                <NoBidReviewWrapper
+                  sessionToken={authState.sessionToken}
+                  capabilities={authState.capabilities}
+                  connectionState={connectionState}
+                  lastEvent={lastEvent}
+                />
+              ) : (
+                <Navigate to="/admin" replace />
+              )
+            }
+          />
+          <Route
+            path="bootstrap/round-groups"
+            element={
+              authState.role === "Admin" && authState.sessionToken ? (
+                <RoundGroupSetupWrapper
+                  sessionToken={authState.sessionToken}
+                  capabilities={authState.capabilities}
+                  connectionState={connectionState}
+                  lastEvent={lastEvent}
+                />
+              ) : (
+                <Navigate to="/admin" replace />
+              )
+            }
+          />
+          <Route
+            path="bootstrap/area-round-groups"
+            element={
+              authState.role === "Admin" && authState.sessionToken ? (
+                <AreaRoundGroupAssignmentWrapper
+                  sessionToken={authState.sessionToken}
+                  capabilities={authState.capabilities}
+                  connectionState={connectionState}
+                  lastEvent={lastEvent}
+                />
+              ) : (
+                <Navigate to="/admin" replace />
+              )
+            }
+          />
+          <Route
+            path="bootstrap/schedule"
+            element={
+              authState.role === "Admin" && authState.sessionToken ? (
+                <BidScheduleSetup
+                  sessionToken={authState.sessionToken}
+                  capabilities={authState.capabilities}
+                  connectionState={connectionState}
+                  lastEvent={lastEvent}
+                />
+              ) : (
+                <Navigate to="/admin" replace />
+              )
+            }
+          />
+          <Route
+            path="bootstrap/readiness"
+            element={
+              authState.role === "Admin" && authState.sessionToken ? (
+                <ReadinessReview
+                  sessionToken={authState.sessionToken}
+                  capabilities={authState.capabilities}
+                  connectionState={connectionState}
+                  lastEvent={lastEvent}
+                />
+              ) : (
+                <Navigate to="/admin" replace />
+              )
             }
           />
           <Route
