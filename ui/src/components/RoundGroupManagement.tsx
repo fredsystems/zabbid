@@ -14,15 +14,15 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ApiError,
-  NetworkError,
   createRoundGroup,
   deleteRoundGroup,
   getActiveBidYear,
   listBidYears,
   listRoundGroups,
+  NetworkError,
   updateRoundGroup,
 } from "../api";
-import styles from "../styles/round-groups.module.scss";
+
 import type {
   BidYearInfo,
   ConnectionState,
@@ -78,14 +78,17 @@ export function RoundGroupManagement({
 
         const activeBidYearResponse = await getActiveBidYear();
 
-        if (!activeBidYearResponse.bid_year_id || !activeBidYearResponse.year) {
+        if (
+          !activeBidYearResponse.active_bid_year_id ||
+          !activeBidYearResponse.active_bid_year
+        ) {
           setError("No active bid year. Please set one first.");
           setLoading(false);
           return;
         }
 
-        const activeBidYearId = activeBidYearResponse.bid_year_id;
-        const activeYear = activeBidYearResponse.year;
+        const activeBidYearId = activeBidYearResponse.active_bid_year_id;
+        const activeYear = activeBidYearResponse.active_bid_year;
 
         // Get full bid year info including lifecycle state
         const bidYearsResponse = await listBidYears();
@@ -309,15 +312,15 @@ export function RoundGroupManagement({
   const getLifecycleBadgeClass = () => {
     switch (lifecycleState) {
       case "Active":
-        return styles.active;
+        return "active";
       case "Canonicalized":
-        return styles.canonicalized;
+        return "canonicalized";
       case "BiddingActive":
-        return styles.biddingActive;
+        return "bidding-active";
       case "BiddingClosed":
-        return styles.biddingClosed;
+        return "bidding-closed";
       default:
-        return styles.active;
+        return "active";
     }
   };
 
@@ -328,13 +331,13 @@ export function RoundGroupManagement({
   };
 
   if (loading) {
-    return <div className={styles.loadingMessage}>Loading round groups...</div>;
+    return <div className="loading-message">Loading round groups...</div>;
   }
 
   if (!bidYearId || !bidYear) {
     return (
-      <div className={styles.roundGroupsContainer}>
-        <div className={styles.errorMessage}>
+      <div className="round-groups-container">
+        <div className="error-message">
           {error || "No active bid year. Please set one first."}
         </div>
       </div>
@@ -342,11 +345,11 @@ export function RoundGroupManagement({
   }
 
   return (
-    <div className={styles.roundGroupsContainer}>
-      <div className={styles.header}>
+    <div className="round-groups-container">
+      <div className="header">
         <div>
           <h2>Round Groups for Bid Year {bidYear}</h2>
-          <p className={styles.sectionDescription}>
+          <p className="section-description">
             Configure bidding round groups for this bid year. Each round group
             defines a collection of bidding rounds.
             {isCanonicalizedOrLater && (
@@ -357,21 +360,19 @@ export function RoundGroupManagement({
             )}
           </p>
           {lifecycleState && (
-            <span
-              className={`${styles.lifecycleBadge} ${getLifecycleBadgeClass()}`}
-            >
+            <span className={`lifecycle-badge ${getLifecycleBadgeClass()}`}>
               {formatLifecycleState(lifecycleState)}
             </span>
           )}
         </div>
       </div>
 
-      {error && <div className={styles.errorMessage}>{error}</div>}
+      {error && <div className="error-message">{error}</div>}
 
       {!showCreateForm && !isCanonicalizedOrLater && (
         <button
           type="button"
-          className={styles.btnPrimary}
+          className="btn-primary"
           onClick={() => setShowCreateForm(true)}
         >
           Create Round Group
@@ -379,9 +380,9 @@ export function RoundGroupManagement({
       )}
 
       {showCreateForm && (
-        <form onSubmit={handleCreateSubmit} className={styles.createForm}>
+        <form onSubmit={handleCreateSubmit} className="create-form">
           <h3>Create New Round Group</h3>
-          <div className={styles.formGroup}>
+          <div className="form-group">
             <label htmlFor="createName">Name</label>
             <input
               type="text"
@@ -392,8 +393,8 @@ export function RoundGroupManagement({
               disabled={creating}
             />
           </div>
-          <div className={styles.formGroup}>
-            <div className={styles.checkboxWrapper}>
+          <div className="form-group">
+            <div className="checkbox-wrapper">
               <input
                 type="checkbox"
                 id="createEditingEnabled"
@@ -404,17 +405,13 @@ export function RoundGroupManagement({
               <label htmlFor="createEditingEnabled">Editing Enabled</label>
             </div>
           </div>
-          <div className={styles.formActions}>
-            <button
-              type="submit"
-              className={styles.btnSave}
-              disabled={creating}
-            >
+          <div className="form-actions">
+            <button type="submit" className="btn-save" disabled={creating}>
               {creating ? "Creating..." : "Create"}
             </button>
             <button
               type="button"
-              className={styles.btnSecondary}
+              className="btn-secondary"
               onClick={() => {
                 setShowCreateForm(false);
                 setCreateName("");
@@ -429,19 +426,19 @@ export function RoundGroupManagement({
       )}
 
       {roundGroups.length === 0 ? (
-        <div className={styles.emptyState}>
+        <div className="empty-state">
           No round groups configured. Create one above to get started.
         </div>
       ) : (
-        <div className={styles.roundGroupsList}>
+        <div className="round-groups-list">
           {roundGroups.map((rg) => (
-            <div key={rg.round_group_id} className={styles.roundGroupCard}>
-              <div className={styles.cardHeader}>
+            <div key={rg.round_group_id} className="round-group-card">
+              <div className="card-header">
                 <h4>{rg.name}</h4>
-                <div className={styles.headerActions}>
+                <div className="header-actions">
                   <button
                     type="button"
-                    className={styles.btnPrimary}
+                    className="btn-primary"
                     onClick={() => handleManageRoundsClick(rg.round_group_id)}
                   >
                     Manage Rounds
@@ -451,14 +448,14 @@ export function RoundGroupManagement({
                       <>
                         <button
                           type="button"
-                          className={styles.btnSecondary}
+                          className="btn-secondary"
                           onClick={() => handleEditClick(rg)}
                         >
                           Edit
                         </button>
                         <button
                           type="button"
-                          className={styles.btnDanger}
+                          className="btn-danger"
                           onClick={() => handleDeleteClick(rg.round_group_id)}
                           disabled={deletingId === rg.round_group_id}
                         >
@@ -474,9 +471,9 @@ export function RoundGroupManagement({
               {editingId === rg.round_group_id ? (
                 <form
                   onSubmit={(e) => handleEditSubmit(e, rg.round_group_id)}
-                  className={styles.editForm}
+                  className="edit-form"
                 >
-                  <div className={styles.formGroup}>
+                  <div className="form-group">
                     <label htmlFor={`editName-${rg.round_group_id}`}>
                       Name
                     </label>
@@ -489,8 +486,8 @@ export function RoundGroupManagement({
                       disabled={updating}
                     />
                   </div>
-                  <div className={styles.formGroup}>
-                    <div className={styles.checkboxWrapper}>
+                  <div className="form-group">
+                    <div className="checkbox-wrapper">
                       <input
                         type="checkbox"
                         id={`editEditingEnabled-${rg.round_group_id}`}
@@ -507,17 +504,17 @@ export function RoundGroupManagement({
                       </label>
                     </div>
                   </div>
-                  <div className={styles.formActions}>
+                  <div className="form-actions">
                     <button
                       type="submit"
-                      className={styles.btnSave}
+                      className="btn-save"
                       disabled={updating}
                     >
                       {updating ? "Saving..." : "Save"}
                     </button>
                     <button
                       type="button"
-                      className={styles.btnSecondary}
+                      className="btn-secondary"
                       onClick={handleEditCancel}
                       disabled={updating}
                     >
@@ -526,7 +523,7 @@ export function RoundGroupManagement({
                   </div>
                 </form>
               ) : (
-                <div className={styles.cardBody}>
+                <div className="card-body">
                   <dl>
                     <dt>Round Group ID:</dt>
                     <dd>{rg.round_group_id}</dd>

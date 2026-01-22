@@ -14,16 +14,16 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
-  NetworkError,
   createRound,
   deleteRound,
   getActiveBidYear,
   listBidYears,
   listRoundGroups,
   listRounds,
+  NetworkError,
   updateRound,
 } from "../api";
-import styles from "../styles/rounds.module.scss";
+
 import type {
   BidYearInfo,
   ConnectionState,
@@ -115,14 +115,17 @@ export function RoundManagement({
 
         const activeBidYearResponse = await getActiveBidYear();
 
-        if (!activeBidYearResponse.bid_year_id || !activeBidYearResponse.year) {
+        if (
+          !activeBidYearResponse.active_bid_year_id ||
+          !activeBidYearResponse.active_bid_year
+        ) {
           setError("No active bid year. Please set one first.");
           setLoading(false);
           return;
         }
 
-        const activeBidYearId = activeBidYearResponse.bid_year_id;
-        const activeYear = activeBidYearResponse.year;
+        const activeBidYearId = activeBidYearResponse.active_bid_year_id;
+        const activeYear = activeBidYearResponse.active_bid_year;
 
         // Get full bid year info including lifecycle state
         const bidYearsResponse = await listBidYears();
@@ -203,7 +206,7 @@ export function RoundManagement({
     };
 
     void reloadData();
-  }, [lastEvent, sessionToken, roundGroupIdNum]);
+  }, [lastEvent, sessionToken, roundGroupIdNum, _bidYearId]);
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -378,15 +381,15 @@ export function RoundManagement({
   const getLifecycleBadgeClass = () => {
     switch (lifecycleState) {
       case "Active":
-        return styles.active;
+        return "active";
       case "Canonicalized":
-        return styles.canonicalized;
+        return "canonicalized";
       case "BiddingActive":
-        return styles.biddingActive;
+        return "bidding-active";
       case "BiddingClosed":
-        return styles.biddingClosed;
+        return "bidding-closed";
       default:
-        return styles.active;
+        return "active";
     }
   };
 
@@ -397,41 +400,35 @@ export function RoundManagement({
   };
 
   if (loading) {
-    return <div className={styles.loadingMessage}>Loading rounds...</div>;
+    return <div className="loading-message">Loading rounds...</div>;
   }
 
   if (!roundGroupIdNum || !roundGroupName) {
     return (
-      <div className={styles.roundsContainer}>
-        <div className={styles.errorMessage}>
-          {error || "Round group not found."}
-        </div>
+      <div className="rounds-container">
+        <div className="error-message">{error || "Round group not found."}</div>
       </div>
     );
   }
 
   return (
-    <div className={styles.roundsContainer}>
-      <div className={styles.contextBar}>
-        <div className={styles.contextInfo}>
+    <div className="rounds-container">
+      <div className="context-bar">
+        <div className="context-info">
           <h3>{roundGroupName}</h3>
           <p>
             Round Group ID: {roundGroupIdNum} • Bid Year: {bidYear}
           </p>
         </div>
-        <button
-          type="button"
-          className={styles.btnBack}
-          onClick={handleBackClick}
-        >
+        <button type="button" className="btn-back" onClick={handleBackClick}>
           Back to Round Groups
         </button>
       </div>
 
-      <div className={styles.header}>
+      <div className="header">
         <div>
           <h2>Rounds</h2>
-          <p className={styles.sectionDescription}>
+          <p className="section-description">
             Manage bidding rounds for this round group. Round numbers determine
             bidding sequence.
             {isCanonicalizedOrLater && (
@@ -442,21 +439,19 @@ export function RoundManagement({
             )}
           </p>
           {lifecycleState && (
-            <span
-              className={`${styles.lifecycleBadge} ${getLifecycleBadgeClass()}`}
-            >
+            <span className={`lifecycle-badge ${getLifecycleBadgeClass()}`}>
               {formatLifecycleState(lifecycleState)}
             </span>
           )}
         </div>
       </div>
 
-      {error && <div className={styles.errorMessage}>{error}</div>}
+      {error && <div className="error-message">{error}</div>}
 
       {!showCreateForm && !isCanonicalizedOrLater && (
         <button
           type="button"
-          className={styles.btnPrimary}
+          className="btn-primary"
           onClick={() => setShowCreateForm(true)}
         >
           Create Round
@@ -464,10 +459,10 @@ export function RoundManagement({
       )}
 
       {showCreateForm && (
-        <form onSubmit={handleCreateSubmit} className={styles.createForm}>
+        <form onSubmit={handleCreateSubmit} className="create-form">
           <h3>Create New Round</h3>
-          <div className={styles.formGrid}>
-            <div className={styles.formGroup}>
+          <div className="form-grid">
+            <div className="form-group">
               <label htmlFor="createRoundNumber">Round Number (Sequence)</label>
               <input
                 type="number"
@@ -480,11 +475,11 @@ export function RoundManagement({
                 required
                 disabled={creating}
               />
-              <div className={styles.helpText}>
+              <div className="help-text">
                 This determines the bidding order within the round group.
               </div>
             </div>
-            <div className={styles.formGroup}>
+            <div className="form-group">
               <label htmlFor="createName">Round Name</label>
               <input
                 type="text"
@@ -495,7 +490,7 @@ export function RoundManagement({
                 disabled={creating}
               />
             </div>
-            <div className={styles.formGroup}>
+            <div className="form-group">
               <label htmlFor="createSlotsPerDay">Slots Per Day</label>
               <input
                 type="number"
@@ -509,7 +504,7 @@ export function RoundManagement({
                 disabled={creating}
               />
             </div>
-            <div className={styles.formGroup}>
+            <div className="form-group">
               <label htmlFor="createMaxGroups">Max Groups</label>
               <input
                 type="number"
@@ -523,7 +518,7 @@ export function RoundManagement({
                 disabled={creating}
               />
             </div>
-            <div className={styles.formGroup}>
+            <div className="form-group">
               <label htmlFor="createMaxTotalHours">Max Total Hours</label>
               <input
                 type="number"
@@ -537,8 +532,8 @@ export function RoundManagement({
                 disabled={creating}
               />
             </div>
-            <div className={styles.formGroup}>
-              <div className={styles.checkboxWrapper}>
+            <div className="form-group">
+              <div className="checkbox-wrapper">
                 <input
                   type="checkbox"
                   id="createIncludeHolidays"
@@ -549,8 +544,8 @@ export function RoundManagement({
                 <label htmlFor="createIncludeHolidays">Include Holidays</label>
               </div>
             </div>
-            <div className={styles.formGroup}>
-              <div className={styles.checkboxWrapper}>
+            <div className="form-group">
+              <div className="checkbox-wrapper">
                 <input
                   type="checkbox"
                   id="createAllowOverbid"
@@ -562,17 +557,13 @@ export function RoundManagement({
               </div>
             </div>
           </div>
-          <div className={styles.formActions}>
-            <button
-              type="submit"
-              className={styles.btnSave}
-              disabled={creating}
-            >
+          <div className="form-actions">
+            <button type="submit" className="btn-save" disabled={creating}>
               {creating ? "Creating..." : "Create"}
             </button>
             <button
               type="button"
-              className={styles.btnSecondary}
+              className="btn-secondary"
               onClick={() => {
                 setShowCreateForm(false);
                 setCreateRoundNumber(1);
@@ -592,36 +583,36 @@ export function RoundManagement({
       )}
 
       {rounds.length === 0 ? (
-        <div className={styles.emptyState}>
+        <div className="empty-state">
           No rounds defined for this group. Create one above to get started.
         </div>
       ) : (
-        <div className={styles.roundsList}>
+        <div className="rounds-list">
           {rounds
             .sort((a, b) => a.round_number - b.round_number)
             .map((round) => (
-              <div key={round.round_id} className={styles.roundCard}>
-                <div className={styles.cardHeader}>
-                  <div className={styles.roundTitle}>
+              <div key={round.round_id} className="round-card">
+                <div className="card-header">
+                  <div className="round-title">
                     <h4>{round.name}</h4>
-                    <div className={styles.roundNumber}>
+                    <div className="round-number">
                       Round #{round.round_number}
                     </div>
                   </div>
-                  <div className={styles.headerActions}>
+                  <div className="header-actions">
                     {!isCanonicalizedOrLater &&
                       editingId !== round.round_id && (
                         <>
                           <button
                             type="button"
-                            className={styles.btnSecondary}
+                            className="btn-secondary"
                             onClick={() => handleEditClick(round)}
                           >
                             Edit
                           </button>
                           <button
                             type="button"
-                            className={styles.btnDanger}
+                            className="btn-danger"
                             onClick={() => handleDeleteClick(round.round_id)}
                             disabled={deletingId === round.round_id}
                           >
@@ -637,10 +628,10 @@ export function RoundManagement({
                 {editingId === round.round_id ? (
                   <form
                     onSubmit={(e) => handleEditSubmit(e, round.round_id)}
-                    className={styles.editForm}
+                    className="edit-form"
                   >
-                    <div className={styles.formGrid}>
-                      <div className={styles.formGroup}>
+                    <div className="form-grid">
+                      <div className="form-group">
                         <label htmlFor={`editRoundNumber-${round.round_id}`}>
                           Round Number (Sequence)
                         </label>
@@ -657,11 +648,11 @@ export function RoundManagement({
                           required
                           disabled={updating}
                         />
-                        <div className={styles.helpText}>
+                        <div className="help-text">
                           Changing this reorders the bidding sequence.
                         </div>
                       </div>
-                      <div className={styles.formGroup}>
+                      <div className="form-group">
                         <label htmlFor={`editName-${round.round_id}`}>
                           Round Name
                         </label>
@@ -674,7 +665,7 @@ export function RoundManagement({
                           disabled={updating}
                         />
                       </div>
-                      <div className={styles.formGroup}>
+                      <div className="form-group">
                         <label htmlFor={`editSlotsPerDay-${round.round_id}`}>
                           Slots Per Day
                         </label>
@@ -692,7 +683,7 @@ export function RoundManagement({
                           disabled={updating}
                         />
                       </div>
-                      <div className={styles.formGroup}>
+                      <div className="form-group">
                         <label htmlFor={`editMaxGroups-${round.round_id}`}>
                           Max Groups
                         </label>
@@ -708,7 +699,7 @@ export function RoundManagement({
                           disabled={updating}
                         />
                       </div>
-                      <div className={styles.formGroup}>
+                      <div className="form-group">
                         <label htmlFor={`editMaxTotalHours-${round.round_id}`}>
                           Max Total Hours
                         </label>
@@ -726,8 +717,8 @@ export function RoundManagement({
                           disabled={updating}
                         />
                       </div>
-                      <div className={styles.formGroup}>
-                        <div className={styles.checkboxWrapper}>
+                      <div className="form-group">
+                        <div className="checkbox-wrapper">
                           <input
                             type="checkbox"
                             id={`editIncludeHolidays-${round.round_id}`}
@@ -744,8 +735,8 @@ export function RoundManagement({
                           </label>
                         </div>
                       </div>
-                      <div className={styles.formGroup}>
-                        <div className={styles.checkboxWrapper}>
+                      <div className="form-group">
+                        <div className="checkbox-wrapper">
                           <input
                             type="checkbox"
                             id={`editAllowOverbid-${round.round_id}`}
@@ -761,17 +752,17 @@ export function RoundManagement({
                         </div>
                       </div>
                     </div>
-                    <div className={styles.formActions}>
+                    <div className="form-actions">
                       <button
                         type="submit"
-                        className={styles.btnSave}
+                        className="btn-save"
                         disabled={updating}
                       >
                         {updating ? "Saving..." : "Save"}
                       </button>
                       <button
                         type="button"
-                        className={styles.btnSecondary}
+                        className="btn-secondary"
                         onClick={handleEditCancel}
                         disabled={updating}
                       >
@@ -780,7 +771,7 @@ export function RoundManagement({
                     </div>
                   </form>
                 ) : (
-                  <div className={styles.cardBody}>
+                  <div className="card-body">
                     <dl>
                       <dt>Round ID:</dt>
                       <dd>{round.round_id}</dd>
