@@ -13,15 +13,15 @@
 
 ## Active Sub-Phase
 
-- Sub-Phase: 30B (Round Groups & Rounds UI)
-- State: In Progress - final component conversion needed
+- Sub-Phase: 30C (Area → Round Group Assignment UI)
+- State: Ready to begin
 
 ## Completed Sub-Phases
 
 - [x] Planning Pass
 - [x] Sub-Phase 30A: Phase 29 Gap Analysis
 - [x] Phase 29 Gap-Fill: Area → Round Group Assignment API
-- [ ] Sub-Phase 30B: Round Groups & Rounds UI (90% complete - needs final class name conversion)
+- [x] Sub-Phase 30B: Round Groups & Rounds UI
 
 ## Work Completed
 
@@ -119,7 +119,7 @@
 - Sub-Phase 30C (Area → Round Group Assignment UI) is unblocked
 - Committed as: `92e70d9`
 
-### Sub-Phase 30B: Round Groups & Rounds UI (IN PROGRESS - 90% Complete)
+### Sub-Phase 30B: Round Groups & Rounds UI (COMPLETE)
 
 **TypeScript Types & API Bindings (Complete):**
 
@@ -169,29 +169,27 @@
 - Added to admin dropdown menu
 - Shows "Round Groups" label when active
 
-**Remaining Work:**
+**Final Deliverables (All Complete):**
 
-- Components still have CSS module imports (`import styles from ...`)
-- Need to remove CSS module import lines (line 25 in both files)
-- Need to convert `className={styles.xyz}` to `className="xyz"` throughout
-- Need to convert camelCase class names to kebab-case
-- Must preserve template literals with function calls (e.g., `getLifecycleBadgeClass()`)
-- Run biome formatter after conversion
-- Test that all classNames match the global SCSS partials
+- ✅ TypeScript types and API bindings for Round Groups and Rounds
+- ✅ Global SCSS partials (`_round-groups.scss` and `_rounds.scss`)
+- ✅ `RoundGroupManagement.tsx` component with full CRUD operations
+- ✅ `RoundManagement.tsx` component with full CRUD operations
+- ✅ Routing and navigation integration
+- ✅ Converted from CSS modules to global SCSS classes
+- ✅ Fixed `GetActiveBidYearResponse` field name usage
+- ✅ All components use kebab-case class names matching SCSS partials
+- ✅ Lifecycle awareness (blocks mutations after Canonicalized)
+- ✅ Real-time updates via live events
+- ✅ All CI checks pass
+- ✅ All pre-commit checks pass
 
-**What's Complete:**
-
-- Global SCSS partials created and imported
-- All button and layout styles defined
-- API bindings and types complete
-- Routing and navigation complete
-- Component logic and state management complete
+**Commit:** `0f9f892` - "Complete Phase 30B: Round Groups & Rounds UI"
 
 ## Outstanding Work
 
 ### Ready to Execute
 
-- Complete Sub-Phase 30B: Component class name conversion (see Remaining Work above)
 - Sub-Phase 30C: Area → Round Group Assignment UI
 - Sub-Phase 30D: Bootstrap UI Restructure
 - Sub-Phase 30E: Bid Schedule UI
@@ -211,22 +209,15 @@ None.
 
 ## Resume Instructions
 
-1. Complete Sub-Phase 30B class name conversion:
-   - Edit `ui/src/components/RoundGroupManagement.tsx`:
-     - Remove line 25: `import styles from "../styles/round-groups.module.scss";`
-     - Replace all `className={styles.xyz}` with `className="xyz"`
-     - Convert camelCase to kebab-case (e.g., `roundGroupsContainer` → `round-groups-container`)
-     - DO NOT convert function names in template literals (preserve `getLifecycleBadgeClass()`)
-   - Edit `ui/src/components/RoundManagement.tsx`:
-     - Remove line 25: `import styles from "../styles/rounds.module.scss";`
-     - Apply same className conversions
-   - Run `cd ui && npx biome check --write src/components/Round*.tsx`
-   - Verify no parse errors or unused variable warnings
-2. Run `cargo xtask ci` and `pre-commit run --all-files`
-3. Commit Sub-Phase 30B completion
-4. Begin Sub-Phase 30C: Area → Round Group Assignment UI
-5. Execute remaining sub-phases in order (30C → 30D → ... → 30I)
-6. Update this document after each sub-phase completion
+1. Begin Sub-Phase 30C: Area → Round Group Assignment UI
+   - Read `plans/PHASE_30/PHASE_30C.md` for full requirements
+   - Add UI for assigning areas to round groups
+   - Use existing API binding: `assignAreaRoundGroup()`
+   - Follow mobile-first design patterns
+   - Integrate with existing area management UI
+2. Execute remaining sub-phases in order (30C → 30D → ... → 30I)
+3. Update this document after each sub-phase completion
+4. Run `cargo xtask ci` and `pre-commit run --all-files` after each sub-phase
 
 ## Planning Notes
 
