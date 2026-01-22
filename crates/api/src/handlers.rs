@@ -4164,42 +4164,98 @@ pub fn get_bootstrap_completeness(
                 })?;
 
         let mut blocking_reasons: Vec<BlockingReason> = Vec::new();
+        let is_system_area: bool = area.is_system_area();
 
-        // Check if expected count is set
-        let expected_count = expected_user_count.unwrap_or_else(|| {
-            blocking_reasons.push(BlockingReason::ExpectedUserCountNotSet {
-                bid_year_id,
-                bid_year: year,
-                area_id,
-                area_code: area_code.clone(),
-            });
-            0 // Placeholder
-        });
+        // System areas do not require expected user count validation or round group assignment
+        if !is_system_area {
+            // Check if area has a round group assigned
+            let round_group_id =
+                persistence
+                    .get_area_round_group_id(area_id)
+                    .map_err(|e| ApiError::Internal {
+                        message: format!("Failed to get round group for area: {e}"),
+                    })?;
 
-        // Check if actual matches expected
-        if expected_user_count.is_some() && actual_user_count != expected_count as usize {
-            blocking_reasons.push(BlockingReason::UserCountMismatch {
-                bid_year_id,
-                bid_year: year,
-                area_id,
-                area_code: area_code.clone(),
-                expected: expected_count,
-                actual: actual_user_count,
+            if round_group_id.is_none() {
+                blocking_reasons.push(BlockingReason::AreaMissingRoundGroup {
+                    bid_year_id,
+                    bid_year: year,
+                    area_id,
+                    area_code: area_code.clone(),
+                });
+            }
+
+            // Check if expected count is set
+            let expected_count = expected_user_count.unwrap_or_else(|| {
+                blocking_reasons.push(BlockingReason::ExpectedUserCountNotSet {
+                    bid_year_id,
+                    bid_year: year,
+                    area_id,
+                    area_code: area_code.clone(),
+                });
+                0 // Placeholder
             });
+
+            // Check if actual matches expected
+            if expected_user_count.is_some() && actual_user_count != expected_count as usize {
+                blocking_reasons.push(BlockingReason::UserCountMismatch {
+                    bid_year_id,
+                    bid_year: year,
+                    area_id,
+                    area_code: area_code.clone(),
+                    expected: expected_count,
+                    actual: actual_user_count,
+                });
+            }
         }
 
-        let is_complete: bool = blocking_reasons.is_empty() && expected_user_count.is_some();
+        let is_complete: bool = if is_system_area {
+            true // System areas are always complete
+        } else {
+            blocking_reasons.is_empty() && expected_user_count.is_some()
+        };
 
         areas_info.push(AreaCompletenessInfo {
             bid_year_id,
             bid_year: year,
             area_id,
             area_code,
+            is_system_area,
             expected_user_count,
             actual_user_count,
             is_complete,
             blocking_reasons,
         });
+    }
+
+    // Check round groups have at least one round
+    if let Some(active_bid_year_id) = active_bid_year_id {
+        let round_groups = persistence
+            .list_round_groups(active_bid_year_id)
+            .map_err(|e| ApiError::Internal {
+                message: format!("Failed to list round groups: {e}"),
+            })?;
+
+        for rg in round_groups {
+            let rg_id = rg.round_group_id().ok_or_else(|| ApiError::Internal {
+                message: String::from("Round group has no ID"),
+            })?;
+
+            let rounds = persistence
+                .list_rounds(rg_id)
+                .map_err(|e| ApiError::Internal {
+                    message: format!("Failed to list rounds for round group: {e}"),
+                })?;
+
+            if rounds.is_empty() {
+                top_level_blocking.push(BlockingReason::RoundGroupHasNoRounds {
+                    bid_year_id: active_bid_year_id,
+                    bid_year: active_bid_year.unwrap_or(0),
+                    round_group_id: rg_id,
+                    round_group_name: rg.name().to_string(),
+                });
+            }
+        }
     }
 
     // Determine if system is ready for bidding

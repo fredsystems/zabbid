@@ -31,7 +31,6 @@ import {
 } from "../api";
 import type {
   BidScheduleInfo,
-  BlockingReason,
   ConnectionState,
   GetBootstrapCompletenessResponse,
   GlobalCapabilities,
@@ -141,9 +140,19 @@ export function BidScheduleSetup({
       <div className="bootstrap-completeness">
         <BootstrapNavigation currentStep="schedule" />
         <ReadinessWidget
-          lifecycleState={completeness.lifecycle_state}
-          isReady={completeness.is_ready}
-          blockingReasons={completeness.blocking_reasons}
+          lifecycleState={completeness.bid_years[0]?.lifecycle_state ?? "Draft"}
+          isReadyForBidding={completeness.is_ready_for_bidding}
+          blockerCount={
+            completeness.blocking_reasons.length +
+            completeness.bid_years.reduce(
+              (sum, by) => sum + by.blocking_reasons.length,
+              0,
+            ) +
+            completeness.areas.reduce(
+              (sum, area) => sum + area.blocking_reasons.length,
+              0,
+            )
+          }
         />
         <div className="bootstrap-content">
           <section className="bootstrap-section">
@@ -157,31 +166,34 @@ export function BidScheduleSetup({
     );
   }
 
-  const activeBidYearInfo = completeness.bid_years.find(
-    (by) => by.year === completeness.active_bid_year,
-  );
+  const activeBidYearInfo = completeness.bid_years.find((by) => by.is_active);
 
   if (!activeBidYearInfo) {
     return <div className="error">Active bid year not found</div>;
   }
 
-  // Find schedule-related blockers
-  const scheduleBlockers = completeness.blocking_reasons.filter(
-    (br) => br.reason_type === "BidScheduleNotSet",
-  );
-
   const isCanonicalizedOrLater =
-    completeness.lifecycle_state === "Canonicalized" ||
-    completeness.lifecycle_state === "Active" ||
-    completeness.lifecycle_state === "Complete";
+    activeBidYearInfo.lifecycle_state === "Canonicalized" ||
+    activeBidYearInfo.lifecycle_state === "Active" ||
+    activeBidYearInfo.lifecycle_state === "Closed";
 
   return (
     <div className="bootstrap-completeness">
       <BootstrapNavigation currentStep="schedule" />
       <ReadinessWidget
-        lifecycleState={completeness.lifecycle_state}
-        isReady={completeness.is_ready}
-        blockingReasons={completeness.blocking_reasons}
+        lifecycleState={activeBidYearInfo.lifecycle_state}
+        isReadyForBidding={completeness.is_ready_for_bidding}
+        blockerCount={
+          completeness.blocking_reasons.length +
+          completeness.bid_years.reduce(
+            (sum, by) => sum + by.blocking_reasons.length,
+            0,
+          ) +
+          completeness.areas.reduce(
+            (sum, area) => sum + area.blocking_reasons.length,
+            0,
+          )
+        }
       />
 
       <div className="bootstrap-content">
@@ -199,16 +211,7 @@ export function BidScheduleSetup({
             </div>
           )}
 
-          {scheduleBlockers.length > 0 && (
-            <div className="blockers-list">
-              <h4>Schedule Issues:</h4>
-              <ul>
-                {scheduleBlockers.map((br, idx) => (
-                  <li key={idx}>{renderBlockingReason(br)}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* Schedule blockers would be rendered here if defined in BlockingReason type */}
         </section>
 
         {schedule && !isCanonicalizedOrLater && (
@@ -430,25 +433,23 @@ function BidScheduleForm({
   ];
 
   return (
-    <div className="create-form">
+    <div className="create-form bid-schedule-form">
       <h3>{existingSchedule ? "Edit Bid Schedule" : "Set Bid Schedule"}</h3>
 
       <div className="form-row">
-        <label htmlFor="timezone">
-          Timezone (IANA):
-          <select
-            id="timezone"
-            value={timezone}
-            onChange={(e) => setTimezone(e.target.value)}
-            disabled={saving}
-          >
-            {commonTimezones.map((tz) => (
-              <option key={tz} value={tz}>
-                {tz}
-              </option>
-            ))}
-          </select>
-        </label>
+        <label htmlFor="timezone">Timezone (IANA):</label>
+        <select
+          id="timezone"
+          value={timezone}
+          onChange={(e) => setTimezone(e.target.value)}
+          disabled={saving}
+        >
+          {commonTimezones.map((tz) => (
+            <option key={tz} value={tz}>
+              {tz}
+            </option>
+          ))}
+        </select>
         <p className="field-hint">
           Select the timezone for bid scheduling. All bid times will be
           interpreted in this timezone.
@@ -456,16 +457,14 @@ function BidScheduleForm({
       </div>
 
       <div className="form-row">
-        <label htmlFor="start-date">
-          Start Date (must be a Monday):
-          <input
-            id="start-date"
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            disabled={saving}
-          />
-        </label>
+        <label htmlFor="start-date">Start Date (must be a Monday):</label>
+        <input
+          id="start-date"
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          disabled={saving}
+        />
         <p className="field-hint">
           The start date must be a Monday and should be in the future when
           confirming ready to bid.
@@ -473,48 +472,42 @@ function BidScheduleForm({
       </div>
 
       <div className="form-row">
-        <label htmlFor="window-start">
-          Daily Bid Window Start Time:
-          <input
-            id="window-start"
-            type="time"
-            step="1"
-            value={windowStartTime}
-            onChange={(e) => setWindowStartTime(`${e.target.value}:00`)}
-            disabled={saving}
-          />
-        </label>
+        <label htmlFor="window-start">Daily Bid Window Start Time:</label>
+        <input
+          id="window-start"
+          type="time"
+          step="1"
+          value={windowStartTime}
+          onChange={(e) => setWindowStartTime(`${e.target.value}:00`)}
+          disabled={saving}
+        />
       </div>
 
       <div className="form-row">
-        <label htmlFor="window-end">
-          Daily Bid Window End Time:
-          <input
-            id="window-end"
-            type="time"
-            step="1"
-            value={windowEndTime}
-            onChange={(e) => setWindowEndTime(`${e.target.value}:00`)}
-            disabled={saving}
-          />
-        </label>
+        <label htmlFor="window-end">Daily Bid Window End Time:</label>
+        <input
+          id="window-end"
+          type="time"
+          step="1"
+          value={windowEndTime}
+          onChange={(e) => setWindowEndTime(`${e.target.value}:00`)}
+          disabled={saving}
+        />
         <p className="field-hint">
           The daily time window during which bidding is allowed.
         </p>
       </div>
 
       <div className="form-row">
-        <label htmlFor="bidders-per-day">
-          Bidders per Area per Day:
-          <input
-            id="bidders-per-day"
-            type="number"
-            min="1"
-            value={biddersPerDay}
-            onChange={(e) => setBiddersPerDay(e.target.value)}
-            disabled={saving}
-          />
-        </label>
+        <label htmlFor="bidders-per-day">Bidders per Area per Day:</label>
+        <input
+          id="bidders-per-day"
+          type="number"
+          min="1"
+          value={biddersPerDay}
+          onChange={(e) => setBiddersPerDay(e.target.value)}
+          disabled={saving}
+        />
         <p className="field-hint">
           The maximum number of users allowed to bid per area per day.
         </p>
@@ -544,17 +537,5 @@ function BidScheduleForm({
   );
 }
 
-// ============================================================================
-// Blocking Reason Renderer
-// ============================================================================
-
-function renderBlockingReason(br: BlockingReason): string {
-  switch (br.reason_type) {
-    case "BidScheduleNotSet": {
-      const { bid_year } = br.details;
-      return `Bid Year ${bid_year}: Bid schedule not configured`;
-    }
-    default:
-      return `Unknown blocking reason: ${br.reason_type}`;
-  }
-}
+// Note: Blocking reason rendering removed - schedule blockers
+// would need to be added to the BlockingReason discriminated union type

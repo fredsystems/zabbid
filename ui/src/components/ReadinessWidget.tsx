@@ -14,65 +14,66 @@
  */
 
 import { Link } from "react-router-dom";
-import styles from "../styles/readiness-widget.module.scss";
 
 interface ReadinessWidgetProps {
   lifecycleState: string;
   isReadyForBidding: boolean;
   blockerCount: number;
+  hideReviewLink?: boolean;
 }
 
 export function ReadinessWidget({
   lifecycleState,
   isReadyForBidding,
   blockerCount,
+  hideReviewLink = false,
 }: ReadinessWidgetProps) {
   const getLifecycleColor = (state: string): string => {
     switch (state) {
       case "Draft":
-        return styles.lifecycleDraft;
+        return "lifecycle-draft";
       case "Canonicalized":
-        return styles.lifecycleCanonicalized;
+        return "lifecycle-canonicalized";
       case "Active":
-        return styles.lifecycleActive;
+        return "lifecycle-active";
       case "Closed":
-        return styles.lifecycleClosed;
+        return "lifecycle-closed";
       default:
-        return styles.lifecycleDraft;
+        return "lifecycle-draft";
     }
   };
 
   return (
-    <div className={styles.readinessWidget}>
-      <div className={styles.widgetHeader}>
-        <h4 className={styles.widgetTitle}>System Status</h4>
+    <div className="readiness-widget">
+      <div className="widget-header">
+        <h4 className="widget-title">System Status</h4>
         <span
-          className={`${styles.lifecycleBadge} ${getLifecycleColor(lifecycleState)}`}
+          className={`lifecycle-badge ${getLifecycleColor(lifecycleState)}`}
         >
           {lifecycleState}
         </span>
       </div>
 
-      <div className={styles.widgetBody}>
+      <div className="widget-body">
         {isReadyForBidding ? (
-          <div className={styles.statusReady}>
-            <span className={styles.statusIcon}>✓</span>
-            <span className={styles.statusText}>Ready for Bidding</span>
+          <div className="status-ready">
+            <span className="status-icon">✓</span>
+            <span className="status-text">Ready for Bidding</span>
           </div>
         ) : (
-          <div className={styles.statusIncomplete}>
-            <span className={styles.statusIcon}>⚠</span>
-            <div className={styles.statusContent}>
-              <span className={styles.statusText}>Bootstrap Incomplete</span>
-              <span className={styles.blockerCount}>
+          <div className="status-incomplete">
+            <span className="status-icon">⚠</span>
+            <div className="status-content">
+              <span className="status-text">Bootstrap Incomplete</span>
+              <span className="blocker-count">
                 {blockerCount} blocker{blockerCount !== 1 ? "s" : ""}
               </span>
             </div>
           </div>
         )}
 
-        {!isReadyForBidding && (
-          <Link to="/admin/bootstrap/readiness" className={styles.reviewLink}>
+        {!isReadyForBidding && !hideReviewLink && (
+          <Link to="/admin/bootstrap/readiness" className="review-link">
             Review Blockers →
           </Link>
         )}

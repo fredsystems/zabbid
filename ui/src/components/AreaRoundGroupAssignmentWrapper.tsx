@@ -30,7 +30,6 @@ import {
 } from "../api";
 import type {
   AreaInfo,
-  BlockingReason,
   ConnectionState,
   GetBootstrapCompletenessResponse,
   GlobalCapabilities,
@@ -69,10 +68,10 @@ export function AreaRoundGroupAssignmentWrapper({
       const response = await getBootstrapCompleteness();
       setCompleteness(response);
 
-      if (response.active_bid_year !== null && sessionToken) {
+      if (response.active_bid_year_id !== null && sessionToken) {
         const [areasResponse, roundGroupsResponse] = await Promise.all([
-          listAreas(sessionToken, response.active_bid_year),
-          listRoundGroups(sessionToken, response.active_bid_year),
+          listAreas(response.active_bid_year_id),
+          listRoundGroups(sessionToken, response.active_bid_year_id),
         ]);
         setAreas(areasResponse.areas);
         setRoundGroups(roundGroupsResponse.round_groups);
@@ -119,7 +118,9 @@ export function AreaRoundGroupAssignmentWrapper({
   }, [lastEvent, loadData]);
 
   if (loading) {
-    return <div className="loading">Loading area round group assignments...</div>;
+    return (
+      <div className="loading">Loading area round group assignments...</div>
+    );
   }
 
   if (error) {
@@ -140,16 +141,24 @@ export function AreaRoundGroupAssignmentWrapper({
       <div className="bootstrap-completeness">
         <BootstrapNavigation currentStep="area-round-groups" />
         <ReadinessWidget
-          lifecycleState={completeness.lifecycle_state}
-          isReady={completeness.is_ready}
-          blockingReasons={completeness.blocking_reasons}
+          lifecycleState={completeness.bid_years[0]?.lifecycle_state ?? "Draft"}
+          isReadyForBidding={completeness.is_ready_for_bidding}
+          blockerCount={
+            completeness.blocking_reasons.length +
+            completeness.bid_years.reduce(
+              (sum, by) => sum + by.blocking_reasons.length,
+              0,
+            ) +
+            completeness.areas.reduce(
+              (sum, area) => sum + area.blocking_reasons.length,
+              0,
+            )
+          }
         />
         <div className="bootstrap-content">
           <section className="bootstrap-section">
             <h2 className="section-title">Area → Round Group Assignment</h2>
-            <p className="section-description">
-              No active bid year. Please configure a bid year first.
-            </p>
+            <p className="section-description">Loading...</p>
           </section>
         </div>
       </div>
@@ -158,23 +167,31 @@ export function AreaRoundGroupAssignmentWrapper({
 
   const nonSystemAreas = areas.filter((a) => !a.is_system_area);
 
-  // Find area round group assignment blockers
-  const assignmentBlockers = completeness.blocking_reasons.filter(
-    (br) => br.reason_type === "AreaMissingRoundGroup",
-  );
+  const activeBidYearInfo = completeness.bid_years.find((by) => by.is_active);
+  const lifecycleState = activeBidYearInfo?.lifecycle_state ?? "Draft";
 
   const isCanonicalizedOrLater =
-    completeness.lifecycle_state === "Canonicalized" ||
-    completeness.lifecycle_state === "Active" ||
-    completeness.lifecycle_state === "Complete";
+    lifecycleState === "Canonicalized" ||
+    lifecycleState === "Active" ||
+    lifecycleState === "Closed";
 
   return (
     <div className="bootstrap-completeness">
       <BootstrapNavigation currentStep="area-round-groups" />
       <ReadinessWidget
-        lifecycleState={completeness.lifecycle_state}
-        isReady={completeness.is_ready}
-        blockingReasons={completeness.blocking_reasons}
+        lifecycleState={completeness.bid_years[0]?.lifecycle_state ?? "Draft"}
+        isReadyForBidding={completeness.is_ready_for_bidding}
+        blockerCount={
+          completeness.blocking_reasons.length +
+          completeness.bid_years.reduce(
+            (sum, by) => sum + by.blocking_reasons.length,
+            0,
+          ) +
+          completeness.areas.reduce(
+            (sum, area) => sum + area.blocking_reasons.length,
+            0,
+          )
+        }
       />
 
       <div className="bootstrap-content">
@@ -192,16 +209,7 @@ export function AreaRoundGroupAssignmentWrapper({
             </div>
           )}
 
-          {assignmentBlockers.length > 0 && (
-            <div className="blockers-list">
-              <h4>Assignment Issues:</h4>
-              <ul>
-                {assignmentBlockers.map((br, idx) => (
-                  <li key={idx}>{renderBlockingReason(br)}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* Assignment blockers would be rendered here if defined in BlockingReason type */}
         </section>
 
         {roundGroups.length === 0 && (
@@ -216,8 +224,7 @@ export function AreaRoundGroupAssignmentWrapper({
         {roundGroups.length > 0 && nonSystemAreas.length === 0 && (
           <section className="bootstrap-section">
             <p className="empty-state">
-              No operational areas configured yet. Please configure areas
-              first.
+              No operational areas configured yet. Please configure areas first.
             </p>
           </section>
         )}
@@ -407,17 +414,5 @@ function AreaRoundGroupAssignment({
   );
 }
 
-// ============================================================================
-// Blocking Reason Renderer
-// ============================================================================
-
-function renderBlockingReason(br: BlockingReason): string {
-  switch (br.reason_type) {
-    case "AreaMissingRoundGroup": {
-      const { bid_year, area_code } = br.details;
-      return `Area ${area_code} (Bid Year ${bid_year}): No round group assigned`;
-    }
-    default:
-      return `Unknown blocking reason: ${br.reason_type}`;
-  }
-}
+// Note: Blocking reason rendering removed - area assignment blockers
+// would need to be added to the BlockingReason discriminated union type

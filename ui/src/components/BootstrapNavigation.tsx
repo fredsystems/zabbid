@@ -6,15 +6,14 @@
 /**
  * Bootstrap Navigation component.
  *
- * Displays a step-by-step navigation for the bootstrap workflow.
- * Shows completion status and allows navigation to any step.
+ * Displays a compact dropdown-style navigation for the bootstrap workflow.
+ * Shows current step and allows navigation to any step.
  *
  * Navigation is never hard-blocked; operators can move between steps freely.
  * Only the final confirmation action (Ready to Bid) is gated.
  */
 
-import { NavLink } from "react-router-dom";
-import styles from "../styles/bootstrap-navigation.module.scss";
+import { useNavigate } from "react-router-dom";
 
 interface BootstrapNavigationProps {
   currentStep?: string;
@@ -54,27 +53,36 @@ const WORKFLOW_STEPS: NavStep[] = [
 ];
 
 export function BootstrapNavigation({ currentStep }: BootstrapNavigationProps) {
+  const navigate = useNavigate();
+  const currentStepIndex =
+    WORKFLOW_STEPS.findIndex((step) => step.id === currentStep) + 1 || 1;
+
+  const handleStepChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    navigate(event.target.value);
+  };
+
   return (
-    <nav className={styles.bootstrapNavigation}>
-      <h3 className={styles.navTitle}>Bootstrap Workflow</h3>
-      <ol className={styles.navSteps}>
-        {WORKFLOW_STEPS.map((step, index) => (
-          <li
-            key={step.id}
-            className={`${styles.navStep} ${currentStep === step.id ? styles.active : ""}`}
-          >
-            <NavLink
-              to={step.path}
-              className={({ isActive }) =>
-                isActive ? styles.stepLinkActive : styles.stepLink
-              }
-            >
-              <span className={styles.stepNumber}>{index + 1}</span>
-              <span className={styles.stepLabel}>{step.label}</span>
-            </NavLink>
-          </li>
-        ))}
-      </ol>
+    <nav className="bootstrap-navigation">
+      <label htmlFor="bootstrap-step-select" className="nav-label">
+        Bootstrap Workflow Step:
+      </label>
+      <div className="nav-dropdown-container">
+        <span className="nav-step-indicator">
+          Step {currentStepIndex} of {WORKFLOW_STEPS.length}
+        </span>
+        <select
+          id="bootstrap-step-select"
+          className="nav-dropdown"
+          value={WORKFLOW_STEPS.find((step) => step.id === currentStep)?.path}
+          onChange={handleStepChange}
+        >
+          {WORKFLOW_STEPS.map((step, index) => (
+            <option key={step.id} value={step.path}>
+              {index + 1}. {step.label}
+            </option>
+          ))}
+        </select>
+      </div>
     </nav>
   );
 }

@@ -125,7 +125,17 @@ export function BidYearSetup({
       <ReadinessWidget
         lifecycleState={activeBidYear?.lifecycle_state ?? "Draft"}
         isReadyForBidding={completeness.is_ready_for_bidding}
-        blockerCount={completeness.blocking_reasons.length}
+        blockerCount={
+          completeness.blocking_reasons.length +
+          completeness.bid_years.reduce(
+            (sum, by) => sum + by.blocking_reasons.length,
+            0,
+          ) +
+          completeness.areas.reduce(
+            (sum, area) => sum + area.blocking_reasons.length,
+            0,
+          )
+        }
       />
 
       <section className="bootstrap-section">

@@ -39,7 +39,6 @@ import type {
   LiveEvent,
 } from "../types";
 import { BootstrapNavigation } from "./BootstrapNavigation";
-import { ReadinessWidget } from "./ReadinessWidget";
 
 interface ReadinessReviewProps {
   sessionToken: string | null;
@@ -159,13 +158,22 @@ export function ReadinessReview({
     return <div className="error">No completeness data available</div>;
   }
 
-  const isCanonicalizedOrLater =
-    completeness.lifecycle_state === "Canonicalized" ||
-    completeness.lifecycle_state === "Active" ||
-    completeness.lifecycle_state === "Complete";
+  const activeBidYearInfo = completeness.bid_years.find((by) => by.is_active);
+  const lifecycleState = activeBidYearInfo?.lifecycle_state ?? "Draft";
 
-  const isReady = completeness.is_ready;
-  const blockers = completeness.blocking_reasons;
+  const isCanonicalizedOrLater =
+    lifecycleState === "Canonicalized" ||
+    lifecycleState === "Active" ||
+    lifecycleState === "Closed";
+
+  const isReady = completeness.is_ready_for_bidding;
+
+  // Collect all blockers from all levels
+  const allBlockers: BlockingReason[] = [
+    ...completeness.blocking_reasons,
+    ...completeness.bid_years.flatMap((by) => by.blocking_reasons),
+    ...completeness.areas.flatMap((area) => area.blocking_reasons),
+  ];
 
   const requiredConfirmationText = "I understand this action is irreversible";
   const confirmationMatches =
@@ -174,11 +182,6 @@ export function ReadinessReview({
   return (
     <div className="bootstrap-completeness">
       <BootstrapNavigation currentStep="readiness" />
-      <ReadinessWidget
-        lifecycleState={completeness.lifecycle_state}
-        isReady={completeness.is_ready}
-        blockingReasons={completeness.blocking_reasons}
-      />
 
       <div className="bootstrap-content">
         <section className="bootstrap-section">
@@ -199,29 +202,31 @@ export function ReadinessReview({
         {!isCanonicalizedOrLater && (
           <>
             <section className="bootstrap-section">
-              <h3 className="section-title">System Status</h3>
+              <h3 className="section-title">Status Review</h3>
               <div className="status-summary">
-                <div className="status-item">
+                <div className="readiness-status-item">
                   <span className="status-label">Lifecycle State:</span>
-                  <span className={`lifecycle-badge ${completeness.lifecycle_state.toLowerCase()}`}>
-                    {completeness.lifecycle_state}
+                  <span
+                    className={`lifecycle-badge ${lifecycleState.toLowerCase()}`}
+                  >
+                    {lifecycleState}
                   </span>
                 </div>
-                <div className="status-item">
+                <div className="readiness-status-item">
                   <span className="status-label">Readiness:</span>
                   {isReady ? (
                     <span className="readiness-badge ready">✓ Ready</span>
                   ) : (
                     <span className="readiness-badge not-ready">
-                      ✗ Not Ready ({blockers.length} blocker
-                      {blockers.length !== 1 ? "s" : ""})
+                      ✗ Not Ready ({allBlockers.length} blocker
+                      {allBlockers.length !== 1 ? "s" : ""})
                     </span>
                   )}
                 </div>
               </div>
             </section>
 
-            {blockers.length > 0 && (
+            {allBlockers.length > 0 && (
               <section className="bootstrap-section">
                 <h3 className="section-title">Blocking Issues</h3>
                 <p className="section-description">
@@ -229,8 +234,11 @@ export function ReadinessReview({
                   to bid:
                 </p>
                 <div className="blockers-list-detail">
-                  {blockers.map((blocker, idx) => (
-                    <BlockerItem key={idx} blocker={blocker} />
+                  {allBlockers.map((blocker, index) => (
+                    <BlockerItem
+                      key={`${JSON.stringify(blocker)}-${index}`}
+                      blocker={blocker}
+                    />
                   ))}
                 </div>
               </section>
@@ -296,20 +304,31 @@ export function ReadinessReview({
       </div>
 
       {showConfirmModal && (
-        <div className="modal-overlay" onClick={() => setShowConfirmModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className="modal-overlay"
+          onClick={() => setShowConfirmModal(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setShowConfirmModal(false);
+          }}
+        >
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
             <h3>Confirm Ready to Bid</h3>
             <div className="modal-body">
               <p>
                 <strong>This action is irreversible.</strong>
               </p>
               <p>
-                Confirming will transition the system to Canonicalized state
-                and freeze all baseline configuration.
+                Confirming will transition the system to Canonicalized state and
+                freeze all baseline configuration.
               </p>
-              <p>
-                Type the following text to confirm:
-              </p>
+              <p>Type the following text to confirm:</p>
               <p className="confirmation-required-text">
                 {requiredConfirmationText}
               </p>
@@ -318,7 +337,7 @@ export function ReadinessReview({
                 value={confirmationText}
                 onChange={(e) => setConfirmationText(e.target.value)}
                 placeholder="Type confirmation text here"
-                disabled={confirming}
+                className="confirmation-input"
               />
             </div>
             <div className="modal-actions">
@@ -326,21 +345,21 @@ export function ReadinessReview({
                 type="button"
                 onClick={handleConfirmSubmit}
                 disabled={!confirmationMatches || confirming}
-                className="btn-confirm"
+                className="btn-primary"
               >
-                {confirming ? "Confirming..." : "Confirm"}
+                {confirming ? "Confirming..." : "Confirm Ready to Bid"}
               </button>
               <button
                 type="button"
                 onClick={() => setShowConfirmModal(false)}
                 disabled={confirming}
-                className="btn-cancel"
+                className="btn-secondary"
               >
                 Cancel
               </button>
             </div>
           </div>
-        </div>
+        </button>
       )}
     </div>
   );
@@ -375,52 +394,46 @@ function BlockerItem({ blocker }: BlockerItemProps) {
 // ============================================================================
 
 function renderBlockingReason(br: BlockingReason): string {
-  switch (br.reason_type) {
-    case "NoActiveBidYear":
-      return "No active bid year configured";
-    case "ExpectedAreaCountNotSet": {
-      const { bid_year } = br.details;
+  if (br === "NoActiveBidYear") {
+    return "No active bid year configured";
+  }
+
+  if (typeof br === "object") {
+    if ("ExpectedAreaCountNotSet" in br) {
+      const { bid_year } = br.ExpectedAreaCountNotSet;
       return `Bid Year ${bid_year}: Expected area count not set`;
     }
-    case "AreaCountMismatch": {
-      const { bid_year, expected, actual } = br.details;
+    if ("AreaCountMismatch" in br) {
+      const { bid_year, expected, actual } = br.AreaCountMismatch;
       return `Bid Year ${bid_year}: Expected ${expected} areas, found ${actual}`;
     }
-    case "ExpectedUserCountNotSet": {
-      const { bid_year, area_code } = br.details;
+    if ("ExpectedUserCountNotSet" in br) {
+      const { bid_year, area_code } = br.ExpectedUserCountNotSet;
       return `Area ${area_code} (Bid Year ${bid_year}): Expected user count not set`;
     }
-    case "UserCountMismatch": {
-      const { bid_year, area_code, expected, actual } = br.details;
+    if ("UserCountMismatch" in br) {
+      const { bid_year, area_code, expected, actual } = br.UserCountMismatch;
       return `Area ${area_code} (Bid Year ${bid_year}): Expected ${expected} users, found ${actual}`;
     }
-    case "UnexpectedUsers": {
-      const { bid_year, user_count, sample_initials } = br.details;
+    if ("UsersInNoBidArea" in br) {
+      const { bid_year, user_count, sample_initials } = br.UsersInNoBidArea;
       const userList = sample_initials
         .slice(0, 5)
         .map((i: string) => `"${i}"`)
         .join(", ");
-      return `Bid Year ${bid_year}: ${user_count} unexpected users (e.g. ${userList})`;
+      return `Bid Year ${bid_year}: ${user_count} users in No Bid area (e.g. ${userList})`;
     }
-    case "NoRoundGroups": {
-      const { bid_year } = br.details;
-      return `Bid Year ${bid_year}: No round groups defined`;
-    }
-    case "RoundGroupHasNoRounds": {
-      const { bid_year, round_group_name } = br.details;
-      return `Bid Year ${bid_year}: Round group "${round_group_name}" has no rounds`;
-    }
-    case "AreaMissingRoundGroup": {
-      const { bid_year, area_code } = br.details;
+    if ("AreaMissingRoundGroup" in br) {
+      const { bid_year, area_code } = br.AreaMissingRoundGroup;
       return `Area ${area_code} (Bid Year ${bid_year}): No round group assigned`;
     }
-    case "BidScheduleNotSet": {
-      const { bid_year } = br.details;
-      return `Bid Year ${bid_year}: Bid schedule not configured`;
+    if ("RoundGroupHasNoRounds" in br) {
+      const { bid_year, round_group_name } = br.RoundGroupHasNoRounds;
+      return `Round Group "${round_group_name}" (Bid Year ${bid_year}): No rounds defined`;
     }
-    default:
-      return `Unknown blocking reason: ${br.reason_type}`;
   }
+
+  return "Unknown blocking reason";
 }
 
 // ============================================================================
@@ -428,24 +441,33 @@ function renderBlockingReason(br: BlockingReason): string {
 // ============================================================================
 
 function getBlockerLink(br: BlockingReason): string | null {
-  switch (br.reason_type) {
-    case "NoActiveBidYear":
-    case "ExpectedAreaCountNotSet":
-      return "/admin/bootstrap/bid-years";
-    case "AreaCountMismatch":
-    case "ExpectedUserCountNotSet":
-      return "/admin/bootstrap/areas";
-    case "UserCountMismatch":
-    case "UnexpectedUsers":
-      return "/admin/bootstrap/users";
-    case "NoRoundGroups":
-    case "RoundGroupHasNoRounds":
-      return "/admin/bootstrap/round-groups";
-    case "AreaMissingRoundGroup":
-      return "/admin/bootstrap/area-round-groups";
-    case "BidScheduleNotSet":
-      return "/admin/bootstrap/schedule";
-    default:
-      return null;
+  if (br === "NoActiveBidYear") {
+    return "/admin/bootstrap/bid-years";
   }
+
+  if (typeof br === "object") {
+    if ("ExpectedAreaCountNotSet" in br) {
+      return "/admin/bootstrap/bid-years";
+    }
+    if ("AreaCountMismatch" in br) {
+      return "/admin/bootstrap/areas";
+    }
+    if ("ExpectedUserCountNotSet" in br) {
+      return "/admin/bootstrap/areas";
+    }
+    if ("UserCountMismatch" in br) {
+      return "/admin/bootstrap/users";
+    }
+    if ("UsersInNoBidArea" in br) {
+      return "/admin/bootstrap/no-bid-review";
+    }
+    if ("AreaMissingRoundGroup" in br) {
+      return "/admin/bootstrap/area-round-groups";
+    }
+    if ("RoundGroupHasNoRounds" in br) {
+      return "/admin/bootstrap/round-groups";
+    }
+  }
+
+  return null;
 }

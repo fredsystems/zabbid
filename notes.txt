@@ -27,3 +27,8 @@ initials,name,area_id,crew,user_type,service_computation_date,eod_faa_date,natca
 CS,Fred Clausen,East,3,CPC,2008-04-01,2008-04-01,2008-08-05,2008-08-05,
 SB,Steve Barnes,East,3,CPC,2008-04-01,2008-04-01,2008-08-05,2008-08-05,
 PU,Peaches Waddell,South East,7,CPC,2008-04-01,2008-04-01,2008-08-05,2008-08-05,
+
+No Bid area has no review to allow the user to stay there
+Cannot delete a user
+area reassignment in user edit does not show any areas
+padding is FOR SHIT

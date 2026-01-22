@@ -20,6 +20,7 @@ import {
   Route,
   Routes,
   useNavigate,
+  useParams,
 } from "react-router-dom";
 import * as api from "./api";
 import { AreaRoundGroupAssignmentWrapper } from "./components/AreaRoundGroupAssignmentWrapper";
@@ -27,7 +28,7 @@ import { AreaSetup } from "./components/AreaSetup";
 import { AreaView } from "./components/AreaView";
 import { BidScheduleSetup } from "./components/BidScheduleSetup";
 import { BidYearSetup } from "./components/BidYearSetup";
-import { BootstrapCompleteness } from "./components/BootstrapCompleteness";
+
 import { BootstrapOverview } from "./components/BootstrapOverview";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 import { Navigation } from "./components/Navigation";
@@ -58,6 +59,33 @@ interface AuthState {
 interface BootstrapState {
   isBootstrapMode: boolean;
   bootstrapToken: string | null;
+}
+
+// Helper wrapper to extract bidYearId from URL params for NoBidReview route
+function NoBidReviewRouteWrapper({
+  authState,
+  connectionState,
+  lastEvent,
+}: {
+  authState: AuthState;
+  connectionState: "connecting" | "connected" | "disconnected" | "error";
+  lastEvent: LiveEvent | null;
+}) {
+  const { bidYearId } = useParams<{ bidYearId: string }>();
+  const bidYearIdNum = bidYearId ? Number.parseInt(bidYearId, 10) : 0;
+
+  if (!authState.sessionToken || !bidYearId || Number.isNaN(bidYearIdNum)) {
+    return <Navigate to="/admin" replace />;
+  }
+
+  return (
+    <NoBidReview
+      bidYearId={bidYearIdNum}
+      sessionToken={authState.sessionToken}
+      connectionState={connectionState}
+      lastEvent={lastEvent}
+    />
+  );
 }
 
 export function App() {
@@ -679,7 +707,6 @@ function AuthenticatedAdminApp({
               authState.role === "Admin" && authState.sessionToken ? (
                 <NoBidReviewWrapper
                   sessionToken={authState.sessionToken}
-                  capabilities={authState.capabilities}
                   connectionState={connectionState}
                   lastEvent={lastEvent}
                 />
@@ -694,7 +721,6 @@ function AuthenticatedAdminApp({
               authState.role === "Admin" && authState.sessionToken ? (
                 <RoundGroupSetupWrapper
                   sessionToken={authState.sessionToken}
-                  capabilities={authState.capabilities}
                   connectionState={connectionState}
                   lastEvent={lastEvent}
                 />
@@ -751,8 +777,8 @@ function AuthenticatedAdminApp({
           <Route
             path="bid-year/:bidYearId/no-bid-review"
             element={
-              <NoBidReview
-                sessionToken={authState.sessionToken}
+              <NoBidReviewRouteWrapper
+                authState={authState}
                 connectionState={connectionState}
                 lastEvent={lastEvent}
               />

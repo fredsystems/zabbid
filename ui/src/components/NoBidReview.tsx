@@ -25,7 +25,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+
 import {
   ApiError,
   listAreas,
@@ -43,18 +43,18 @@ import type {
 } from "../types";
 
 interface NoBidReviewProps {
+  bidYearId: number;
   sessionToken: string | null;
   connectionState: ConnectionState;
   lastEvent: LiveEvent | null;
 }
 
 export function NoBidReview({
+  bidYearId,
   sessionToken,
   connectionState,
   lastEvent,
 }: NoBidReviewProps) {
-  const { bidYearId } = useParams<{ bidYearId: string }>();
-
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [areas, setAreas] = useState<AreaInfo[]>([]);
   const [bidYear, setBidYear] = useState<BidYearInfo | null>(null);
@@ -62,10 +62,8 @@ export function NoBidReview({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const bidYearIdNum = bidYearId ? parseInt(bidYearId, 10) : null;
-
   const loadData = useCallback(async () => {
-    if (!sessionToken || bidYearIdNum === null) {
+    if (!sessionToken) {
       setLoading(false);
       return;
     }
@@ -77,7 +75,7 @@ export function NoBidReview({
       // Load bid year info
       const bidYearsResponse = await listBidYears();
       const foundBidYear = bidYearsResponse.find(
-        (by) => by.bid_year_id === bidYearIdNum,
+        (by) => by.bid_year_id === bidYearId,
       );
       if (!foundBidYear) {
         setError("Bid year not found");
@@ -86,7 +84,7 @@ export function NoBidReview({
       setBidYear(foundBidYear);
 
       // Load areas for this bid year
-      const areasResponse = await listAreas(bidYearIdNum);
+      const areasResponse = await listAreas(bidYearId);
       setAreas(areasResponse.areas);
 
       // Find the No Bid area (is_system_area === true && area_code === "NO BID")
@@ -120,7 +118,7 @@ export function NoBidReview({
     } finally {
       setLoading(false);
     }
-  }, [sessionToken, bidYearIdNum]);
+  }, [sessionToken, bidYearId]);
 
   useEffect(() => {
     void loadData();
@@ -273,7 +271,7 @@ function UserAssignmentCard({
     if (!sessionToken || !selectedAreaId) return;
 
     const areaIdNum = parseInt(selectedAreaId, 10);
-    if (isNaN(areaIdNum)) return;
+    if (Number.isNaN(areaIdNum)) return;
 
     try {
       setAssigning(true);

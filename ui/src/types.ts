@@ -323,7 +323,10 @@ export interface ErrorResponse {
  */
 export type LiveEvent =
   | { type: "bid_year_created"; year: number }
+  | { type: "bid_year_updated"; year: number }
   | { type: "area_created"; bid_year: number; area: string }
+  | { type: "area_updated"; bid_year: number; area: string }
+  | { type: "area_round_group_assigned"; bid_year: number; area: string }
   | {
       type: "user_registered";
       bid_year: number;
@@ -336,6 +339,13 @@ export type LiveEvent =
       area: string;
       initials: string;
     }
+  | { type: "round_group_created"; bid_year: number; name: string }
+  | { type: "round_group_updated"; bid_year: number; name: string }
+  | { type: "round_group_deleted"; bid_year: number; name: string }
+  | { type: "round_created"; bid_year: number; round_group: string }
+  | { type: "round_updated"; bid_year: number; round_group: string }
+  | { type: "round_deleted"; bid_year: number; round_group: string }
+  | { type: "bid_schedule_set"; bid_year: number }
   | { type: "checkpoint_created"; bid_year: number; area: string }
   | { type: "rolled_back"; bid_year: number; area: string }
   | { type: "round_finalized"; bid_year: number; area: string }
@@ -395,6 +405,22 @@ export type BlockingReason =
         user_count: number;
         sample_initials: string[];
       };
+    }
+  | {
+      AreaMissingRoundGroup: {
+        bid_year_id: number;
+        bid_year: number;
+        area_id: number;
+        area_code: string;
+      };
+    }
+  | {
+      RoundGroupHasNoRounds: {
+        bid_year_id: number;
+        bid_year: number;
+        round_group_id: number;
+        round_group_name: string;
+      };
     };
 
 /**
@@ -431,6 +457,8 @@ export interface AreaCompletenessInfo {
   area_id: number;
   /** The area code (display value) */
   area_code: string;
+  /** Whether this is a system-managed area */
+  is_system_area: boolean;
   /** Expected user count, if set */
   expected_user_count: number | null;
   /** Actual user count */

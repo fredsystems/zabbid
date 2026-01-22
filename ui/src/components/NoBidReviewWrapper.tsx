@@ -25,16 +25,11 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  getBootstrapCompleteness,
-  listAreas,
-  NetworkError,
-} from "../api";
+import { getBootstrapCompleteness, listAreas, NetworkError } from "../api";
 import type {
   AreaInfo,
   ConnectionState,
   GetBootstrapCompletenessResponse,
-  GlobalCapabilities,
   LiveEvent,
 } from "../types";
 import { BootstrapNavigation } from "./BootstrapNavigation";
@@ -43,14 +38,12 @@ import { ReadinessWidget } from "./ReadinessWidget";
 
 interface NoBidReviewWrapperProps {
   sessionToken: string | null;
-  capabilities: GlobalCapabilities | null;
   connectionState: ConnectionState;
   lastEvent: LiveEvent | null;
 }
 
 export function NoBidReviewWrapper({
   sessionToken,
-  capabilities,
   connectionState,
   lastEvent,
 }: NoBidReviewWrapperProps) {
@@ -68,11 +61,8 @@ export function NoBidReviewWrapper({
       setCompleteness(response);
 
       // Find the No Bid area for the active bid year
-      if (response.active_bid_year !== null && sessionToken) {
-        const areasResponse = await listAreas(
-          sessionToken,
-          response.active_bid_year,
-        );
+      if (response.active_bid_year_id !== null) {
+        const areasResponse = await listAreas(response.active_bid_year_id);
         const noBid = areasResponse.areas.find((a) => a.is_system_area);
         setNoBidArea(noBid ?? null);
       }
@@ -91,7 +81,7 @@ export function NoBidReviewWrapper({
     } finally {
       setLoading(false);
     }
-  }, [sessionToken]);
+  }, []);
 
   useEffect(() => {
     void loadCompleteness();
@@ -137,9 +127,19 @@ export function NoBidReviewWrapper({
       <div className="bootstrap-completeness">
         <BootstrapNavigation currentStep="no-bid-review" />
         <ReadinessWidget
-          lifecycleState={completeness.lifecycle_state}
-          isReady={completeness.is_ready}
-          blockingReasons={completeness.blocking_reasons}
+          lifecycleState={completeness.bid_years[0]?.lifecycle_state ?? "Draft"}
+          isReadyForBidding={completeness.is_ready_for_bidding}
+          blockerCount={
+            completeness.blocking_reasons.length +
+            completeness.bid_years.reduce(
+              (sum, by) => sum + by.blocking_reasons.length,
+              0,
+            ) +
+            completeness.areas.reduce(
+              (sum, area) => sum + area.blocking_reasons.length,
+              0,
+            )
+          }
         />
         <div className="bootstrap-content">
           <section className="bootstrap-section">
@@ -158,9 +158,19 @@ export function NoBidReviewWrapper({
       <div className="bootstrap-completeness">
         <BootstrapNavigation currentStep="no-bid-review" />
         <ReadinessWidget
-          lifecycleState={completeness.lifecycle_state}
-          isReady={completeness.is_ready}
-          blockingReasons={completeness.blocking_reasons}
+          lifecycleState={completeness.bid_years[0]?.lifecycle_state ?? "Draft"}
+          isReadyForBidding={completeness.is_ready_for_bidding}
+          blockerCount={
+            completeness.blocking_reasons.length +
+            completeness.bid_years.reduce(
+              (sum, by) => sum + by.blocking_reasons.length,
+              0,
+            ) +
+            completeness.areas.reduce(
+              (sum, area) => sum + area.blocking_reasons.length,
+              0,
+            )
+          }
         />
         <div className="bootstrap-content">
           <section className="bootstrap-section">
@@ -178,9 +188,19 @@ export function NoBidReviewWrapper({
     <div className="bootstrap-completeness">
       <BootstrapNavigation currentStep="no-bid-review" />
       <ReadinessWidget
-        lifecycleState={completeness.lifecycle_state}
-        isReady={completeness.is_ready}
-        blockingReasons={completeness.blocking_reasons}
+        lifecycleState={completeness.bid_years[0]?.lifecycle_state ?? "Draft"}
+        isReadyForBidding={completeness.is_ready_for_bidding}
+        blockerCount={
+          completeness.blocking_reasons.length +
+          completeness.bid_years.reduce(
+            (sum, by) => sum + by.blocking_reasons.length,
+            0,
+          ) +
+          completeness.areas.reduce(
+            (sum, area) => sum + area.blocking_reasons.length,
+            0,
+          )
+        }
       />
 
       <div className="bootstrap-content">
@@ -188,20 +208,25 @@ export function NoBidReviewWrapper({
           <h2 className="section-title">No Bid Review</h2>
           <p className="section-description">
             Review and resolve users in the "No Bid" system area. Users can be
-            reassigned to operational areas or explicitly confirmed to remain
-            in No Bid.
+            reassigned to operational areas or explicitly confirmed to remain in
+            No Bid.
           </p>
           <p className="section-description">
             If there are zero users in No Bid, this step is automatically
             complete.
           </p>
-        </section>
 
-        <NoBidReview
-          sessionToken={sessionToken}
-          connectionState={connectionState}
-          lastEvent={lastEvent}
-        />
+          {completeness.active_bid_year_id !== null && (
+            <div className="bootstrap-section-content">
+              <NoBidReview
+                bidYearId={completeness.active_bid_year_id}
+                sessionToken={sessionToken}
+                connectionState={connectionState}
+                lastEvent={lastEvent}
+              />
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

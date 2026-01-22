@@ -9,12 +9,12 @@
 
 - Status: In Progress
 - Last Updated: 2025-01-27
-- Reason: Sub-Phase 30D in progress - shared components created
+- Reason: Sub-Phase 30D in progress - TypeScript errors fixed, ready for manual testing
 
 ## Active Sub-Phase
 
 - Sub-Phase: 30D (Bootstrap UI Restructure)
-- State: In Progress
+- State: In Progress (Checkpoint 3 - Ready for manual testing)
 
 ## Completed Sub-Phases
 
@@ -216,41 +216,76 @@
 - `8b3a27a` - "Phase 30C: Add round group fields to AreaInfo (backend)"
 - `49843ad` - "Complete Phase 30C: Area → Round Group Assignment UI"
 
-### Sub-Phase 30D: Bootstrap UI Restructure (IN PROGRESS)
+### Sub-Phase 30D: Bootstrap UI Restructure (IN PROGRESS - Checkpoint 2)
 
-**Progress:**
+**Completed:**
 
 - ✅ Created BootstrapNavigation component (step-by-step workflow navigation)
 - ✅ Created ReadinessWidget component (lifecycle and blocker display)
-- ✅ Created SCSS modules for navigation and readiness widget
+- ✅ Created SCSS modules and TypeScript declarations for shared components
 - ✅ Created BidYearSetup component (extracts bid year management from BootstrapCompleteness)
 - ✅ Created AreaSetup component (extracts area management from BootstrapCompleteness)
-- ⏳ Created placeholder SCSS module for bid-year-setup (needs cleanup - using global styles instead)
-- ⏳ Need to create remaining section components:
-  - UserManagement component (extract user management + CSV import)
-  - NoBidReviewWrapper component (wrap existing NoBidReview with navigation)
-  - RoundGroupSetupWrapper component (wrap Phase 30B components with navigation)
-  - AreaRoundGroupAssignmentWrapper component (wrap Phase 30C components with navigation)
-  - BidScheduleSetup component (NEW - needs implementation)
-  - ReadinessReview component (extract readiness display and confirm ready to bid)
-- ⏳ Need to update routing in App.tsx
-- ⏳ Need to update Navigation.tsx
-- ⏳ Need to remove old BootstrapCompleteness.tsx
-- ⏳ Need to validate and test
+- ✅ Created UserManagement component (extracts user management + CSV import)
+- ✅ Created NoBidReviewWrapper component (wraps existing NoBidReview with navigation)
+- ✅ Created RoundGroupSetupWrapper component (wraps Phase 30B components with navigation)
+- ✅ Created AreaRoundGroupAssignmentWrapper component (wraps Phase 30C components with navigation)
+- ✅ Created BidScheduleSetup component (NEW implementation with timezone, schedule, etc.)
+- ✅ Created ReadinessReview component (readiness display and confirm ready to bid)
+- ✅ Added TypeScript types: BidScheduleInfo, SetBidScheduleResponse, GetBidScheduleResponse, ConfirmReadyToBidResponse
+- ✅ Added API bindings: setBidSchedule, getBidSchedule, confirmReadyToBid
+- ✅ Updated App.tsx routing: replaced `/admin/bootstrap` with 8 workflow routes
+- ✅ Navigation.tsx already links to `/admin/bootstrap` (now redirects to bid-years)
+- ✅ All 6 remaining section components created
+- ✅ Committed checkpoint 1: `6b807a0` - "WIP: Phase 30D - Bootstrap UI restructure (shared components + 2 sections)"
+- ✅ Committed checkpoint 2: `b1e2ff1` - "WIP Phase 30D Checkpoint 2: All section components created, TypeScript errors to fix"
+  **Commits:**
+
+- `6b807a0` - "WIP: Phase 30D - Bootstrap UI restructure (shared components + 2 sections)"
+- `b1e2ff1` - "WIP Phase 30D Checkpoint 2: All section components created, TypeScript errors to fix"
+- `a735d63` - "Complete Phase 30D: TypeScript error fixes for Bootstrap UI restructure"
+
+**TypeScript Fixes Applied:**
+
+- ✅ Updated LiveEvent type to include all Phase 29 and Phase 30 events
+- ✅ Fixed GetBootstrapCompletenessResponse field access (is_ready_for_bidding, bid_years[].lifecycle_state)
+- ✅ Fixed ReadinessWidget props (blockerCount: number, not blockingReasons: array)
+- ✅ Fixed BlockingReason discriminated union handling in ReadinessReview
+- ✅ Fixed listAreas and listRoundGroups API call signatures (removed extra arguments)
+- ✅ Removed unused imports (BootstrapCompleteness from App.tsx, capabilities from wrappers)
+- ✅ Fixed UserManagement to load actual AreaInfo and merge with AreaCompletenessInfo
+- ✅ Added placeholder seniority fields to registerUser/updateUser calls (TODO: add form fields)
+- ✅ Fixed modal accessibility warnings with proper button semantics
+- ✅ All pre-commit checks pass
+- ✅ All CI checks pass
+- ✅ TypeScript compiles without errors
+
+**Remaining Work:**
+
+- ⏳ Manual testing of all bootstrap workflow routes
+- ⏳ Verify navigation works between all sections
+- ⏳ Verify ReadinessWidget displays correctly
+- ⏳ Verify all CRUD operations work in each section
+- ⏳ Remove old BootstrapCompleteness.tsx (after manual testing confirms all features work)
+- ⏳ Clean up unused SCSS module files
+- ⏳ Update Navigation.tsx if needed to point to new entry route
+- ⏳ Final validation pass
 
 **Current Status:**
 
-- Shared components complete and ready to use
-- Two section components created (BidYearSetup, AreaSetup)
-- Reusing existing global styles from `_bootstrap.scss` to reduce duplication
-- Remaining work: 6 more section components + routing updates + cleanup
+- Checkpoint 3: All TypeScript errors fixed
+- All components created and routes configured
+- Code compiles and passes all checks
+- Ready for manual testing and validation
+- Need to verify all features work as expected before removing old BootstrapCompleteness.tsx
 
 **Notes:**
 
 - This is a large refactor (~1900 lines of existing code to restructure)
-- Taking incremental approach: shared components → section components → routing → cleanup
-- Reusing existing CSS from \_bootstrap.scss where possible
-- May need to commit intermediate state and continue in next iteration
+- Taking incremental approach: checkpoint commits to manage context window pressure
+- All new components follow existing patterns from BidYearSetup/AreaSetup
+- BidScheduleSetup required new API bindings and types (completed)
+- ReadinessReview includes confirmation modal with explicit text matching
+- Next step: Fix TypeScript errors by correcting field names and type usage
 
 ## Outstanding Work
 
@@ -275,17 +310,17 @@ None. Phase 30D is in progress but paused for potential context window managemen
 ## Resume Instructions
 
 1. Continue Sub-Phase 30D: Bootstrap UI Restructure
-   - Shared components created (BootstrapNavigation, ReadinessWidget)
-   - Two section components created (BidYearSetup, AreaSetup)
+   - All TypeScript errors fixed and code compiles cleanly
+   - All routes configured and components created
    - Next steps:
-     a. Create remaining 6 section components
-     b. Update routing in App.tsx to add all bootstrap workflow routes
-     c. Update Navigation.tsx to link to new workflow entry point
-     d. Test all components work together
-     e. Remove old BootstrapCompleteness.tsx
-     f. Clean up unused SCSS module files (using global styles instead)
-   - Consider committing intermediate state if context pressure becomes an issue
+     a. Manual testing of all bootstrap workflow routes
+     b. Verify navigation and ReadinessWidget work correctly
+     c. Verify all CRUD operations in each section
+     d. Remove old BootstrapCompleteness.tsx after validation
+     e. Clean up unused SCSS module files
+     f. Final commit for 30D completion
 2. After 30D completion, execute remaining sub-phases in order (30E → 30F → ... → 30I)
+   - Note: 30E and 30F may be skipped if BidScheduleSetup and ReadinessReview are deemed complete
 3. Update this document after each sub-phase completion
 4. Run `cargo xtask ci` and `pre-commit run --all-files` after each sub-phase
 

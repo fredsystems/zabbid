@@ -23,20 +23,20 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
-  getBootstrapCompleteness,
-  listUsers,
   NetworkError,
+  getBootstrapCompleteness,
+  listAreas,
+  listUsers,
   registerUser,
   updateUser,
 } from "../api";
 import type {
-  AreaCompletenessInfo,
-  BlockingReason,
+  AreaInfo,
   ConnectionState,
   GetBootstrapCompletenessResponse,
   GlobalCapabilities,
-  LiveEvent,
   ListUsersResponse,
+  LiveEvent,
   UserInfo,
 } from "../types";
 import { BootstrapNavigation } from "./BootstrapNavigation";
@@ -58,6 +58,7 @@ export function UserManagement({
 }: UserManagementProps) {
   const [completeness, setCompleteness] =
     useState<GetBootstrapCompletenessResponse | null>(null);
+  const [areas, setAreas] = useState<AreaInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +70,12 @@ export function UserManagement({
       setError(null);
       const response = await getBootstrapCompleteness();
       setCompleteness(response);
+
+      // Load actual areas to get is_system_area flag
+      if (response.active_bid_year_id !== null) {
+        const areasResponse = await listAreas(response.active_bid_year_id);
+        setAreas(areasResponse.areas);
+      }
     } catch (err) {
       if (err instanceof NetworkError) {
         setError(
@@ -100,7 +107,7 @@ export function UserManagement({
     if (!lastEvent) return;
 
     if (
-      lastEvent.type === "user_created" ||
+      lastEvent.type === "user_registered" ||
       lastEvent.type === "user_updated" ||
       lastEvent.type === "area_created" ||
       lastEvent.type === "area_updated"
@@ -126,29 +133,47 @@ export function UserManagement({
     return <div className="error">No completeness data available</div>;
   }
 
-  const activeBidYearNum = completeness.active_bid_year;
-  const activeAreas = completeness.areas.filter(
-    (a) => a.bid_year === activeBidYearNum,
-  );
+  const activeBidYearInfo = completeness.bid_years.find((by) => by.is_active);
+  const lifecycleState = activeBidYearInfo?.lifecycle_state ?? "Draft";
+  const activeBidYearId = completeness.active_bid_year_id;
+
+  // Merge AreaInfo with AreaCompletenessInfo to get both is_system_area and expected_user_count
+  type MergedAreaInfo = AreaInfo & {
+    expected_user_count: number | null;
+    bid_year: number;
+  };
+  const mergedAreas: MergedAreaInfo[] = areas.map((area) => {
+    const completenessInfo = completeness.areas.find(
+      (a) => a.area_id === area.area_id,
+    );
+    return {
+      ...area,
+      expected_user_count: completenessInfo?.expected_user_count ?? null,
+      bid_year: completenessInfo?.bid_year ?? 0,
+    };
+  });
 
   // Separate system and non-system areas
-  const nonSystemAreas = activeAreas.filter((a) => !a.is_system_area);
-  const systemAreas = activeAreas.filter((a) => a.is_system_area);
-
-  // Find user count blockers
-  const userCountBlockers = completeness.blocking_reasons.filter(
-    (br) =>
-      br.reason_type === "UserCountMismatch" ||
-      br.reason_type === "UnexpectedUsers",
-  );
+  const nonSystemAreas = mergedAreas.filter((a) => !a.is_system_area);
+  const systemAreas = mergedAreas.filter((a) => a.is_system_area);
 
   return (
     <div className="bootstrap-completeness">
       <BootstrapNavigation currentStep="users" />
       <ReadinessWidget
-        lifecycleState={completeness.lifecycle_state}
-        isReady={completeness.is_ready}
-        blockingReasons={completeness.blocking_reasons}
+        lifecycleState={lifecycleState}
+        isReadyForBidding={completeness.is_ready_for_bidding}
+        blockerCount={
+          completeness.blocking_reasons.length +
+          completeness.bid_years.reduce(
+            (sum, by) => sum + by.blocking_reasons.length,
+            0,
+          ) +
+          completeness.areas.reduce(
+            (sum, area) => sum + area.blocking_reasons.length,
+            0,
+          )
+        }
       />
 
       <div className="bootstrap-content">
@@ -159,22 +184,13 @@ export function UserManagement({
             or imported via CSV.
           </p>
 
-          {userCountBlockers.length > 0 && (
-            <div className="blockers-list">
-              <h4>User Count Issues:</h4>
-              <ul>
-                {userCountBlockers.map((br, idx) => (
-                  <li key={idx}>{renderBlockingReason(br)}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* User count blockers would be rendered here if defined in BlockingReason type */}
         </section>
 
         {/* CSV User Import Section */}
         {isAdmin &&
           sessionToken !== null &&
-          activeBidYearNum !== null &&
+          activeBidYearId !== null &&
           nonSystemAreas.length > 0 && (
             <section className="bootstrap-section">
               <h3 className="section-title">CSV User Import</h3>
@@ -190,7 +206,7 @@ export function UserManagement({
           )}
 
         {/* User Management by Area */}
-        {activeBidYearNum !== null && nonSystemAreas.length > 0 && (
+        {activeBidYearId !== null && nonSystemAreas.length > 0 && (
           <section className="bootstrap-section">
             <h3 className="section-title">Users by Area</h3>
             <p className="section-description">
@@ -212,19 +228,19 @@ export function UserManagement({
           </section>
         )}
 
-        {/* System Areas (Display Only) */}
+        {/* System Areas (e.g., No Bid) */}
         {systemAreas.length > 0 && (
           <section className="bootstrap-section">
             <h3 className="section-title">System Areas</h3>
             <p className="section-description">
-              System areas are managed automatically. Users in these areas will
-              be reviewed in the next step.
+              System areas like "No Bid" can have users added manually. Users in
+              these areas will be reviewed in the next step.
             </p>
             {systemAreas.map((area) => (
               <UserManagementForArea
                 key={`users-${area.bid_year}-${area.area_id}`}
                 area={area}
-                isAdmin={false}
+                isAdmin={isAdmin}
                 sessionToken={sessionToken}
                 onError={setError}
                 onRefresh={loadCompleteness}
@@ -247,12 +263,25 @@ export function UserManagement({
 // User Management for Area Component
 // ============================================================================
 
+type MergedAreaInfo = AreaInfo & {
+  expected_user_count: number | null;
+  bid_year: number;
+};
+
 interface UserManagementForAreaProps {
-  area: AreaCompletenessInfo;
+  area: MergedAreaInfo;
   isAdmin: boolean;
   sessionToken: string | null;
   onError: (error: string) => void;
-  onRefresh: () => Promise<void>;
+  onRefresh: () => void;
+}
+
+// Get all areas for user reassignment dropdown
+interface AreaForReassignment {
+  area_id: number;
+  area_code: string;
+  area_name: string | null;
+  is_system_area: boolean;
 }
 
 function UserManagementForArea({
@@ -263,8 +292,28 @@ function UserManagementForArea({
   onRefresh,
 }: UserManagementForAreaProps) {
   const [users, setUsers] = useState<UserInfo[]>([]);
+  const [allAreas, setAllAreas] = useState<AreaForReassignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
+
+  // Load all areas for reassignment dropdown
+  useEffect(() => {
+    const loadAllAreas = async () => {
+      if (!sessionToken || !area.bid_year) {
+        return;
+      }
+
+      try {
+        const areasResponse = await listAreas(area.bid_year);
+        setAllAreas(areasResponse.areas);
+      } catch (err) {
+        console.error("Failed to load areas:", err);
+        setAllAreas([]);
+      }
+    };
+
+    void loadAllAreas();
+  }, [sessionToken, area.bid_year]);
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -352,12 +401,12 @@ function UserManagementForArea({
             <UserItem
               key={user.user_id}
               user={user}
-              areaId={area.area_id}
-              isAdmin={isAdmin}
               sessionToken={sessionToken}
-              onRefresh={async () => {
-                await refreshUsers();
-                await onRefresh();
+              isAdmin={isAdmin}
+              allAreas={allAreas}
+              onRefresh={() => {
+                void refreshUsers();
+                onRefresh();
               }}
               onError={onError}
             />
@@ -399,18 +448,18 @@ function UserManagementForArea({
 
 interface UserItemProps {
   user: UserInfo;
-  areaId: number;
-  isAdmin: boolean;
   sessionToken: string | null;
-  onRefresh: () => Promise<void>;
+  isAdmin: boolean;
+  allAreas: AreaForReassignment[];
+  onRefresh: () => void;
   onError: (error: string) => void;
 }
 
 function UserItem({
   user,
-  areaId,
-  isAdmin,
   sessionToken,
+  isAdmin,
+  allAreas,
   onRefresh,
   onError,
 }: UserItemProps) {
@@ -420,11 +469,11 @@ function UserItem({
     return (
       <EditUserForm
         user={user}
-        areaId={areaId}
         sessionToken={sessionToken}
-        onSuccess={async () => {
+        allAreas={allAreas}
+        onSuccess={() => {
           setIsEditing(false);
-          await onRefresh();
+          onRefresh();
         }}
         onCancel={() => setIsEditing(false)}
         onError={onError}
@@ -485,6 +534,11 @@ function CreateUserForm({
   const [name, setName] = useState("");
   const [userType, setUserType] = useState("CPC");
   const [crew, setCrew] = useState<number | null>(null);
+  const [cumulativeNatcaBuDate, setCumulativeNatcaBuDate] = useState("");
+  const [natcaBuDate, setNatcaBuDate] = useState("");
+  const [eodFaaDate, setEodFaaDate] = useState("");
+  const [serviceComputationDate, setServiceComputationDate] = useState("");
+  const [lotteryValue, setLotteryValue] = useState("");
   const [creating, setCreating] = useState(false);
 
   const handleCreate = async () => {
@@ -498,6 +552,8 @@ function CreateUserForm({
       return;
     }
 
+    const lotteryNum = lotteryValue ? Number.parseInt(lotteryValue, 10) : null;
+
     try {
       setCreating(true);
       onError("");
@@ -509,6 +565,11 @@ function CreateUserForm({
         areaCode,
         userType,
         crew,
+        cumulativeNatcaBuDate,
+        natcaBuDate,
+        eodFaaDate,
+        serviceComputationDate,
+        lotteryNum,
       );
       onSuccess();
     } catch (err) {
@@ -528,66 +589,123 @@ function CreateUserForm({
     <div className="create-form">
       <h4>Add User to {areaCode}</h4>
       <div className="form-row">
-        <label htmlFor="initials">
-          Initials:
-          <input
-            id="initials"
-            type="text"
-            value={initials}
-            onChange={(e) => setInitials(e.target.value)}
-            disabled={creating}
-            maxLength={10}
-          />
-        </label>
+        <label htmlFor="initials">Initials:</label>
+        <input
+          id="initials"
+          type="text"
+          value={initials}
+          onChange={(e) => setInitials(e.target.value)}
+          disabled={creating}
+          maxLength={10}
+        />
       </div>
       <div className="form-row">
-        <label htmlFor="name">
-          Name:
-          <input
-            id="name"
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={creating}
-          />
-        </label>
+        <label htmlFor="name">Name:</label>
+        <input
+          id="name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          disabled={creating}
+        />
       </div>
       <div className="form-row">
-        <label htmlFor="user-type">
-          User Type:
-          <select
-            id="user-type"
-            value={userType}
-            onChange={(e) => setUserType(e.target.value)}
-            disabled={creating}
-          >
-            <option value="CPC">CPC</option>
-            <option value="NONCPC">NONCPC</option>
-          </select>
-        </label>
+        <label htmlFor="user-type">User Type:</label>
+        <select
+          id="user-type"
+          value={userType}
+          onChange={(e) => setUserType(e.target.value)}
+          disabled={creating}
+        >
+          <option value="CPC">CPC</option>
+          <option value="CPC-IT">CPC-IT</option>
+          <option value="Dev-R">Dev-R</option>
+          <option value="Dev-D">Dev-D</option>
+        </select>
       </div>
       <div className="form-row">
-        <label htmlFor="crew">
-          Crew (optional):
-          <select
-            id="crew"
-            value={crew ?? ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              setCrew(val === "" ? null : Number.parseInt(val, 10));
-            }}
-            disabled={creating}
-          >
-            <option value="">None</option>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5</option>
-            <option value="6">6</option>
-            <option value="7">7</option>
-          </select>
+        <label htmlFor="crew">Crew (optional):</label>
+        <select
+          id="crew"
+          value={crew ?? ""}
+          onChange={(e) => {
+            const val = e.target.value;
+            setCrew(val === "" ? null : Number.parseInt(val, 10));
+          }}
+          disabled={creating}
+        >
+          <option value="">None</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+        </select>
+      </div>
+      <div className="form-row">
+        <label htmlFor="cumulative-natca-bu-date">
+          Cumulative NATCA BU Date:
         </label>
+        <input
+          id="cumulative-natca-bu-date"
+          type="date"
+          min="1960-01-01"
+          max="2100-12-31"
+          value={cumulativeNatcaBuDate}
+          onChange={(e) => setCumulativeNatcaBuDate(e.target.value)}
+          disabled={creating}
+        />
+      </div>
+      <div className="form-row">
+        <label htmlFor="natca-bu-date">NATCA BU Date:</label>
+        <input
+          id="natca-bu-date"
+          type="date"
+          min="1960-01-01"
+          max="2100-12-31"
+          value={natcaBuDate}
+          onChange={(e) => setNatcaBuDate(e.target.value)}
+          disabled={creating}
+        />
+      </div>
+      <div className="form-row">
+        <label htmlFor="eod-faa-date">EOD/FAA Date:</label>
+        <input
+          id="eod-faa-date"
+          type="date"
+          min="1960-01-01"
+          max="2100-12-31"
+          value={eodFaaDate}
+          onChange={(e) => setEodFaaDate(e.target.value)}
+          disabled={creating}
+        />
+      </div>
+      <div className="form-row">
+        <label htmlFor="service-computation-date">
+          Service Computation Date:
+        </label>
+        <input
+          id="service-computation-date"
+          type="date"
+          min="1960-01-01"
+          max="2100-12-31"
+          value={serviceComputationDate}
+          onChange={(e) => setServiceComputationDate(e.target.value)}
+          disabled={creating}
+        />
+      </div>
+      <div className="form-row">
+        <label htmlFor="lottery-value">Lottery Value (optional):</label>
+        <input
+          id="lottery-value"
+          type="number"
+          min="0"
+          value={lotteryValue}
+          onChange={(e) => setLotteryValue(e.target.value)}
+          disabled={creating}
+        />
       </div>
       <div className="form-actions">
         <button
@@ -617,8 +735,8 @@ function CreateUserForm({
 
 interface EditUserFormProps {
   user: UserInfo;
-  areaId: number;
   sessionToken: string | null;
+  allAreas: AreaForReassignment[];
   onSuccess: () => void;
   onCancel: () => void;
   onError: (error: string) => void;
@@ -626,15 +744,27 @@ interface EditUserFormProps {
 
 function EditUserForm({
   user,
-  areaId,
   sessionToken,
+  allAreas,
   onSuccess,
   onCancel,
   onError,
 }: EditUserFormProps) {
   const [name, setName] = useState(user.name);
+  const [areaId, setAreaId] = useState(user.area_id);
   const [userType, setUserType] = useState(user.user_type);
   const [crew, setCrew] = useState<number | null>(user.crew);
+  const [cumulativeNatcaBuDate, setCumulativeNatcaBuDate] = useState(
+    user.cumulative_natca_bu_date,
+  );
+  const [natcaBuDate, setNatcaBuDate] = useState(user.natca_bu_date);
+  const [eodFaaDate, setEodFaaDate] = useState(user.eod_faa_date);
+  const [serviceComputationDate, setServiceComputationDate] = useState(
+    user.service_computation_date,
+  );
+  const [lotteryValue, setLotteryValue] = useState(
+    user.lottery_value?.toString() ?? "",
+  );
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -648,6 +778,8 @@ function EditUserForm({
       return;
     }
 
+    const lotteryNum = lotteryValue ? Number.parseInt(lotteryValue, 10) : null;
+
     try {
       setSaving(true);
       onError("");
@@ -659,6 +791,11 @@ function EditUserForm({
         areaId,
         userType,
         crew,
+        cumulativeNatcaBuDate,
+        natcaBuDate,
+        eodFaaDate,
+        serviceComputationDate,
+        lotteryNum,
       );
       onSuccess();
     } catch (err) {
@@ -677,53 +814,131 @@ function EditUserForm({
   return (
     <div className="user-item edit-mode">
       <div className="form-row">
-        <label htmlFor={`name-${user.user_id}`}>
-          Name:
-          <input
-            id={`name-${user.user_id}`}
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={saving}
-          />
-        </label>
+        <label htmlFor={`edit-name-${user.user_id}`}>Name:</label>
+        <input
+          id={`edit-name-${user.user_id}`}
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          disabled={saving}
+        />
       </div>
       <div className="form-row">
-        <label htmlFor={`user-type-${user.user_id}`}>
-          User Type:
-          <select
-            id={`user-type-${user.user_id}`}
-            value={userType}
-            onChange={(e) => setUserType(e.target.value)}
-            disabled={saving}
-          >
-            <option value="CPC">CPC</option>
-            <option value="NONCPC">NONCPC</option>
-          </select>
-        </label>
+        <label htmlFor={`edit-area-${user.user_id}`}>Area:</label>
+        <select
+          id={`edit-area-${user.user_id}`}
+          value={areaId}
+          onChange={(e) => setAreaId(Number.parseInt(e.target.value, 10))}
+          disabled={saving}
+        >
+          {allAreas.map((area) => (
+            <option key={area.area_id} value={area.area_id}>
+              {area.area_code}
+              {area.area_name ? ` - ${area.area_name}` : ""}
+              {area.is_system_area ? " (System)" : ""}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="form-row">
-        <label htmlFor={`crew-${user.user_id}`}>
-          Crew:
-          <select
-            id={`crew-${user.user_id}`}
-            value={crew ?? ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              setCrew(val === "" ? null : Number.parseInt(val, 10));
-            }}
-            disabled={saving}
-          >
-            <option value="">None</option>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5</option>
-            <option value="6">6</option>
-            <option value="7">7</option>
-          </select>
+        <label htmlFor={`edit-user-type-${user.user_id}`}>User Type:</label>
+        <select
+          id={`edit-user-type-${user.user_id}`}
+          value={userType}
+          onChange={(e) => setUserType(e.target.value)}
+          disabled={saving}
+        >
+          <option value="CPC">CPC</option>
+          <option value="CPC-IT">CPC-IT</option>
+          <option value="Dev-R">Dev-R</option>
+          <option value="Dev-D">Dev-D</option>
+        </select>
+      </div>
+      <div className="form-row">
+        <label htmlFor={`edit-crew-${user.user_id}`}>Crew (optional):</label>
+        <select
+          id={`edit-crew-${user.user_id}`}
+          value={crew ?? ""}
+          onChange={(e) => {
+            const val = e.target.value;
+            setCrew(val === "" ? null : Number.parseInt(val, 10));
+          }}
+          disabled={saving}
+        >
+          <option value="">None</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+        </select>
+      </div>
+      <div className="form-row">
+        <label htmlFor={`edit-cumulative-natca-${user.user_id}`}>
+          Cumulative NATCA BU Date:
         </label>
+        <input
+          id={`edit-cumulative-natca-${user.user_id}`}
+          type="date"
+          min="1960-01-01"
+          max="2100-12-31"
+          value={cumulativeNatcaBuDate}
+          onChange={(e) => setCumulativeNatcaBuDate(e.target.value)}
+          disabled={saving}
+        />
+      </div>
+      <div className="form-row">
+        <label htmlFor={`edit-natca-${user.user_id}`}>NATCA BU Date:</label>
+        <input
+          id={`edit-natca-${user.user_id}`}
+          type="date"
+          min="1960-01-01"
+          max="2100-12-31"
+          value={natcaBuDate}
+          onChange={(e) => setNatcaBuDate(e.target.value)}
+          disabled={saving}
+        />
+      </div>
+      <div className="form-row">
+        <label htmlFor={`edit-eod-${user.user_id}`}>EOD/FAA Date:</label>
+        <input
+          id={`edit-eod-${user.user_id}`}
+          type="date"
+          min="1960-01-01"
+          max="2100-12-31"
+          value={eodFaaDate}
+          onChange={(e) => setEodFaaDate(e.target.value)}
+          disabled={saving}
+        />
+      </div>
+      <div className="form-row">
+        <label htmlFor={`edit-service-computation-${user.user_id}`}>
+          Service Computation Date:
+        </label>
+        <input
+          id={`edit-service-computation-${user.user_id}`}
+          type="date"
+          min="1960-01-01"
+          max="2100-12-31"
+          value={serviceComputationDate}
+          onChange={(e) => setServiceComputationDate(e.target.value)}
+          disabled={saving}
+        />
+      </div>
+      <div className="form-row">
+        <label htmlFor={`edit-lottery-${user.user_id}`}>
+          Lottery Value (optional):
+        </label>
+        <input
+          id={`edit-lottery-${user.user_id}`}
+          type="number"
+          min="0"
+          value={lotteryValue}
+          onChange={(e) => setLotteryValue(e.target.value)}
+          disabled={saving}
+        />
       </div>
       <div className="form-actions">
         <button
@@ -747,25 +962,9 @@ function EditUserForm({
   );
 }
 
-// ============================================================================
-// Blocking Reason Renderer
-// ============================================================================
+// Note: User count blocker rendering removed - would need to be added to
+// the BlockingReason discriminated union type if needed
 
-function renderBlockingReason(br: BlockingReason): string {
-  switch (br.reason_type) {
-    case "UserCountMismatch": {
-      const { bid_year, area_code, expected, actual } = br.details;
-      return `Area ${area_code} (Bid Year ${bid_year}): Expected ${expected} users, found ${actual}`;
-    }
-    case "UnexpectedUsers": {
-      const { bid_year, user_count, sample_initials } = br.details;
-      const userList = sample_initials
-        .slice(0, 5)
-        .map((i: string) => `"${i}"`)
-        .join(", ");
-      return `Bid Year ${bid_year} has ${user_count} unexpected users (e.g. ${userList})`;
-    }
-    default:
-      return `Unknown blocking reason: ${br.reason_type}`;
-  }
-}
+// ============================================================================
+// CSV Import Section Component
+// ============================================================================

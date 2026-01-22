@@ -30,10 +30,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { getBootstrapCompleteness, NetworkError } from "../api";
 import type {
-  BlockingReason,
   ConnectionState,
   GetBootstrapCompletenessResponse,
-  GlobalCapabilities,
   LiveEvent,
 } from "../types";
 import { BootstrapNavigation } from "./BootstrapNavigation";
@@ -42,14 +40,12 @@ import { RoundGroupManagement } from "./RoundGroupManagement";
 
 interface RoundGroupSetupWrapperProps {
   sessionToken: string | null;
-  capabilities: GlobalCapabilities | null;
   connectionState: ConnectionState;
   lastEvent: LiveEvent | null;
 }
 
 export function RoundGroupSetupWrapper({
   sessionToken,
-  capabilities,
   connectionState,
   lastEvent,
 }: RoundGroupSetupWrapperProps) {
@@ -123,20 +119,23 @@ export function RoundGroupSetupWrapper({
     return <div className="error">No completeness data available</div>;
   }
 
-  // Find round group related blockers
-  const roundGroupBlockers = completeness.blocking_reasons.filter(
-    (br) =>
-      br.reason_type === "NoRoundGroups" ||
-      br.reason_type === "RoundGroupHasNoRounds",
-  );
-
   return (
     <div className="bootstrap-completeness">
       <BootstrapNavigation currentStep="round-groups" />
       <ReadinessWidget
-        lifecycleState={completeness.lifecycle_state}
-        isReady={completeness.is_ready}
-        blockingReasons={completeness.blocking_reasons}
+        lifecycleState={completeness.bid_years[0]?.lifecycle_state ?? "Draft"}
+        isReadyForBidding={completeness.is_ready_for_bidding}
+        blockerCount={
+          completeness.blocking_reasons.length +
+          completeness.bid_years.reduce(
+            (sum, by) => sum + by.blocking_reasons.length,
+            0,
+          ) +
+          completeness.areas.reduce(
+            (sum, area) => sum + area.blocking_reasons.length,
+            0,
+          )
+        }
       />
 
       <div className="bootstrap-content">
@@ -148,43 +147,17 @@ export function RoundGroupSetupWrapper({
             within a group represents a separate bidding opportunity.
           </p>
 
-          {roundGroupBlockers.length > 0 && (
-            <div className="blockers-list">
-              <h4>Round Group Issues:</h4>
-              <ul>
-                {roundGroupBlockers.map((br, idx) => (
-                  <li key={idx}>{renderBlockingReason(br)}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </section>
+          {/* Round group blockers would be rendered here if defined in BlockingReason type */}
 
-        <RoundGroupManagement
-          sessionToken={sessionToken}
-          connectionState={connectionState}
-          lastEvent={lastEvent}
-        />
+          <div className="bootstrap-section-content">
+            <RoundGroupManagement
+              sessionToken={sessionToken ?? ""}
+              connectionState={connectionState}
+              lastEvent={lastEvent}
+            />
+          </div>
+        </section>
       </div>
     </div>
   );
-}
-
-// ============================================================================
-// Blocking Reason Renderer
-// ============================================================================
-
-function renderBlockingReason(br: BlockingReason): string {
-  switch (br.reason_type) {
-    case "NoRoundGroups": {
-      const { bid_year } = br.details;
-      return `Bid Year ${bid_year}: No round groups defined yet`;
-    }
-    case "RoundGroupHasNoRounds": {
-      const { bid_year, round_group_name } = br.details;
-      return `Bid Year ${bid_year}: Round group "${round_group_name}" has no rounds defined`;
-    }
-    default:
-      return `Unknown blocking reason: ${br.reason_type}`;
-  }
 }

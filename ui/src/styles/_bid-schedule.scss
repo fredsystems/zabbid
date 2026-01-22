@@ -1,0 +1,147 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Bid Schedule Setup Styling
+ *
+ * Mobile-first responsive design for bid schedule configuration.
+ */
+
+@use "sass:color";
+@use "variables" as *;
+
+.bid-schedule-display {
+  background: $color-bg-surface;
+  border: 2px solid $color-border;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+
+  @media (min-width: 768px) {
+    padding: $spacing-lg;
+  }
+
+  .schedule-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: $spacing-md;
+    border-bottom: 1px solid $color-border;
+    margin-bottom: $spacing-md;
+
+    h3 {
+      margin: 0;
+      color: $color-text-primary;
+      font-size: $font-size-lg;
+    }
+  }
+
+  .schedule-details {
+    dl {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: $spacing-sm $spacing-md;
+      margin: 0;
+
+      @media (min-width: 600px) {
+        gap: $spacing-md $spacing-lg;
+      }
+
+      dt {
+        font-weight: 600;
+        color: $color-text-secondary;
+        text-align: left;
+      }
+
+      dd {
+        margin: 0;
+        color: $color-text-primary;
+      }
+    }
+  }
+}
+
+// Bid schedule form styling
+.bid-schedule-form {
+  .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-sm;
+    margin-bottom: $spacing-md;
+
+    @media (min-width: 600px) {
+      flex-direction: row;
+      align-items: flex-start;
+      gap: $spacing-md;
+    }
+
+    label {
+      font-weight: 600;
+      color: $color-text-primary;
+      font-size: $font-size-base;
+      text-align: left;
+      margin-bottom: $spacing-xs;
+
+      @media (min-width: 600px) {
+        min-width: 240px;
+        max-width: 240px;
+        flex-shrink: 0;
+        margin-bottom: 0;
+        padding-top: $spacing-sm;
+      }
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="date"],
+    input[type="time"],
+    select {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      padding: $spacing-sm $spacing-md;
+      border: 2px solid $color-border;
+      border-radius: $radius-sm;
+      background: $color-bg-base;
+      color: $color-text-primary;
+      font-size: $font-size-base;
+      font-family: $font-family-base;
+      transition: border-color $transition-base;
+
+      @media (min-width: 600px) {
+        flex: 1;
+        max-width: 400px;
+      }
+
+      &:focus {
+        outline: none;
+        border-color: $color-accent-primary;
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+
+    select {
+      cursor: pointer;
+
+      &:disabled {
+        cursor: not-allowed;
+      }
+    }
+  }
+
+  .field-hint {
+    margin: $spacing-xs 0 0 0;
+    font-size: $font-size-sm;
+    color: $color-text-muted;
+    font-style: italic;
+
+    @media (min-width: 600px) {
+      margin-left: 256px; // label width (240px) + gap (16px)
+    }
+  }
+}

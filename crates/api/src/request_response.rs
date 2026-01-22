@@ -835,6 +835,28 @@ pub enum BlockingReason {
         /// Sample of user initials (first 5).
         sample_initials: Vec<String>,
     },
+    /// Area has no round group assigned.
+    AreaMissingRoundGroup {
+        /// The canonical bid year identifier.
+        bid_year_id: i64,
+        /// The bid year (display value).
+        bid_year: u16,
+        /// The canonical area identifier.
+        area_id: i64,
+        /// The area code (display value).
+        area_code: String,
+    },
+    /// Round group has no rounds assigned.
+    RoundGroupHasNoRounds {
+        /// The canonical bid year identifier.
+        bid_year_id: i64,
+        /// The bid year (display value).
+        bid_year: u16,
+        /// The canonical round group identifier.
+        round_group_id: i64,
+        /// The round group name (display value).
+        round_group_name: String,
+    },
 }
 
 /// Completeness status for a bid year.
@@ -869,6 +891,8 @@ pub struct AreaCompletenessInfo {
     pub area_id: i64,
     /// The area code (display value).
     pub area_code: String,
+    /// Whether this is a system-managed area.
+    pub is_system_area: bool,
     /// Expected user count, if set.
     pub expected_user_count: Option<u32>,
     /// Actual user count.

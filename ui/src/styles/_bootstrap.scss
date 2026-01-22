@@ -11,6 +11,204 @@
 @use "sass:color";
 @use "variables" as *;
 
+// ============================================================================
+// Bootstrap Navigation
+// ============================================================================
+
+.bootstrap-navigation {
+  background: $color-bg-surface;
+  border: 2px solid $color-border;
+  border-radius: $radius-md;
+  padding: $spacing-sm $spacing-md;
+  margin-bottom: $spacing-md;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+
+  @media (min-width: 600px) {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .nav-label {
+    font-weight: 600;
+    color: $color-text-primary;
+    font-size: $font-size-base;
+    margin: 0;
+  }
+
+  .nav-dropdown-container {
+    display: flex;
+    align-items: center;
+    gap: $spacing-md;
+    flex: 1;
+
+    @media (min-width: 600px) {
+      justify-content: flex-end;
+    }
+  }
+
+  .nav-step-indicator {
+    font-size: $font-size-sm;
+    color: $color-text-secondary;
+    white-space: nowrap;
+  }
+
+  .nav-dropdown {
+    flex: 1;
+    max-width: 400px;
+    padding: $spacing-sm $spacing-md;
+    border: 2px solid $color-border;
+    border-radius: $radius-sm;
+    background: $color-bg-base;
+    color: $color-text-primary;
+    font-size: $font-size-base;
+    font-family: $font-family-base;
+    cursor: pointer;
+    transition: border-color $transition-base;
+
+    &:focus {
+      outline: none;
+      border-color: $color-accent-primary;
+    }
+
+    &:hover {
+      border-color: $color-accent-primary;
+    }
+  }
+}
+
+// ============================================================================
+// Readiness Widget
+// ============================================================================
+
+.readiness-widget {
+  background: $color-bg-surface;
+  border: 2px solid $color-border;
+  border-radius: $radius-md;
+  padding: $spacing-sm $spacing-md;
+  margin-bottom: $spacing-md;
+
+  @media (min-width: 768px) {
+    padding: $spacing-sm $spacing-md;
+  }
+
+  .widget-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: $spacing-md;
+    padding-bottom: $spacing-sm;
+    border-bottom: 1px solid $color-border;
+  }
+
+  .widget-title {
+    margin: 0;
+    font-size: $font-size-lg;
+    color: $color-text-primary;
+  }
+
+  .lifecycle-badge {
+    padding: $spacing-xs $spacing-md;
+    border-radius: $radius-sm;
+    font-size: $font-size-sm;
+    font-weight: 700;
+    text-transform: uppercase;
+
+    &.lifecycle-draft {
+      background: $color-bg-surface-overlay;
+      color: $color-text-secondary;
+    }
+
+    &.lifecycle-canonicalized {
+      background: $color-accent-teal;
+      color: $color-bg-base;
+    }
+
+    &.lifecycle-active {
+      background: $color-success;
+      color: $color-bg-base;
+    }
+
+    &.lifecycle-closed {
+      background: $color-text-muted;
+      color: $color-bg-base;
+    }
+  }
+
+  .widget-body {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-md;
+  }
+
+  .status-ready,
+  .status-incomplete {
+    display: flex;
+    align-items: center;
+    gap: $spacing-md;
+    padding: $spacing-md;
+    border-radius: $radius-sm;
+  }
+
+  .status-ready {
+    background: rgba($color-success, 0.1);
+    border: 2px solid $color-success;
+
+    .status-icon {
+      font-size: $font-size-xl;
+      color: $color-success;
+    }
+  }
+
+  .status-incomplete {
+    background: rgba($color-warning, 0.1);
+    border: 2px solid $color-warning;
+
+    .status-icon {
+      font-size: $font-size-xl;
+      color: $color-warning;
+    }
+
+    .status-content {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-xs;
+    }
+  }
+
+  .status-text {
+    font-weight: 700;
+    color: $color-text-primary;
+  }
+
+  .blocker-count {
+    font-size: $font-size-sm;
+    color: $color-text-secondary;
+  }
+
+  .review-link {
+    display: inline-block;
+    padding: $spacing-sm $spacing-md;
+    background: $color-accent-primary;
+    color: $color-bg-base;
+    border-radius: $radius-sm;
+    text-decoration: none;
+    font-weight: 700;
+    transition: background $transition-base;
+    text-align: center;
+
+    &:hover {
+      background: $color-accent-secondary;
+    }
+  }
+}
+
+// ============================================================================
+// Bootstrap Completeness Container
+// ============================================================================
+
 .bootstrap-completeness {
   padding: $spacing-md;
   max-width: 1200px;
@@ -157,16 +355,175 @@
   // ============================================================================
 
   .bootstrap-section {
-    margin-bottom: $spacing-2xl;
+    background: $color-bg-surface;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-sm $spacing-md;
+    margin-bottom: $spacing-md;
+
+    @media (min-width: 768px) {
+      padding: $spacing-md $spacing-lg;
+    }
+
+    .section-title {
+      margin-top: 0;
+      margin-bottom: $spacing-sm;
+    }
+
+    .section-description {
+      margin-bottom: $spacing-md;
+      color: $color-text-secondary;
+    }
 
     .empty-state {
-      padding: $spacing-lg;
+      padding: $spacing-md;
       text-align: center;
       color: $color-text-muted;
-      background: $color-bg-surface;
+      background: $color-bg-base;
       border: 1px dashed $color-border;
       border-radius: $radius-md;
-      margin-bottom: $spacing-md;
+      margin-bottom: 0;
+    }
+
+    // Content wrapper for embedded components
+    .bootstrap-section-content {
+      margin-top: $spacing-md;
+
+      // Neutralize nested component containers completely
+      .round-groups-container,
+      .no-bid-review {
+        padding: 0;
+        margin: 0;
+        max-width: none;
+        background: transparent;
+
+        // Hide top-level headers (section already has title)
+        > h2,
+        > .header {
+          display: none;
+        }
+
+        // Hide standalone section descriptions
+        > .section-description,
+        > .round-groups-header {
+          display: none;
+        }
+
+        // Override empty state styling to match bootstrap
+        .round-groups-empty-state,
+        .empty-state {
+          background: $color-bg-base;
+          border: 1px dashed $color-border;
+          padding: $spacing-md;
+          margin-bottom: 0;
+        }
+
+        // Make cards look like bootstrap items
+        .round-group-card {
+          background: $color-bg-surface;
+          border: 2px solid $color-border;
+          border-radius: $radius-md;
+          padding: $spacing-md;
+          margin-bottom: $spacing-sm;
+          box-shadow: none;
+
+          &:hover {
+            box-shadow: none;
+          }
+
+          .card-header {
+            padding-bottom: $spacing-sm;
+            border-bottom: 1px solid $color-border;
+            margin-bottom: $spacing-sm;
+
+            h4 {
+              font-size: $font-size-lg;
+              margin: 0;
+            }
+          }
+
+          .card-body {
+            dl {
+              margin: 0;
+            }
+          }
+        }
+
+        // Make no-bid user cards consistent with bootstrap items
+        .user-assignment-card {
+          background: $color-bg-surface;
+          border: 2px solid $color-border;
+          border-radius: $radius-md;
+          padding: $spacing-md;
+          margin-bottom: $spacing-sm;
+          box-shadow: none;
+
+          &:hover {
+            border-color: $color-accent-primary;
+          }
+
+          .user-info {
+            padding-bottom: $spacing-sm;
+            border-bottom: 1px solid $color-border;
+            margin-bottom: $spacing-sm;
+
+            h4 {
+              font-size: $font-size-lg;
+              margin: 0 0 $spacing-xs 0;
+            }
+          }
+        }
+
+        // Override success panel to match bootstrap styling
+        .success-panel {
+          background: linear-gradient(
+            135deg,
+            $color-bg-surface 0%,
+            rgba($color-success, 0.05) 100%
+          );
+          border: 2px solid $color-success;
+          border-radius: $radius-md;
+          padding: $spacing-lg;
+          text-align: center;
+          margin-bottom: 0;
+
+          h3 {
+            font-size: $font-size-lg;
+          }
+        }
+
+        // Ensure create forms match bootstrap styling
+        .create-form {
+          background: $color-bg-surface-elevated;
+          border: 2px solid $color-accent-primary;
+          border-radius: $radius-md;
+          padding: $spacing-md;
+          margin-top: $spacing-md;
+          margin-bottom: $spacing-md;
+
+          @media (min-width: 768px) {
+            padding: $spacing-lg;
+          }
+
+          h3 {
+            margin-top: 0;
+            margin-bottom: $spacing-md;
+            font-size: $font-size-lg;
+          }
+        }
+
+        // Override no-bid header to not have warning border
+        .no-bid-header {
+          background: $color-bg-surface;
+          border: 2px solid $color-border;
+          padding: $spacing-md;
+          margin-bottom: $spacing-md;
+
+          .review-description {
+            margin: $spacing-sm 0 0 0;
+          }
+        }
+      }
     }
   }
 
@@ -178,16 +535,16 @@
   .areas-list {
     display: flex;
     flex-direction: column;
-    gap: $spacing-md;
-    margin-bottom: $spacing-lg;
+    gap: $spacing-sm;
+    margin-bottom: 0;
   }
 
   .bid-year-item,
   .area-item {
-    background: $color-bg-surface;
+    background: $color-bg-surface-elevated;
     border: 2px solid $color-border;
     border-radius: $radius-md;
-    padding: $spacing-md;
+    padding: $spacing-sm $spacing-md;
     transition: border-color $transition-base;
 
     &.complete {
@@ -199,15 +556,15 @@
     }
 
     @media (min-width: 768px) {
-      padding: $spacing-lg;
+      padding: $spacing-sm $spacing-md;
     }
 
     .item-header {
       display: flex;
       flex-direction: column;
-      gap: $spacing-md;
-      margin-bottom: $spacing-md;
-      padding-bottom: $spacing-md;
+      gap: $spacing-sm;
+      margin-bottom: $spacing-sm;
+      padding-bottom: $spacing-sm;
       border-bottom: 1px solid $color-border;
 
       @media (min-width: 600px) {
@@ -344,15 +701,15 @@
     background: $color-bg-surface-elevated;
     border: 2px solid $color-accent-primary;
     border-radius: $radius-md;
-    padding: $spacing-md;
-    margin-top: $spacing-md;
+    padding: $spacing-sm $spacing-md;
+    margin-top: $spacing-sm;
 
     @media (min-width: 768px) {
-      padding: $spacing-lg;
+      padding: $spacing-sm $spacing-md;
     }
 
     h4 {
-      margin: 0 0 $spacing-md 0;
+      margin: 0 0 $spacing-sm 0;
       color: $color-accent-primary;
     }
   }
@@ -361,15 +718,25 @@
     display: flex;
     flex-direction: column;
     gap: $spacing-sm;
-    margin-bottom: $spacing-md;
+    margin-bottom: $spacing-sm;
 
     @media (min-width: 600px) {
       flex-direction: row;
       align-items: center;
+      gap: $spacing-md;
 
       label {
-        min-width: 200px;
+        min-width: 240px;
+        max-width: 240px;
         flex-shrink: 0;
+        text-align: right;
+        padding-right: $spacing-md;
+      }
+    }
+
+    @media (max-width: 599px) {
+      label {
+        margin-bottom: $spacing-xs;
       }
     }
 
@@ -384,6 +751,7 @@
     input[type="date"],
     select {
       flex: 1;
+      max-width: 400px;
       box-sizing: border-box;
       padding: $spacing-sm $spacing-md;
       border: 2px solid $color-border;
@@ -421,7 +789,7 @@
   .form-actions {
     display: flex;
     gap: $spacing-sm;
-    margin-top: $spacing-md;
+    margin-top: $spacing-sm;
     flex-wrap: wrap;
 
     button {
@@ -590,14 +958,14 @@
   // ============================================================================
 
   .area-user-management {
-    background: $color-bg-surface;
+    background: $color-bg-surface-elevated;
     border: 2px solid $color-border;
     border-radius: $radius-md;
-    padding: $spacing-md;
-    margin-bottom: $spacing-lg;
+    padding: $spacing-sm $spacing-md;
+    margin-bottom: $spacing-sm;
 
     @media (min-width: 768px) {
-      padding: $spacing-lg;
+      padding: $spacing-sm $spacing-md;
     }
 
     .area-user-header {
@@ -626,7 +994,7 @@
   }
 
   .user-item {
-    background: $color-bg-surface-elevated;
+    background: $color-bg-base;
     border: 1px solid $color-border;
     border-radius: $radius-sm;
     padding: $spacing-sm $spacing-md;
@@ -638,7 +1006,7 @@
 
     &.editing {
       border-color: $color-accent-primary;
-      background: $color-bg-surface;
+      background: $color-bg-surface-elevated;
     }
 
     .user-item-header {
@@ -686,6 +1054,285 @@
 
       @media (min-width: 768px) {
         margin-bottom: $spacing-md;
+      }
+    }
+  }
+
+  // ============================================================================
+  // Readiness Review
+  // ============================================================================
+
+  .success-banner {
+    background: rgba($color-success, 0.1);
+    border: 2px solid $color-success;
+    border-radius: $radius-md;
+    padding: $spacing-md $spacing-lg;
+    margin-bottom: $spacing-lg;
+    color: $color-text-primary;
+
+    strong {
+      color: $color-success;
+    }
+  }
+
+  .status-summary {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-sm;
+    background: $color-bg-surface-elevated;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-sm $spacing-md;
+
+    @media (min-width: 600px) {
+      flex-direction: row;
+      align-items: center;
+      gap: $spacing-xl;
+    }
+  }
+
+  .readiness-status-item {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: $spacing-sm;
+    min-height: auto;
+  }
+
+  .status-label {
+    font-weight: 600;
+    color: $color-text-secondary;
+    white-space: nowrap;
+  }
+
+  .lifecycle-badge {
+    display: inline-block;
+    padding: $spacing-xs $spacing-md;
+    border-radius: $radius-sm;
+    font-size: $font-size-sm;
+    font-weight: 700;
+    text-transform: uppercase;
+
+    &.draft {
+      background: $color-bg-surface-overlay;
+      color: $color-text-secondary;
+    }
+
+    &.canonicalized {
+      background: $color-accent-teal;
+      color: $color-bg-base;
+    }
+
+    &.active {
+      background: $color-success;
+      color: $color-bg-base;
+    }
+
+    &.closed {
+      background: $color-text-muted;
+      color: $color-bg-base;
+    }
+  }
+
+  .readiness-badge {
+    display: inline-block;
+    padding: $spacing-xs $spacing-md;
+    border-radius: $radius-sm;
+    font-size: $font-size-sm;
+    font-weight: 700;
+
+    &.ready {
+      background: $color-success;
+      color: $color-bg-base;
+    }
+
+    &.not-ready {
+      background: $color-warning;
+      color: $color-bg-base;
+    }
+  }
+
+  .blockers-list-detail {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-md;
+    background: $color-bg-surface-elevated;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-sm $spacing-md;
+  }
+
+  .blocker-item {
+    background: $color-bg-base;
+    border-left: 4px solid $color-error;
+    border-radius: $radius-sm;
+    padding: $spacing-sm $spacing-md;
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-sm;
+
+    @media (min-width: 600px) {
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+    }
+  }
+
+  .blocker-message {
+    color: $color-text-primary;
+    flex: 1;
+  }
+
+  .blocker-link {
+    display: inline-block;
+    padding: $spacing-xs $spacing-md;
+    background: $color-accent-primary;
+    color: $color-bg-base;
+    border-radius: $radius-sm;
+    text-decoration: none;
+    font-size: $font-size-sm;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background $transition-base;
+
+    &:hover {
+      background: $color-accent-secondary;
+    }
+  }
+
+  .confirmation-info {
+    background: $color-bg-surface;
+    border: 2px solid $color-accent-primary;
+    border-radius: $radius-md;
+    padding: $spacing-lg;
+    margin-bottom: $spacing-md;
+
+    p {
+      margin: 0 0 $spacing-md 0;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+    strong {
+      color: $color-accent-primary;
+    }
+
+    ul {
+      margin: $spacing-sm 0;
+      padding-left: $spacing-lg;
+
+      li {
+        margin-bottom: $spacing-xs;
+      }
+    }
+  }
+
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: $spacing-md;
+  }
+
+  .modal-content {
+    background: $color-bg-surface;
+    border: 2px solid $color-border;
+    border-radius: $radius-md;
+    padding: $spacing-xl;
+    max-width: 600px;
+    width: 100%;
+    box-shadow: $shadow-lg;
+
+    h3 {
+      margin: 0 0 $spacing-md 0;
+      color: $color-text-primary;
+    }
+  }
+
+  .modal-body {
+    margin-bottom: $spacing-lg;
+
+    p {
+      margin: 0 0 $spacing-md 0;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+    .confirmation-required-text {
+      font-family: $font-family-mono;
+      background: $color-bg-base;
+      padding: $spacing-sm $spacing-md;
+      border-radius: $radius-sm;
+      border: 1px solid $color-border;
+      font-size: $font-size-sm;
+    }
+
+    .confirmation-input {
+      width: 100%;
+      margin-top: $spacing-sm;
+      padding: $spacing-sm $spacing-md;
+      border: 2px solid $color-border;
+      border-radius: $radius-sm;
+      background: $color-bg-base;
+      color: $color-text-primary;
+      font-size: $font-size-base;
+      font-family: $font-family-base;
+
+      &:focus {
+        outline: none;
+        border-color: $color-accent-primary;
+      }
+    }
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: $spacing-sm;
+    justify-content: flex-end;
+
+    button {
+      padding: $spacing-sm $spacing-lg;
+      border-radius: $radius-sm;
+      font-size: $font-size-base;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all $transition-base;
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+
+    .btn-primary {
+      background: $color-accent-primary;
+      color: $color-bg-base;
+      border: none;
+
+      &:hover:not(:disabled) {
+        background: $color-accent-secondary;
+      }
+    }
+
+    .btn-secondary {
+      background: $color-bg-surface-elevated;
+      color: $color-text-primary;
+      border: 2px solid $color-border;
+
+      &:hover:not(:disabled) {
+        background: $color-bg-surface-overlay;
+        border-color: $color-text-muted;
       }
     }
   }

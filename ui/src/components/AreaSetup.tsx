@@ -131,7 +131,17 @@ export function AreaSetup({
       <ReadinessWidget
         lifecycleState={activeBidYear?.lifecycle_state ?? "Draft"}
         isReadyForBidding={completeness.is_ready_for_bidding}
-        blockerCount={completeness.blocking_reasons.length}
+        blockerCount={
+          completeness.blocking_reasons.length +
+          completeness.bid_years.reduce(
+            (sum, by) => sum + by.blocking_reasons.length,
+            0,
+          ) +
+          completeness.areas.reduce(
+            (sum, area) => sum + area.blocking_reasons.length,
+            0,
+          )
+        }
       />
 
       <section className="bootstrap-section">
@@ -253,7 +263,7 @@ function AreaItem({
     }
   };
 
-  const isSystemArea = area.area_code === "NO BID";
+  const isSystemArea = area.is_system_area;
   const isCanonicalizedOrLater =
     lifecycleState === "Canonicalized" ||
     lifecycleState === "BiddingActive" ||
