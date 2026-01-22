@@ -13,7 +13,7 @@
 
 ## Active Sub-Phase
 
-- Sub-Phase: 30C (Area → Round Group Assignment UI)
+- Sub-Phase: 30D (Bootstrap UI Restructure)
 - State: Ready to begin
 
 ## Completed Sub-Phases
@@ -22,6 +22,7 @@
 - [x] Sub-Phase 30A: Phase 29 Gap Analysis
 - [x] Phase 29 Gap-Fill: Area → Round Group Assignment API
 - [x] Sub-Phase 30B: Round Groups & Rounds UI
+- [x] Sub-Phase 30C: Area → Round Group Assignment UI
 
 ## Work Completed
 
@@ -186,11 +187,39 @@
 
 **Commit:** `0f9f892` - "Complete Phase 30B: Round Groups & Rounds UI"
 
+### Sub-Phase 30C: Area → Round Group Assignment UI (COMPLETE)
+
+**Backend Extension:**
+
+- ✅ Added `round_group_id` and `round_group_name` fields to backend `AreaInfo` struct
+- ✅ Updated `list_areas` API handler to populate `round_group_id` from domain `Area`
+- ✅ Updated `handle_list_areas` server handler to enrich response with `round_group_name`
+- ✅ Added `round_group_id` and `round_group_name` fields to frontend `AreaInfo` type
+- ✅ All backend tests pass
+
+**Frontend UI:**
+
+- ✅ Extended `AreaView.tsx` to include round group assignment functionality
+- ✅ Added round group dropdown selector for non-system areas
+- ✅ Displays current round group assignment or "Not Assigned" state
+- ✅ Shows "Blocks Readiness" badge for areas without round group assignments
+- ✅ Implements inline editing pattern matching existing area name editing
+- ✅ Respects lifecycle constraints (assignment blocked after Canonicalized)
+- ✅ Loads round groups from backend for dropdown population
+- ✅ Uses existing `assignAreaRoundGroup` API binding
+- ✅ No inline styles - follows AGENTS.md styling guidelines
+- ✅ Mobile-friendly responsive design
+- ✅ All TypeScript checks pass
+
+**Commits:**
+
+- `8b3a27a` - "Phase 30C: Add round group fields to AreaInfo (backend)"
+- `49843ad` - "Complete Phase 30C: Area → Round Group Assignment UI"
+
 ## Outstanding Work
 
 ### Ready to Execute
 
-- Sub-Phase 30C: Area → Round Group Assignment UI
 - Sub-Phase 30D: Bootstrap UI Restructure
 - Sub-Phase 30E: Bid Schedule UI
 - Sub-Phase 30F: Readiness Review & Confirmation UI
@@ -209,13 +238,14 @@ None.
 
 ## Resume Instructions
 
-1. Begin Sub-Phase 30C: Area → Round Group Assignment UI
-   - Read `plans/PHASE_30/PHASE_30C.md` for full requirements
-   - Add UI for assigning areas to round groups
-   - Use existing API binding: `assignAreaRoundGroup()`
-   - Follow mobile-first design patterns
-   - Integrate with existing area management UI
-2. Execute remaining sub-phases in order (30C → 30D → ... → 30I)
+1. Begin Sub-Phase 30D: Bootstrap UI Restructure
+   - Read `plans/PHASE_30/PHASE_30D.md` for full requirements
+   - This is a major refactor of the monolithic BootstrapCompleteness component
+   - HIGH RISK: Component is ~1900 lines
+   - May need to split into two parts if too large for context
+   - Follow existing patterns and maintain all functionality
+   - Ensure all existing routes and navigation continue to work
+2. Execute remaining sub-phases in order (30D → 30E → ... → 30I)
 3. Update this document after each sub-phase completion
 4. Run `cargo xtask ci` and `pre-commit run --all-files` after each sub-phase
 
