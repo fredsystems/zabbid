@@ -258,3 +258,42 @@ label {
     color: $color-text-primary;
   }
 }
+
+// ============================================================================
+// Help Text
+// ============================================================================
+
+.help-text {
+  display: block;
+  font-size: $font-size-xs;
+  font-weight: 400;
+  color: $color-text-secondary;
+  font-style: italic;
+  margin-top: $spacing-xs;
+  line-height: 1.4;
+}
+
+// Checkbox wrapper styling
+.checkbox-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+
+  input[type="checkbox"] {
+    margin-top: 2px; // Align with label text
+    min-width: 20px;
+    min-height: 20px;
+    cursor: pointer;
+  }
+
+  label {
+    margin-bottom: 0;
+    cursor: pointer;
+    flex: 1;
+
+    .help-text {
+      margin-top: $spacing-xs;
+    }
+  }
+}

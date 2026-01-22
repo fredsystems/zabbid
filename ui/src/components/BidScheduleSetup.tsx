@@ -119,20 +119,21 @@ export function BidScheduleSetup({
   }, [lastEvent, loadData]);
 
   if (loading) {
-    return <div className="loading">Loading bid schedule setup...</div>;
-  }
-
-  if (error) {
     return (
-      <div className="error">
-        <h2>Unable to Load Bid Schedule Setup</h2>
-        <p>{error}</p>
+      <div className="bootstrap-completeness">
+        <BootstrapNavigation currentStep="schedule" />
+        <div className="loading">Loading bid schedule setup...</div>
       </div>
     );
   }
 
   if (!completeness) {
-    return <div className="error">No completeness data available</div>;
+    return (
+      <div className="bootstrap-completeness">
+        <BootstrapNavigation currentStep="schedule" />
+        <div className="error">No completeness data available</div>
+      </div>
+    );
   }
 
   if (completeness.active_bid_year === null) {
@@ -260,9 +261,14 @@ export function BidScheduleSetup({
         )}
 
         {error && (
-          <div className="error-banner">
-            <strong>Error:</strong> {error}
-          </div>
+          <section className="bootstrap-section">
+            <div className="error-banner">
+              <strong>Error:</strong> {error}
+            </div>
+            <p className="section-description">
+              Please try again or contact support if the problem persists.
+            </p>
+          </section>
         )}
       </div>
     </div>
@@ -392,6 +398,12 @@ function BidScheduleForm({
       return;
     }
 
+    // Validate end time is after start time
+    if (windowEndTime <= windowStartTime) {
+      onError("Daily bid window end time must be after start time");
+      return;
+    }
+
     const biddersNum = Number.parseInt(biddersPerDay, 10);
     if (Number.isNaN(biddersNum) || biddersNum <= 0) {
       onError("Bidders per day must be a positive number");
@@ -456,7 +468,7 @@ function BidScheduleForm({
         </p>
       </div>
 
-      <div className="form-row">
+      <div className="form-row full-width">
         <label htmlFor="start-date">Start Date (must be a Monday):</label>
         <input
           id="start-date"
@@ -471,7 +483,7 @@ function BidScheduleForm({
         </p>
       </div>
 
-      <div className="form-row">
+      <div className="form-row full-width">
         <label htmlFor="window-start">Daily Bid Window Start Time:</label>
         <input
           id="window-start"
@@ -483,7 +495,7 @@ function BidScheduleForm({
         />
       </div>
 
-      <div className="form-row">
+      <div className="form-row full-width">
         <label htmlFor="window-end">Daily Bid Window End Time:</label>
         <input
           id="window-end"
@@ -494,11 +506,12 @@ function BidScheduleForm({
           disabled={saving}
         />
         <p className="field-hint">
-          The daily time window during which bidding is allowed.
+          The daily time window during which bidding is allowed. End time must
+          be after start time.
         </p>
       </div>
 
-      <div className="form-row">
+      <div className="form-row full-width">
         <label htmlFor="bidders-per-day">Bidders per Area per Day:</label>
         <input
           id="bidders-per-day"

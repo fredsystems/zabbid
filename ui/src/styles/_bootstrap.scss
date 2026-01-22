@@ -385,6 +385,71 @@
       margin-bottom: 0;
     }
 
+    // Round groups list styling
+    .round-groups-list {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-md;
+      margin-top: $spacing-md;
+
+      .round-group-card {
+        background: $color-bg-surface;
+        border: 2px solid $color-border;
+        border-radius: $radius-md;
+        padding: $spacing-md;
+        transition: all 0.2s ease;
+
+        @media (min-width: 768px) {
+          padding: $spacing-lg;
+        }
+
+        &:hover {
+          border-color: color.adjust($color-border, $lightness: 10%);
+        }
+
+        &.edit-mode {
+          border-color: $color-accent-primary;
+          background: $color-bg-surface-elevated;
+        }
+
+        .card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: $spacing-md;
+          padding-bottom: $spacing-md;
+          border-bottom: 1px solid $color-border;
+          margin-bottom: $spacing-md;
+
+          @media (max-width: 599px) {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .card-actions {
+            display: flex;
+            gap: $spacing-sm;
+            flex-shrink: 0;
+
+            @media (max-width: 599px) {
+              flex-direction: column;
+              width: 100%;
+            }
+
+            button {
+              padding: $spacing-xs $spacing-md;
+              border-radius: $radius-sm;
+              font-size: $font-size-sm;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s ease;
+              white-space: nowrap;
+            }
+          }
+        }
+      }
+    }
+
     // Content wrapper for embedded components
     .bootstrap-section-content {
       margin-top: $spacing-md;
@@ -435,10 +500,39 @@
             padding-bottom: $spacing-sm;
             border-bottom: 1px solid $color-border;
             margin-bottom: $spacing-sm;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: $spacing-md;
+
+            @media (max-width: 599px) {
+              flex-direction: column;
+            }
 
             h4 {
               font-size: $font-size-lg;
               margin: 0;
+            }
+
+            .card-actions {
+              display: flex;
+              gap: $spacing-sm;
+              flex-shrink: 0;
+
+              @media (max-width: 599px) {
+                flex-direction: column;
+                width: 100%;
+              }
+
+              button {
+                padding: $spacing-xs $spacing-md;
+                border-radius: $radius-sm;
+                font-size: $font-size-sm;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                white-space: nowrap;
+              }
             }
           }
 
@@ -715,22 +809,19 @@
   }
 
   .form-row {
-    display: flex;
-    flex-direction: column;
-    gap: $spacing-sm;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: $spacing-xs;
     margin-bottom: $spacing-sm;
 
     @media (min-width: 600px) {
-      flex-direction: row;
-      align-items: center;
+      grid-template-columns: minmax(200px, auto) 1fr;
       gap: $spacing-md;
+      align-items: start;
 
       label {
-        min-width: 240px;
-        max-width: 240px;
-        flex-shrink: 0;
-        text-align: right;
-        padding-right: $spacing-md;
+        text-align: left;
+        padding-top: $spacing-sm;
       }
     }
 
@@ -750,7 +841,6 @@
     input[type="number"],
     input[type="date"],
     select {
-      flex: 1;
       max-width: 400px;
       box-sizing: border-box;
       padding: $spacing-sm $spacing-md;
@@ -1271,11 +1361,13 @@
 
     .confirmation-required-text {
       font-family: $font-family-mono;
-      background: $color-bg-base;
+      background: $color-bg-surface-elevated;
+      color: $color-accent-primary;
       padding: $spacing-sm $spacing-md;
       border-radius: $radius-sm;
-      border: 1px solid $color-border;
-      font-size: $font-size-sm;
+      border: 2px solid $color-accent-primary;
+      font-size: $font-size-base;
+      font-weight: 600;
     }
 
     .confirmation-input {
@@ -1284,14 +1376,19 @@
       padding: $spacing-sm $spacing-md;
       border: 2px solid $color-border;
       border-radius: $radius-sm;
-      background: $color-bg-base;
+      background: $color-bg-surface;
       color: $color-text-primary;
       font-size: $font-size-base;
-      font-family: $font-family-base;
+      font-family: $font-family-mono;
 
       &:focus {
         outline: none;
         border-color: $color-accent-primary;
+        background: $color-bg-surface-elevated;
+      }
+
+      &::placeholder {
+        color: $color-text-secondary;
       }
     }
   }
@@ -1333,6 +1430,316 @@
       &:hover:not(:disabled) {
         background: $color-bg-surface-overlay;
         border-color: $color-text-muted;
+      }
+    }
+
+    // ============================================================================
+    // Round Groups & Rounds in Bootstrap Flow
+    // ============================================================================
+
+    .round-groups-list {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-md;
+      margin-top: $spacing-md;
+    }
+
+    .round-group-card {
+      background: $color-bg-surface;
+      border: 2px solid $color-border;
+      border-radius: $radius-md;
+      padding: $spacing-md;
+      transition: all 0.2s ease;
+
+      @media (min-width: 768px) {
+        padding: $spacing-lg;
+      }
+
+      &:hover {
+        border-color: color.adjust($color-border, $lightness: 10%);
+      }
+
+      &.edit-mode {
+        border-color: $color-accent-primary;
+        background: $color-bg-surface-elevated;
+      }
+
+      .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: $spacing-md;
+        padding-bottom: $spacing-md;
+        border-bottom: 1px solid $color-border;
+        margin-bottom: $spacing-md;
+
+        @media (max-width: 599px) {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .card-title-group {
+          flex: 1;
+
+          h4 {
+            margin: 0 0 $spacing-xs 0;
+            font-size: $font-size-lg;
+            color: $color-text-primary;
+            font-weight: 600;
+          }
+
+          .card-meta {
+            display: flex;
+            gap: $spacing-sm;
+            align-items: center;
+            flex-wrap: wrap;
+
+            .meta-badge {
+              padding: $spacing-xs $spacing-sm;
+              background: color.adjust($color-accent-teal, $alpha: -0.85);
+              color: $color-accent-teal;
+              border: 1px solid $color-accent-teal;
+              border-radius: $radius-sm;
+              font-size: $font-size-xs;
+              font-weight: 600;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+
+            .meta-info {
+              font-size: $font-size-sm;
+              color: $color-text-secondary;
+            }
+          }
+        }
+
+        .card-actions {
+          display: flex;
+          gap: $spacing-sm;
+          flex-shrink: 0;
+
+          @media (max-width: 599px) {
+            flex-direction: column;
+          }
+
+          button {
+            padding: $spacing-xs $spacing-md;
+            border-radius: $radius-sm;
+            font-size: $font-size-sm;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+          }
+
+          .btn-expand {
+            background: $color-accent-primary;
+            color: $color-bg-base;
+            border: 2px solid $color-accent-primary;
+
+            &:hover:not(:disabled) {
+              background: color.adjust($color-accent-primary, $lightness: -10%);
+              box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            }
+          }
+
+          .btn-edit {
+            background: transparent;
+            color: $color-text-primary;
+            border: 2px solid $color-border;
+
+            &:hover:not(:disabled) {
+              border-color: $color-accent-primary;
+              color: $color-accent-primary;
+            }
+          }
+        }
+      }
+
+      .card-body {
+        padding-top: $spacing-md;
+      }
+    }
+
+    // Rounds section within round group cards
+    .rounds-section {
+      .rounds-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: $spacing-md;
+
+        h5 {
+          margin: 0;
+          font-size: $font-size-base;
+          font-weight: 600;
+          color: $color-text-secondary;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .btn-create-small {
+          padding: $spacing-xs $spacing-sm;
+          background: $color-accent-primary;
+          color: $color-bg-base;
+          border: 2px solid $color-accent-primary;
+          border-radius: $radius-sm;
+          font-size: $font-size-sm;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+
+          &:hover:not(:disabled) {
+            background: color.adjust($color-accent-primary, $lightness: -10%);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          }
+
+          &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+        }
+      }
+
+      .rounds-list {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: $spacing-sm;
+        margin-top: $spacing-md;
+
+        @media (min-width: 600px) {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        @media (min-width: 1024px) {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+    }
+
+    .round-card {
+      background: $color-bg-base;
+      border: 1px solid $color-border;
+      border-radius: $radius-sm;
+      padding: $spacing-sm;
+      transition: all 0.2s ease;
+
+      &:hover {
+        border-color: color.adjust($color-border, $lightness: 10%);
+      }
+
+      &.edit-mode {
+        border-color: $color-accent-teal;
+        background: $color-bg-surface;
+      }
+
+      .round-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: $spacing-sm;
+        padding-bottom: $spacing-sm;
+        border-bottom: 1px solid $color-border;
+
+        h6 {
+          margin: 0;
+          font-size: $font-size-sm;
+          font-weight: 600;
+          color: $color-text-primary;
+        }
+
+        .btn-edit-small {
+          padding: 2px $spacing-sm;
+          background: transparent;
+          color: $color-text-secondary;
+          border: 1px solid $color-border;
+          border-radius: $radius-sm;
+          font-size: $font-size-xs;
+          cursor: pointer;
+          transition: all 0.2s ease;
+
+          &:hover:not(:disabled) {
+            border-color: $color-accent-teal;
+            color: $color-accent-teal;
+          }
+
+          &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+        }
+      }
+
+      .round-details {
+        dl {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: $spacing-xs $spacing-sm;
+          margin: 0;
+          font-size: $font-size-sm;
+
+          dt {
+            font-weight: 600;
+            color: $color-text-secondary;
+          }
+
+          dd {
+            margin: 0;
+            color: $color-text-primary;
+          }
+        }
+      }
+    }
+
+    .create-round-form {
+      background: $color-bg-surface-elevated;
+      border: 2px solid $color-accent-primary;
+      border-radius: $radius-md;
+      padding: $spacing-md;
+      margin-top: $spacing-md;
+
+      .form-row {
+        margin-bottom: $spacing-sm;
+        display: grid;
+        grid-template-columns: minmax(200px, auto) 1fr;
+        gap: $spacing-md;
+        align-items: start;
+
+        @media (max-width: 599px) {
+          grid-template-columns: 1fr;
+          gap: $spacing-xs;
+        }
+
+        label {
+          font-size: $font-size-sm;
+          font-weight: 600;
+          color: $color-text-primary;
+          text-align: left;
+          padding-top: $spacing-xs;
+
+          @media (max-width: 599px) {
+            padding-top: 0;
+          }
+        }
+
+        input {
+          padding: $spacing-xs $spacing-sm;
+          border: 2px solid $color-border;
+          border-radius: $radius-sm;
+          background: $color-bg-base;
+          color: $color-text-primary;
+          font-size: $font-size-sm;
+
+          &:focus {
+            outline: none;
+            border-color: $color-accent-primary;
+          }
+
+          &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+        }
       }
     }
   }

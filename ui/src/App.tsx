@@ -721,6 +721,7 @@ function AuthenticatedAdminApp({
               authState.role === "Admin" && authState.sessionToken ? (
                 <RoundGroupSetupWrapper
                   sessionToken={authState.sessionToken}
+                  capabilities={authState.capabilities}
                   connectionState={connectionState}
                   lastEvent={lastEvent}
                 />

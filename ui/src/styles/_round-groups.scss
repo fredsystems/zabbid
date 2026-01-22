@@ -143,7 +143,7 @@
 
     .header-actions {
       display: flex;
-      gap: $spacing-sm;
+      gap: $spacing-md;
       flex-wrap: wrap;
     }
   }
@@ -185,16 +185,28 @@
 
   .form-group {
     margin-bottom: $spacing-md;
+    display: grid;
+    grid-template-columns: minmax(120px, auto) 1fr;
+    gap: $spacing-sm $spacing-md;
+    align-items: start;
+
+    @media (max-width: 599px) {
+      grid-template-columns: 1fr;
+    }
 
     label {
-      display: block;
-      margin-bottom: $spacing-sm;
       color: $color-text-primary;
       font-weight: 600;
+      padding-top: $spacing-sm;
+      text-align: left;
+
+      @media (max-width: 599px) {
+        padding-top: 0;
+        margin-bottom: $spacing-xs;
+      }
     }
 
     input[type="text"] {
-      width: 100%;
       background: $color-bg-base;
       color: $color-text-primary;
       border: 2px solid $color-border;
@@ -213,6 +225,7 @@
       display: flex;
       align-items: center;
       gap: $spacing-sm;
+      grid-column: 1 / -1;
 
       input[type="checkbox"] {
         width: 1.2rem;
@@ -222,6 +235,7 @@
 
       label {
         margin: 0;
+        padding-top: 0;
         cursor: pointer;
         font-weight: normal;
       }
@@ -243,16 +257,28 @@
 
   .form-group {
     margin-bottom: $spacing-md;
+    display: grid;
+    grid-template-columns: minmax(120px, auto) 1fr;
+    gap: $spacing-sm $spacing-md;
+    align-items: start;
+
+    @media (max-width: 599px) {
+      grid-template-columns: 1fr;
+    }
 
     label {
-      display: block;
-      margin-bottom: $spacing-sm;
       color: $color-text-primary;
       font-weight: 600;
+      padding-top: $spacing-sm;
+      text-align: left;
+
+      @media (max-width: 599px) {
+        padding-top: 0;
+        margin-bottom: $spacing-xs;
+      }
     }
 
     input[type="text"] {
-      width: 100%;
       background: $color-bg-base;
       color: $color-text-primary;
       border: 2px solid $color-border;
@@ -271,6 +297,7 @@
       display: flex;
       align-items: center;
       gap: $spacing-sm;
+      grid-column: 1 / -1;
 
       input[type="checkbox"] {
         width: 1.2rem;
@@ -280,6 +307,7 @@
 
       label {
         margin: 0;
+        padding-top: 0;
         cursor: pointer;
         font-weight: normal;
       }

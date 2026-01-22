@@ -54,8 +54,6 @@ export function Navigation({ capabilities }: NavigationProps) {
     if (location.pathname === "/admin") return "Dashboard";
     if (location.pathname.startsWith("/admin/bootstrap"))
       return "Bootstrap Setup";
-    if (location.pathname.startsWith("/admin/round-groups"))
-      return "Round Groups";
     if (location.pathname.startsWith("/admin/operators"))
       return "Operator Management";
     if (location.pathname.includes("/areas")) return "Area Management";
@@ -94,17 +92,7 @@ export function Navigation({ capabilities }: NavigationProps) {
           >
             Bootstrap Setup
           </button>
-          <button
-            type="button"
-            onClick={() => handleNavigation("/admin/round-groups")}
-            className={
-              location.pathname.startsWith("/admin/round-groups")
-                ? "active"
-                : ""
-            }
-          >
-            Round Groups
-          </button>
+
           {capabilities?.can_create_operator && (
             <button
               type="button"

@@ -23,10 +23,10 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
-  NetworkError,
   getBootstrapCompleteness,
   listAreas,
   listUsers,
+  NetworkError,
   registerUser,
   updateUser,
 } from "../api";
@@ -49,6 +49,13 @@ interface UserManagementProps {
   connectionState: ConnectionState;
   lastEvent: LiveEvent | null;
 }
+
+// Merged area type combining AreaInfo with completeness data
+type MergedAreaInfo = AreaInfo & {
+  expected_user_count: number | null;
+  bid_year: number;
+  bid_year_id: number;
+};
 
 export function UserManagement({
   sessionToken,
@@ -138,10 +145,6 @@ export function UserManagement({
   const activeBidYearId = completeness.active_bid_year_id;
 
   // Merge AreaInfo with AreaCompletenessInfo to get both is_system_area and expected_user_count
-  type MergedAreaInfo = AreaInfo & {
-    expected_user_count: number | null;
-    bid_year: number;
-  };
   const mergedAreas: MergedAreaInfo[] = areas.map((area) => {
     const completenessInfo = completeness.areas.find(
       (a) => a.area_id === area.area_id,
@@ -150,6 +153,7 @@ export function UserManagement({
       ...area,
       expected_user_count: completenessInfo?.expected_user_count ?? null,
       bid_year: completenessInfo?.bid_year ?? 0,
+      bid_year_id: completenessInfo?.bid_year_id ?? 0,
     };
   });
 
@@ -263,11 +267,6 @@ export function UserManagement({
 // User Management for Area Component
 // ============================================================================
 
-type MergedAreaInfo = AreaInfo & {
-  expected_user_count: number | null;
-  bid_year: number;
-};
-
 interface UserManagementForAreaProps {
   area: MergedAreaInfo;
   isAdmin: boolean;
@@ -299,12 +298,12 @@ function UserManagementForArea({
   // Load all areas for reassignment dropdown
   useEffect(() => {
     const loadAllAreas = async () => {
-      if (!sessionToken || !area.bid_year) {
+      if (!sessionToken || !area.bid_year_id) {
         return;
       }
 
       try {
-        const areasResponse = await listAreas(area.bid_year);
+        const areasResponse = await listAreas(area.bid_year_id);
         setAllAreas(areasResponse.areas);
       } catch (err) {
         console.error("Failed to load areas:", err);
@@ -313,7 +312,7 @@ function UserManagementForArea({
     };
 
     void loadAllAreas();
-  }, [sessionToken, area.bid_year]);
+  }, [sessionToken, area.bid_year_id]);
 
   useEffect(() => {
     const loadUsers = async () => {

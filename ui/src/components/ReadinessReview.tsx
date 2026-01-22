@@ -304,13 +304,16 @@ export function ReadinessReview({
       </div>
 
       {showConfirmModal && (
-        <button
-          type="button"
+        // biome-ignore lint/a11y/useSemanticElements: Modal overlay intentionally uses div to avoid button focus issues with nested input
+        <div
           className="modal-overlay"
           onClick={() => setShowConfirmModal(false)}
           onKeyDown={(e) => {
             if (e.key === "Escape") setShowConfirmModal(false);
           }}
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
         >
           <div
             className="modal-content"
@@ -359,7 +362,7 @@ export function ReadinessReview({
               </button>
             </div>
           </div>
-        </button>
+        </div>
       )}
     </div>
   );

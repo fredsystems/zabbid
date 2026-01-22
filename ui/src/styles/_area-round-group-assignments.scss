@@ -1,0 +1,248 @@
+// Copyright (C) 2026 Fred Clausen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+/**
+ * Area Round Group Assignment Styles
+ * Mobile-first responsive design for area-to-round-group assignment UI
+ */
+
+@use "sass:color";
+@use "variables" as *;
+
+.area-assignments-list {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  margin-top: $spacing-md;
+}
+
+.area-assignment-item {
+  background: $color-bg-surface;
+  border: 2px solid $color-border;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: color.adjust($color-border, $lightness: 10%);
+  }
+
+  &.edit-mode {
+    border-color: $color-accent-primary;
+    background: $color-bg-surface-elevated;
+  }
+
+  .area-assignment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: $spacing-md;
+    padding-bottom: $spacing-md;
+    border-bottom: 1px solid $color-border;
+    margin-bottom: $spacing-md;
+
+    h4 {
+      margin: 0;
+      font-size: $font-size-lg;
+      color: $color-text-primary;
+      font-weight: 600;
+    }
+
+    .btn-edit {
+      padding: $spacing-xs $spacing-md;
+      border: 2px solid $color-border;
+      border-radius: $radius-sm;
+      background: transparent;
+      color: $color-text-primary;
+      font-size: $font-size-sm;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+
+      &:hover:not(:disabled) {
+        border-color: $color-accent-primary;
+        color: $color-accent-primary;
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+  }
+
+  .area-assignment-body {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-sm;
+
+    .assignment-info {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: $spacing-sm;
+      align-items: center;
+
+      @media (max-width: 599px) {
+        grid-template-columns: 1fr;
+        gap: $spacing-xs;
+      }
+
+      .assignment-label {
+        font-weight: 600;
+        color: $color-text-secondary;
+        font-size: $font-size-sm;
+      }
+
+      .assignment-value {
+        color: $color-text-primary;
+        font-size: $font-size-base;
+        font-weight: 500;
+
+        &.unassigned {
+          color: $color-warning;
+          font-style: italic;
+        }
+      }
+
+      .blocker-badge {
+        padding: $spacing-xs $spacing-sm;
+        background: color.adjust($color-warning, $alpha: -0.85);
+        color: $color-warning;
+        border: 1px solid $color-warning;
+        border-radius: $radius-sm;
+        font-size: $font-size-xs;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+
+        @media (max-width: 599px) {
+          justify-self: start;
+        }
+      }
+    }
+  }
+
+  .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-sm;
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: $spacing-xs;
+      font-weight: 600;
+      color: $color-text-primary;
+      font-size: $font-size-sm;
+    }
+
+    select {
+      width: 100%;
+      padding: $spacing-sm $spacing-md;
+      border: 2px solid $color-border;
+      border-radius: $radius-sm;
+      background: $color-bg-base;
+      color: $color-text-primary;
+      font-size: $font-size-base;
+      cursor: pointer;
+
+      &:focus {
+        outline: none;
+        border-color: $color-accent-primary;
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+  }
+
+  .form-actions {
+    display: flex;
+    gap: $spacing-sm;
+    margin-top: $spacing-sm;
+    padding-top: $spacing-md;
+    border-top: 1px solid $color-border;
+
+    @media (max-width: 599px) {
+      flex-direction: column;
+    }
+
+    button {
+      flex: 1;
+      padding: $spacing-sm $spacing-lg;
+      border-radius: $radius-md;
+      font-size: $font-size-base;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 2px solid transparent;
+
+      @media (min-width: 600px) {
+        flex: 0 1 auto;
+        min-width: 120px;
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    }
+
+    .btn-save {
+      background: $color-accent-teal;
+      color: $color-bg-base;
+      border-color: $color-accent-teal;
+
+      &:hover:not(:disabled) {
+        background: color.adjust($color-accent-teal, $lightness: -10%);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+    }
+
+    .btn-cancel {
+      background: transparent;
+      color: $color-text-primary;
+      border-color: $color-border;
+
+      &:hover:not(:disabled) {
+        border-color: $color-text-primary;
+        background: color.adjust($color-bg-surface, $lightness: 5%);
+      }
+    }
+  }
+}
+
+// Info banner for lifecycle state
+.info-banner {
+  background: color.adjust($color-accent-primary, $alpha: -0.9);
+  border: 1px solid $color-accent-primary;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  margin: $spacing-md 0;
+  color: $color-text-primary;
+
+  strong {
+    color: $color-accent-primary;
+    font-weight: 600;
+  }
+}
+
+// Error banner
+.error-banner {
+  background: color.adjust($color-error, $alpha: -0.9);
+  border: 1px solid $color-error;
+  border-radius: $radius-md;
+  padding: $spacing-md;
+  margin: $spacing-md 0;
+  color: $color-text-primary;
+
+  strong {
+    color: $color-error;
+    font-weight: 600;
+  }
+}

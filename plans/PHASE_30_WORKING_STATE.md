@@ -9,12 +9,12 @@
 
 - Status: In Progress
 - Last Updated: 2025-01-27
-- Reason: Sub-Phase 30D in progress - TypeScript errors fixed, ready for manual testing
+- Reason: Sub-Phase 30D in progress - All UI bugs fixed, ready for manual testing
 
 ## Active Sub-Phase
 
 - Sub-Phase: 30D (Bootstrap UI Restructure)
-- State: In Progress (Checkpoint 3 - Ready for manual testing)
+- State: In Progress (Checkpoint 5 - All UI bugs fixed, ready for manual testing)
 
 ## Completed Sub-Phases
 
@@ -270,9 +270,34 @@
 - ⏳ Update Navigation.tsx if needed to point to new entry route
 - ⏳ Final validation pass
 
+**Form Layout Bug Fixes (Checkpoint 4):**
+
+- ✅ Fixed round group create form: Name label and input now inline
+- ✅ Fixed round create form: All labels and inputs now inline
+- ✅ Changed form-row layouts from flex to grid with auto-width left-aligned labels
+- ✅ Restructured CreateRoundGroupForm, EditRoundGroupForm, CreateRoundForm, EditRoundForm
+  - Labels and inputs are now siblings (not nested)
+  - Grid layout: `grid-template-columns: minmax(200px, auto) 1fr`
+  - Labels left-aligned with proper padding
+  - Mobile (<600px): stacks vertically
+- ✅ Updated both `_bootstrap.scss` and form components in `RoundGroupSetupWrapper.tsx`
+- ✅ All form-row layouts now use consistent 200px minimum label width
+- ✅ Committed as: `53cb85e`
+
+**Button Spacing Fixes (Checkpoint 5):**
+
+- ✅ Fixed "Show Rounds"/"Hide Rounds" and "Edit" button spacing issue
+- ✅ Added `.round-groups-list .round-group-card .card-actions` styles directly under `.bootstrap-section`
+- ✅ Issue was CSS selector mismatch: component uses `.bootstrap-section > .round-groups-list` not `.modal-actions`
+- ✅ Set button spacing to `gap: $spacing-sm` (0.5rem) for proper visual balance
+- ✅ Removed redundant margin-left rules (gap handles spacing)
+- ✅ All CI checks pass
+- ✅ All pre-commit checks pass
+- ✅ Ready to commit
+
 **Current Status:**
 
-- Checkpoint 3: All TypeScript errors fixed
+- Checkpoint 5: All UI bugs fixed
 - All components created and routes configured
 - Code compiles and passes all checks
 - Ready for manual testing and validation
@@ -285,7 +310,8 @@
 - All new components follow existing patterns from BidYearSetup/AreaSetup
 - BidScheduleSetup required new API bindings and types (completed)
 - ReadinessReview includes confirmation modal with explicit text matching
-- Next step: Fix TypeScript errors by correcting field names and type usage
+- Form layouts now use proper grid-based inline label/input pattern with left-aligned labels
+- Button spacing fixed by adding correct CSS selectors for RoundGroupSetupWrapper component structure
 
 ## Outstanding Work
 

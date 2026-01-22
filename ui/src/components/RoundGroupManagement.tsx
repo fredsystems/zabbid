@@ -402,7 +402,13 @@ export function RoundGroupManagement({
                 onChange={(e) => setCreateEditingEnabled(e.target.checked)}
                 disabled={creating}
               />
-              <label htmlFor="createEditingEnabled">Editing Enabled</label>
+              <label htmlFor="createEditingEnabled">
+                Editing Enabled
+                <span className="help-text">
+                  (Controls whether users can edit their bids during this round
+                  group's rounds)
+                </span>
+              </label>
             </div>
           </div>
           <div className="form-actions">
@@ -501,6 +507,10 @@ export function RoundGroupManagement({
                         htmlFor={`editEditingEnabled-${rg.round_group_id}`}
                       >
                         Editing Enabled
+                        <span className="help-text">
+                          (Controls whether users can edit their bids during
+                          this round group's rounds)
+                        </span>
                       </label>
                     </div>
                   </div>

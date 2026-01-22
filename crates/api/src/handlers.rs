@@ -7112,28 +7112,7 @@ pub fn confirm_ready_to_bid(
 
     let year: u16 = bid_year.year();
 
-    // Load current lifecycle state
-    let current_state_str: String = persistence
-        .get_lifecycle_state(request.bid_year_id)
-        .map_err(|e| ApiError::Internal {
-            message: format!("Failed to get lifecycle state: {e}"),
-        })?;
-
-    let current_state: zab_bid_domain::BidYearLifecycle =
-        current_state_str.parse().map_err(translate_domain_error)?;
-
-    // Validate current state is BootstrapComplete
-    if current_state != zab_bid_domain::BidYearLifecycle::BootstrapComplete {
-        return Err(ApiError::DomainRuleViolation {
-            rule: String::from("ConfirmReadyToBid requires BootstrapComplete state"),
-            message: format!(
-                "Cannot confirm bid year in state '{}' (must be 'BootstrapComplete')",
-                current_state.as_str()
-            ),
-        });
-    }
-
-    // Check readiness
+    // Check readiness first
     let readiness: GetBidYearReadinessResponse =
         get_bid_year_readiness(persistence, metadata, request.bid_year_id)?;
 
@@ -7144,6 +7123,53 @@ pub fn confirm_ready_to_bid(
                 "Bid year {} is not ready for confirmation. Blocking reasons: {}",
                 year,
                 readiness.blocking_reasons.join(", ")
+            ),
+        });
+    }
+
+    // Load current lifecycle state
+    let current_state_str: String = persistence
+        .get_lifecycle_state(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get lifecycle state: {e}"),
+        })?;
+
+    let current_state: zab_bid_domain::BidYearLifecycle =
+        current_state_str.parse().map_err(translate_domain_error)?;
+
+    // If in Draft state and ready, auto-transition to BootstrapComplete first
+    if current_state == zab_bid_domain::BidYearLifecycle::Draft {
+        let bootstrap_req = TransitionToBootstrapCompleteRequest {
+            bid_year_id: request.bid_year_id,
+        };
+
+        transition_to_bootstrap_complete(
+            persistence,
+            metadata,
+            &bootstrap_req,
+            authenticated_actor,
+            operator,
+            cause.clone(),
+        )?;
+    }
+
+    // Reload lifecycle state after potential auto-transition
+    let current_state_str: String = persistence
+        .get_lifecycle_state(request.bid_year_id)
+        .map_err(|e| ApiError::Internal {
+            message: format!("Failed to get lifecycle state: {e}"),
+        })?;
+
+    let current_state: zab_bid_domain::BidYearLifecycle =
+        current_state_str.parse().map_err(translate_domain_error)?;
+
+    // Validate we're now in BootstrapComplete
+    if current_state != zab_bid_domain::BidYearLifecycle::BootstrapComplete {
+        return Err(ApiError::DomainRuleViolation {
+            rule: String::from("ConfirmReadyToBid requires BootstrapComplete state"),
+            message: format!(
+                "Cannot confirm bid year in state '{}' (must be 'BootstrapComplete')",
+                current_state.as_str()
             ),
         });
     }

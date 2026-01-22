@@ -157,7 +157,7 @@ export function AreaRoundGroupAssignmentWrapper({
         />
         <div className="bootstrap-content">
           <section className="bootstrap-section">
-            <h2 className="section-title">Area → Round Group Assignment</h2>
+            <h2 className="section-title">Round Group Assignment</h2>
             <p className="section-description">Loading...</p>
           </section>
         </div>
@@ -231,7 +231,7 @@ export function AreaRoundGroupAssignmentWrapper({
 
         {roundGroups.length > 0 && nonSystemAreas.length > 0 && (
           <section className="bootstrap-section">
-            <h3 className="section-title">Area Assignments</h3>
+            <h3 className="section-title">Round Group Assignments</h3>
             <div className="area-assignments-list">
               {nonSystemAreas
                 .sort((a, b) => a.area_code.localeCompare(b.area_code))

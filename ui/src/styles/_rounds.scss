@@ -213,7 +213,7 @@
 
     .header-actions {
       display: flex;
-      gap: $spacing-sm;
+      gap: $spacing-md;
       flex-wrap: wrap;
     }
   }
@@ -268,23 +268,37 @@
 
   .form-group {
     margin-bottom: $spacing-md;
+    display: grid;
+    grid-template-columns: minmax(200px, auto) 1fr;
+    gap: $spacing-sm $spacing-md;
+    align-items: start;
+
+    @media (max-width: 599px) {
+      grid-template-columns: 1fr;
+    }
 
     &.full-width {
+      grid-column: 1 / -1;
+
       @media (min-width: 768px) {
         grid-column: 1 / -1;
       }
     }
 
     label {
-      display: block;
-      margin-bottom: $spacing-sm;
       color: $color-text-primary;
       font-weight: 600;
+      padding-top: $spacing-sm;
+      text-align: left;
+
+      @media (max-width: 599px) {
+        padding-top: 0;
+        margin-bottom: $spacing-xs;
+      }
     }
 
     input[type="text"],
     input[type="number"] {
-      width: 100%;
       background: $color-bg-base;
       color: $color-text-primary;
       border: 2px solid $color-border;
@@ -303,6 +317,7 @@
       display: flex;
       align-items: center;
       gap: $spacing-sm;
+      grid-column: 1 / -1;
 
       input[type="checkbox"] {
         width: 1.2rem;
@@ -312,6 +327,7 @@
 
       label {
         margin: 0;
+        padding-top: 0;
         cursor: pointer;
         font-weight: normal;
       }
@@ -321,6 +337,11 @@
       color: $color-text-secondary;
       font-size: $font-size-sm;
       margin-top: $spacing-xs;
+      grid-column: 2 / -1;
+
+      @media (max-width: 599px) {
+        grid-column: 1 / -1;
+      }
     }
   }
 
@@ -348,23 +369,37 @@
 
   .form-group {
     margin-bottom: $spacing-md;
+    display: grid;
+    grid-template-columns: minmax(200px, auto) 1fr;
+    gap: $spacing-sm $spacing-md;
+    align-items: start;
+
+    @media (max-width: 599px) {
+      grid-template-columns: 1fr;
+    }
 
     &.full-width {
+      grid-column: 1 / -1;
+
       @media (min-width: 768px) {
         grid-column: 1 / -1;
       }
     }
 
     label {
-      display: block;
-      margin-bottom: $spacing-sm;
       color: $color-text-primary;
       font-weight: 600;
+      padding-top: $spacing-sm;
+      text-align: left;
+
+      @media (max-width: 599px) {
+        padding-top: 0;
+        margin-bottom: $spacing-xs;
+      }
     }
 
     input[type="text"],
     input[type="number"] {
-      width: 100%;
       background: $color-bg-base;
       color: $color-text-primary;
       border: 2px solid $color-border;
@@ -383,6 +418,7 @@
       display: flex;
       align-items: center;
       gap: $spacing-sm;
+      grid-column: 1 / -1;
 
       input[type="checkbox"] {
         width: 1.2rem;
@@ -392,6 +428,7 @@
 
       label {
         margin: 0;
+        padding-top: 0;
         cursor: pointer;
         font-weight: normal;
       }
@@ -401,6 +438,11 @@
       color: $color-text-secondary;
       font-size: $font-size-sm;
       margin-top: $spacing-xs;
+      grid-column: 2 / -1;
+
+      @media (max-width: 599px) {
+        grid-column: 1 / -1;
+      }
     }
   }
 

@@ -541,7 +541,13 @@ export function RoundManagement({
                   onChange={(e) => setCreateIncludeHolidays(e.target.checked)}
                   disabled={creating}
                 />
-                <label htmlFor="createIncludeHolidays">Include Holidays</label>
+                <label htmlFor="createIncludeHolidays">
+                  Include Holidays
+                  <span className="help-text">
+                    (Whether holiday dates count toward bid allocation for this
+                    round)
+                  </span>
+                </label>
               </div>
             </div>
             <div className="form-group">
@@ -732,6 +738,10 @@ export function RoundManagement({
                             htmlFor={`editIncludeHolidays-${round.round_id}`}
                           >
                             Include Holidays
+                            <span className="help-text">
+                              (Whether holiday dates count toward bid allocation
+                              for this round)
+                            </span>
                           </label>
                         </div>
                       </div>
