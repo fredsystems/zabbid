@@ -15,8 +15,10 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
+  assignAreaRoundGroup,
   listAreas,
   listBidYears,
+  listRoundGroups,
   NetworkError,
   updateArea,
 } from "../api";
@@ -25,6 +27,7 @@ import type {
   BidYearInfo,
   ConnectionState,
   LiveEvent,
+  RoundGroupInfo,
 } from "../types";
 
 interface AreaViewProps {
@@ -39,6 +42,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
   const [bidYear, setBidYear] = useState<number | null>(null);
   const [lifecycleState, setLifecycleState] = useState<string | null>(null);
   const [areas, setAreas] = useState<AreaInfo[]>([]);
+  const [roundGroups, setRoundGroups] = useState<RoundGroupInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -89,6 +93,20 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
           (by: BidYearInfo) => by.bid_year_id === bidYearIdNum,
         );
         setLifecycleState(bidYearInfo?.lifecycle_state ?? null);
+
+        // Load round groups if we have a session token
+        if (sessionToken) {
+          try {
+            const roundGroupsResponse = await listRoundGroups(
+              sessionToken,
+              bidYearIdNum,
+            );
+            setRoundGroups(roundGroupsResponse.round_groups);
+          } catch (rgErr) {
+            // Non-fatal: round groups are optional
+            console.warn("Failed to load round groups:", rgErr);
+          }
+        }
       } catch (err) {
         if (err instanceof NetworkError) {
           setError(
@@ -103,7 +121,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
     };
 
     void loadAreas();
-  }, [bidYearIdNum]);
+  }, [bidYearIdNum, sessionToken]);
 
   // Auto-refresh when connection is restored
   useEffect(() => {
@@ -135,6 +153,19 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
             (by: BidYearInfo) => by.bid_year_id === bidYearIdNum,
           );
           setLifecycleState(bidYearInfo?.lifecycle_state ?? null);
+
+          // Load round groups if we have a session token
+          if (sessionToken) {
+            try {
+              const roundGroupsResponse = await listRoundGroups(
+                sessionToken,
+                bidYearIdNum,
+              );
+              setRoundGroups(roundGroupsResponse.round_groups);
+            } catch (rgErr) {
+              console.warn("Failed to load round groups:", rgErr);
+            }
+          }
         } catch (err) {
           if (err instanceof NetworkError) {
             setError(
@@ -153,7 +184,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
     }
 
     previousConnectionState.current = connectionState;
-  }, [connectionState, bidYearIdNum]);
+  }, [connectionState, bidYearIdNum, sessionToken]);
 
   // Refresh when relevant live events occur
   useEffect(() => {
@@ -180,6 +211,19 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
             (by: BidYearInfo) => by.bid_year_id === bidYearIdNum,
           );
           setLifecycleState(bidYearInfo?.lifecycle_state ?? null);
+
+          // Reload round groups
+          if (sessionToken) {
+            try {
+              const roundGroupsResponse = await listRoundGroups(
+                sessionToken,
+                bidYearIdNum,
+              );
+              setRoundGroups(roundGroupsResponse.round_groups);
+            } catch (rgErr) {
+              console.warn("Failed to reload round groups:", rgErr);
+            }
+          }
         } catch (err) {
           // Silently fail on live event refresh - connection state will show the issue
           console.error("Failed to refresh after live event:", err);
@@ -187,7 +231,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
       };
       void loadAreas();
     }
-  }, [lastEvent, bidYearIdNum, bidYear]);
+  }, [lastEvent, bidYearIdNum, bidYear, sessionToken]);
 
   if (bidYearIdNum === null) {
     return (
@@ -228,6 +272,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
     bidYearIdNum: number | null;
     sessionToken: string | null;
     isCanonicalizedOrLater: boolean;
+    roundGroups: RoundGroupInfo[];
     onRefresh: () => Promise<void>;
     onError: (error: string) => void;
   }
@@ -237,12 +282,18 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
     bidYearIdNum,
     sessionToken,
     isCanonicalizedOrLater,
+    roundGroups,
     onRefresh,
     onError,
   }: AreaCardProps) {
     const [isEditingName, setIsEditingName] = useState(false);
     const [areaName, setAreaName] = useState(area.area_name ?? "");
     const [saving, setSaving] = useState(false);
+    const [isEditingRoundGroup, setIsEditingRoundGroup] = useState(false);
+    const [selectedRoundGroupId, setSelectedRoundGroupId] = useState<
+      number | null
+    >(area.round_group_id);
+    const [assigningSaving, setAssigningSaving] = useState(false);
 
     const handleSaveAreaName = async () => {
       if (!sessionToken) {
@@ -272,6 +323,40 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
     const handleCancelEdit = () => {
       setIsEditingName(false);
       setAreaName(area.area_name ?? "");
+    };
+
+    const handleSaveRoundGroup = async () => {
+      if (!sessionToken) {
+        onError("You must be logged in to assign round groups");
+        return;
+      }
+
+      try {
+        setAssigningSaving(true);
+        onError("");
+        await assignAreaRoundGroup(
+          sessionToken,
+          area.area_id,
+          selectedRoundGroupId,
+        );
+        await onRefresh();
+        setIsEditingRoundGroup(false);
+      } catch (err) {
+        if (err instanceof ApiError) {
+          onError(`Failed to assign round group: ${err.message}`);
+        } else {
+          onError(
+            err instanceof Error ? err.message : "Failed to assign round group",
+          );
+        }
+      } finally {
+        setAssigningSaving(false);
+      }
+    };
+
+    const handleCancelRoundGroupEdit = () => {
+      setIsEditingRoundGroup(false);
+      setSelectedRoundGroupId(area.round_group_id);
     };
 
     const canEditMetadata = !area.is_system_area && !isCanonicalizedOrLater;
@@ -372,6 +457,81 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
               <span className="card-field-value">System Managed</span>
             </div>
           )}
+
+          {!area.is_system_area && (
+            <div className="card-field">
+              <span className="card-field-label">Round Group</span>
+              {!isEditingRoundGroup ? (
+                <div className="card-field-value">
+                  {area.round_group_name ? (
+                    <span>{area.round_group_name}</span>
+                  ) : (
+                    <span className="placeholder-text">Not Assigned</span>
+                  )}
+                  {!area.round_group_id && (
+                    <span
+                      className="badge"
+                      title="This area has no round group assigned and may block readiness"
+                    >
+                      Blocks Readiness
+                    </span>
+                  )}
+                  {sessionToken && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingRoundGroup(true)}
+                      disabled={isCanonicalizedOrLater}
+                      className="btn-edit-inline"
+                      title={
+                        isCanonicalizedOrLater
+                          ? "Round group assignment cannot be changed after canonicalization"
+                          : "Assign round group"
+                      }
+                    >
+                      {area.round_group_id ? "Change" : "Assign"}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="inline-edit-form">
+                  <select
+                    value={selectedRoundGroupId ?? ""}
+                    onChange={(e) =>
+                      setSelectedRoundGroupId(
+                        e.target.value ? Number(e.target.value) : null,
+                      )
+                    }
+                    disabled={assigningSaving}
+                  >
+                    <option value="">-- No Round Group --</option>
+                    {roundGroups.map((rg) => (
+                      <option key={rg.round_group_id} value={rg.round_group_id}>
+                        {rg.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      onClick={handleSaveRoundGroup}
+                      disabled={assigningSaving}
+                      className="btn-save"
+                    >
+                      {assigningSaving ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelRoundGroupEdit}
+                      disabled={assigningSaving}
+                      className="btn-cancel"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="card-footer">
@@ -401,6 +561,19 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
         (by: BidYearInfo) => by.bid_year_id === bidYearIdNum,
       );
       setLifecycleState(bidYearInfo?.lifecycle_state ?? null);
+
+      // Reload round groups
+      if (sessionToken) {
+        try {
+          const roundGroupsResponse = await listRoundGroups(
+            sessionToken,
+            bidYearIdNum,
+          );
+          setRoundGroups(roundGroupsResponse.round_groups);
+        } catch (rgErr) {
+          console.warn("Failed to reload round groups:", rgErr);
+        }
+      }
     } catch (err) {
       console.error("Failed to refresh:", err);
     }
@@ -449,6 +622,7 @@ export function AreaView({ connectionState, lastEvent }: AreaViewProps) {
               bidYearIdNum={bidYearIdNum}
               sessionToken={sessionToken}
               isCanonicalizedOrLater={isCanonicalizedOrLater}
+              roundGroups={roundGroups}
               onRefresh={handleRefresh}
               onError={setError}
             />
