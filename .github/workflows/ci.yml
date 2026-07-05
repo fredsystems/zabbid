@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: dtolnay/rust-toolchain@efcb852328a9f50117170cc43094fb6f09eaf1ae # nightly
       # --- Install Nix ---
-      - uses: taiki-e/install-action@c6d51ded7cde3c421f6cd6046cd601f2248f3710 # cargo-llvm-cov
+      - uses: taiki-e/install-action@54676833da63830b7c258a0ddb1e64cb3cab2663 # cargo-llvm-cov
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: cargo xtask coverage
       - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
