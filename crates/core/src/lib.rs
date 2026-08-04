@@ -16,6 +16,7 @@
     clippy::unwrap_used,
     clippy::expect_used
 )]
+#![allow(clippy::multiple_crate_versions)]
 
 mod apply;
 mod command;
