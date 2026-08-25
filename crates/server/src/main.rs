@@ -3141,7 +3141,7 @@ async fn handle_adjust_bid_order(
         .into_iter()
         .map(|adj| BidOrderAdjustment {
             user_id: adj.user_id,
-            new_bid_order: adj.new_order.try_into().map_or(0, |v: i32| v),
+            new_bid_order: adj.new_order.try_into().unwrap_or(0),
         })
         .collect();
 
