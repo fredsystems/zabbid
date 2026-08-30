@@ -326,10 +326,7 @@ export type LiveEvent =
  * Connection state for backend connectivity.
  */
 export type ConnectionState =
-  | "connecting"
-  | "connected"
-  | "disconnected"
-  | "error";
+  "connecting" | "connected" | "disconnected" | "error";
 
 /**
  * Blocking reason for bootstrap incompleteness.
