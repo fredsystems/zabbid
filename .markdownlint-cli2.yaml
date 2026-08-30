@@ -10,3 +10,5 @@ globs:
   - "!ui/dist/**"
   - "!target"
   - "!**/target"
+  - "!.direnv"
+  - "!.direnv/**"
