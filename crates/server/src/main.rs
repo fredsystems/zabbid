@@ -4177,7 +4177,7 @@ mod tests {
 
         assert_eq!(login_response.login_name.to_lowercase(), "admin1");
         assert_eq!(login_response.role, "Admin");
-        assert!(!login_response.session_token.is_empty());
+        assert_ne!(login_response.session_token, "");
     }
 
     #[tokio::test]

@@ -570,7 +570,7 @@ fn test_canonicalize_audit_snapshot_sqlite() {
             assert_eq!(area2.user_count, 1);
 
             // Verify timestamp is present and valid
-            assert!(!snapshot.timestamp.is_empty());
+            assert_ne!(snapshot.timestamp, "");
             // Timestamp is in unix_SECONDS format
             assert!(snapshot.timestamp.starts_with("unix_"));
         }
