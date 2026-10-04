@@ -531,7 +531,7 @@ mod tests {
         ];
 
         let result = compute_bid_order(&users).expect("should succeed");
-        assert!(result.is_empty());
+        assert_eq!(result, [] as [BidOrderPosition; 0]);
     }
 
     #[allow(clippy::expect_used)]

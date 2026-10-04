@@ -616,7 +616,7 @@ mod tests {
         assert_eq!(row.name, Some(String::from("Alice Brown")));
         assert_eq!(row.area_id, Some(String::from("ZAB")));
         assert_eq!(row.crew, Some(1));
-        assert!(row.errors.is_empty());
+        assert_eq!(row.errors, [] as [std::string::String; 0]);
     }
 
     #[test]
@@ -673,7 +673,7 @@ mod tests {
         assert_eq!(result.invalid_count, 1);
         let row: &CsvRowResult = &result.rows[0];
         assert_eq!(row.status, CsvRowStatus::Invalid);
-        assert!(!row.errors.is_empty());
+        assert_ne!(row.errors, [] as [std::string::String; 0]);
     }
 
     #[test]
@@ -994,23 +994,23 @@ mod tests {
 
         // Verify valid rows are actually valid
         assert_eq!(result.rows[0].status, CsvRowStatus::Valid);
-        assert!(result.rows[0].errors.is_empty());
+        assert_eq!(result.rows[0].errors, [] as [std::string::String; 0]);
         assert_eq!(result.rows[0].initials, Some(String::from("AB")));
 
         assert_eq!(result.rows[2].status, CsvRowStatus::Valid);
-        assert!(result.rows[2].errors.is_empty());
+        assert_eq!(result.rows[2].errors, [] as [std::string::String; 0]);
         assert_eq!(result.rows[2].initials, Some(String::from("CD")));
 
         assert_eq!(result.rows[4].status, CsvRowStatus::Valid);
-        assert!(result.rows[4].errors.is_empty());
+        assert_eq!(result.rows[4].errors, [] as [std::string::String; 0]);
         assert_eq!(result.rows[4].initials, Some(String::from("GH")));
 
         // Verify invalid rows have errors
         assert_eq!(result.rows[1].status, CsvRowStatus::Invalid);
-        assert!(!result.rows[1].errors.is_empty());
+        assert_ne!(result.rows[1].errors, [] as [std::string::String; 0]);
 
         assert_eq!(result.rows[3].status, CsvRowStatus::Invalid);
-        assert!(!result.rows[3].errors.is_empty());
+        assert_ne!(result.rows[3].errors, [] as [std::string::String; 0]);
     }
 
     // Gap 5: Empty file (no headers, no data)
@@ -1061,7 +1061,7 @@ mod tests {
         assert_eq!(result.total_rows, 0, "Should have no data rows");
         assert_eq!(result.valid_count, 0);
         assert_eq!(result.invalid_count, 0);
-        assert!(result.rows.is_empty());
+        assert_eq!(result.rows, [] as [CsvRowResult; 0]);
     }
 
     // Gap 5: Duplicate headers
