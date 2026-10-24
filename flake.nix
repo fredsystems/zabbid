@@ -118,7 +118,9 @@
                 cargo-deny
                 cargo-machete
                 typos
-                cargo-llvm-cov
+                # FIXME: nixpkgs cargo-llvm-cov 0.9.0 checkPhase fails (14 upstream tests).
+                # Remove override once https://github.com/NixOS/nixpkgs/issues/576588 is fixed.
+                (cargo-llvm-cov.overrideAttrs { doCheck = false; })
                 sqlite
                 nodejs
                 diesel-cli
