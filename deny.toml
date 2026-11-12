@@ -22,6 +22,14 @@ allow = [
 
 [advisories]
 version = 2
+ignore = [
+    # RUSTSEC-2026-0459 targets the SQLite source bundled by libsqlite3-sys's
+    # `bundled` feature. We do not enable `bundled`; we link the system SQLite
+    # (nixpkgs provides 3.54.0, which contains the fix). diesel 2.3.x requires
+    # libsqlite3-sys <0.39, so the patched crate cannot be selected yet.
+    # Remove this entry once diesel permits libsqlite3-sys >=0.39.
+    { id = "RUSTSEC-2026-0459", reason = "bundled SQLite not enabled; system SQLite >=3.54.0; blocked on diesel requiring libsqlite3-sys <0.39" },
+]
 
 [bans]
 multiple-versions = "allow"
