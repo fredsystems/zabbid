@@ -4224,7 +4224,7 @@ pub fn import_csv_users(
             results.push(CsvImportRowResult {
                 row_index,
                 row_number,
-                initials: Some(initials_str.clone()),
+                initials: Some(initials_str),
                 status: CsvImportRowStatus::Failed,
                 error: Some(String::from("Missing name")),
             });
@@ -4236,7 +4236,7 @@ pub fn import_csv_users(
             results.push(CsvImportRowResult {
                 row_index,
                 row_number,
-                initials: Some(initials_str.clone()),
+                initials: Some(initials_str),
                 status: CsvImportRowStatus::Failed,
                 error: Some(String::from("Missing area_id")),
             });
@@ -4248,7 +4248,7 @@ pub fn import_csv_users(
             results.push(CsvImportRowResult {
                 row_index,
                 row_number,
-                initials: Some(initials_str.clone()),
+                initials: Some(initials_str),
                 status: CsvImportRowStatus::Failed,
                 error: Some(String::from("Missing user_type")),
             });
@@ -4260,7 +4260,7 @@ pub fn import_csv_users(
             results.push(CsvImportRowResult {
                 row_index,
                 row_number,
-                initials: Some(initials_str.clone()),
+                initials: Some(initials_str),
                 status: CsvImportRowStatus::Failed,
                 error: Some(String::from("Missing crew")),
             });
@@ -4272,7 +4272,7 @@ pub fn import_csv_users(
             results.push(CsvImportRowResult {
                 row_index,
                 row_number,
-                initials: Some(initials_str.clone()),
+                initials: Some(initials_str),
                 status: CsvImportRowStatus::Failed,
                 error: Some(String::from("Missing service_computation_date")),
             });
@@ -4284,7 +4284,7 @@ pub fn import_csv_users(
             results.push(CsvImportRowResult {
                 row_index,
                 row_number,
-                initials: Some(initials_str.clone()),
+                initials: Some(initials_str),
                 status: CsvImportRowStatus::Failed,
                 error: Some(String::from("Missing eod_faa_date or eod_date")),
             });
@@ -4297,7 +4297,7 @@ pub fn import_csv_users(
             results.push(CsvImportRowResult {
                 row_index,
                 row_number,
-                initials: Some(initials_str.clone()),
+                initials: Some(initials_str),
                 status: CsvImportRowStatus::Failed,
                 error: Some(format!("Invalid crew number: {crew_str}")),
             });
@@ -4320,7 +4320,7 @@ pub fn import_csv_users(
                 results.push(CsvImportRowResult {
                     row_index,
                     row_number,
-                    initials: Some(initials_str.clone()),
+                    initials: Some(initials_str),
                     status: CsvImportRowStatus::Failed,
                     error: Some(format!("Invalid user type: {e}")),
                 });
@@ -4335,7 +4335,7 @@ pub fn import_csv_users(
                 results.push(CsvImportRowResult {
                     row_index,
                     row_number,
-                    initials: Some(initials_str.clone()),
+                    initials: Some(initials_str),
                     status: CsvImportRowStatus::Failed,
                     error: Some(format!("Invalid crew: {e}")),
                 });
@@ -4361,7 +4361,7 @@ pub fn import_csv_users(
         // Create the command
         let command = Command::RegisterUser {
             initials: initials.clone(),
-            name: name.clone(),
+            name,
             area: area.clone(),
             user_type,
             crew,
