@@ -430,7 +430,7 @@ fn test_canonical_validation_is_deterministic() {
         let result: Result<BootstrapResult, CoreError> = apply_bootstrap(
             &metadata,
             &placeholder_bid_year,
-            command.clone(),
+            command,
             create_test_actor(),
             create_test_cause(),
         );

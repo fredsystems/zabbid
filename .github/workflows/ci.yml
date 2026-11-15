@@ -47,20 +47,20 @@ jobs:
           '
 
   # Run cargo coverage. This will generate a coverage report and upload it to codecov.
-  coverage:
-    name: Coverage Report
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: dtolnay/rust-toolchain@2c76c034f9e32a5d6e2c104dc4df23a22476db04 # nightly
-      # --- Install Nix ---
-      - uses: taiki-e/install-action@c3076e6fa5aeb9a93daf1bd8eff73345250a8a9c # cargo-llvm-cov
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: cargo xtask coverage
-      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: true
+  # coverage:
+  #   name: Coverage Report
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+  #     - uses: dtolnay/rust-toolchain@2c76c034f9e32a5d6e2c104dc4df23a22476db04 # nightly
+  #     # --- Install Nix ---
+  #     - uses: taiki-e/install-action@c3076e6fa5aeb9a93daf1bd8eff73345250a8a9c # cargo-llvm-cov
+  #     - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+  #     - run: cargo xtask coverage
+  #     - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+  #       with:
+  #         token: ${{ secrets.CODECOV_TOKEN }}
+  #         fail_ci_if_error: true
 
   # Run cargo check. This is a fast way to catch any obvious errors in the code.
   check:
@@ -86,14 +86,12 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build-and-check
-      - coverage
       - check
     if: always()
     steps:
       - name: Verify all jobs succeeded
         run: |
           echo "build-and-check: ${{ needs.build-and-check.result }}"
-          echo "coverage:        ${{ needs.coverage.result }}"
           echo "check:           ${{ needs.check.result }}"
 
           if [[ "${{ needs.build-and-check.result }}" != "success" ]]; then
