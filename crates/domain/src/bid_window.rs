@@ -27,20 +27,29 @@
 //! - Post-confirmation adjustments (to recalculate windows)
 
 use crate::error::DomainError;
+use crate::timezone::resolve_timezone;
 use crate::types::BidSchedule;
-use chrono::{Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Weekday};
-use chrono_tz::Tz;
+use jiff::civil::{Date, DateTime, Time, Weekday};
+use jiff::tz::TimeZone;
+use num_traits::ToPrimitive;
+
+/// UTC timestamp format for stored bid windows.
+///
+/// Matches the RFC 3339 form previously produced by `chrono`'s `to_rfc3339()`
+/// (e.g. `2026-03-02T13:00:00+00:00`). Persisted windows must keep a single,
+/// stable textual representation.
+const UTC_TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S%:z";
 
 /// Parameters for calculating a single bid window.
-struct WindowCalculationParams {
+struct WindowCalculationParams<'a> {
     user_id: i64,
     round_id: i64,
     position: usize,
-    start_date: NaiveDate,
-    window_start_time: NaiveTime,
-    window_end_time: NaiveTime,
+    start_date: Date,
+    window_start_time: Time,
+    window_end_time: Time,
     bidders_per_day: u32,
-    tz: Tz,
+    tz: &'a TimeZone,
 }
 
 /// Represents a calculated bid window for a user in a specific round.
@@ -106,46 +115,14 @@ pub fn calculate_bid_windows(
     round_ids: &[i64],
     schedule: &BidSchedule,
 ) -> Result<Vec<BidWindow>, DomainError> {
-    // Parse timezone
-    let tz: Tz = schedule
-        .timezone()
-        .parse()
-        .map_err(|_| DomainError::InvalidTimezone(schedule.timezone().to_string()))?;
+    let tz: TimeZone = resolve_timezone(schedule.timezone())?;
 
-    // Convert time::Date to chrono::NaiveDate
-    let start_date = NaiveDate::from_ymd_opt(
-        schedule.start_date().year(),
-        schedule.start_date().month() as u32,
-        u32::from(schedule.start_date().day()),
-    )
-    .ok_or_else(|| DomainError::InvalidBidSchedule {
-        reason: format!("Invalid bid start date: {}", schedule.start_date()),
-    })?;
-
-    // Convert time::Time to chrono::NaiveTime
-    let window_start_time = NaiveTime::from_hms_opt(
-        u32::from(schedule.window_start_time().hour()),
-        u32::from(schedule.window_start_time().minute()),
-        u32::from(schedule.window_start_time().second()),
-    )
-    .ok_or_else(|| DomainError::InvalidBidSchedule {
-        reason: format!(
-            "Invalid window start time: {}",
-            schedule.window_start_time()
-        ),
-    })?;
-
-    let window_end_time = NaiveTime::from_hms_opt(
-        u32::from(schedule.window_end_time().hour()),
-        u32::from(schedule.window_end_time().minute()),
-        u32::from(schedule.window_end_time().second()),
-    )
-    .ok_or_else(|| DomainError::InvalidBidSchedule {
-        reason: format!("Invalid window end time: {}", schedule.window_end_time()),
-    })?;
+    let start_date: Date = to_civil_date(schedule.start_date())?;
+    let window_start_time: Time = to_civil_time(schedule.window_start_time(), "start")?;
+    let window_end_time: Time = to_civil_time(schedule.window_end_time(), "end")?;
 
     // Calculate windows for each (user, round) combination
-    let mut windows = Vec::new();
+    let mut windows: Vec<BidWindow> = Vec::new();
 
     for (user_id, position) in user_positions {
         for round_id in round_ids {
@@ -157,7 +134,7 @@ pub fn calculate_bid_windows(
                 window_start_time,
                 window_end_time,
                 bidders_per_day: schedule.bidders_per_day(),
-                tz,
+                tz: &tz,
             };
             let window = calculate_window_for_position(&params)?;
             windows.push(window);
@@ -167,43 +144,69 @@ pub fn calculate_bid_windows(
     Ok(windows)
 }
 
+/// Converts a `time::Date` into a `jiff` civil date.
+fn to_civil_date(date: time::Date) -> Result<Date, DomainError> {
+    let invalid = || DomainError::InvalidBidSchedule {
+        reason: format!("Invalid bid start date: {date}"),
+    };
+
+    let year: i16 = date.year().to_i16().ok_or_else(invalid)?;
+    let month: i8 = u8::from(date.month()).to_i8().ok_or_else(invalid)?;
+    let day: i8 = date.day().to_i8().ok_or_else(invalid)?;
+
+    Date::new(year, month, day).map_err(|_| invalid())
+}
+
+/// Converts a `time::Time` into a `jiff` civil time (second precision).
+///
+/// `label` identifies which window boundary is being converted for error messages.
+fn to_civil_time(time: time::Time, label: &str) -> Result<Time, DomainError> {
+    let invalid = || DomainError::InvalidBidSchedule {
+        reason: format!("Invalid window {label} time: {time}"),
+    };
+
+    let hour: i8 = time.hour().to_i8().ok_or_else(invalid)?;
+    let minute: i8 = time.minute().to_i8().ok_or_else(invalid)?;
+    let second: i8 = time.second().to_i8().ok_or_else(invalid)?;
+
+    Time::new(hour, minute, second, 0).map_err(|_| invalid())
+}
+
+/// Resolves a wall-clock datetime in `tz` and formats it as a UTC timestamp.
+///
+/// Fails if the local time is ambiguous (DST fold) or does not exist (DST gap).
+fn to_utc_timestamp(local: DateTime, tz: &TimeZone) -> Result<String, DomainError> {
+    let zoned = tz.to_ambiguous_zoned_datetime(local).unambiguous().map_err(|_| {
+        DomainError::InvalidBidSchedule {
+            reason: format!(
+                "Could not resolve timezone for date {} at time {} (ambiguous or non-existent due to DST)",
+                local.date(),
+                local.time()
+            ),
+        }
+    })?;
+
+    Ok(zoned
+        .with_time_zone(TimeZone::UTC)
+        .strftime(UTC_TIMESTAMP_FORMAT)
+        .to_string())
+}
+
 /// Calculates the bid window for a single user in a specific round at a given position.
 fn calculate_window_for_position(
-    params: &WindowCalculationParams,
+    params: &WindowCalculationParams<'_>,
 ) -> Result<BidWindow, DomainError> {
     // Calculate which day this user bids on (0-based weekday index)
-    let day_offset = calculate_weekday_offset(params.position, params.bidders_per_day);
+    let day_offset: i64 = calculate_weekday_offset(params.position, params.bidders_per_day);
 
     // Calculate the actual calendar date
-    let bid_date = add_weekdays(params.start_date, day_offset);
+    let bid_date: Date = add_weekdays(params.start_date, day_offset)?;
 
-    // Construct wall-clock datetime in declared timezone
-    let naive_start = bid_date.and_time(params.window_start_time);
-    let naive_end = bid_date.and_time(params.window_end_time);
-
-    let start_dt = params.tz
-        .from_local_datetime(&naive_start)
-        .single()
-        .ok_or_else(|| DomainError::InvalidBidSchedule {
-            reason: format!(
-                "Could not resolve timezone for date {bid_date} at time {} (ambiguous or non-existent due to DST)",
-                params.window_start_time
-            ),
-        })?;
-
-    let end_dt = params.tz
-        .from_local_datetime(&naive_end)
-        .single()
-        .ok_or_else(|| DomainError::InvalidBidSchedule {
-            reason: format!(
-                "Could not resolve timezone for date {bid_date} at time {} (ambiguous or non-existent due to DST)",
-                params.window_end_time
-            ),
-        })?;
-
-    // Convert to UTC and format as ISO 8601
-    let start_utc = start_dt.with_timezone(&chrono::Utc).to_rfc3339();
-    let end_utc = end_dt.with_timezone(&chrono::Utc).to_rfc3339();
+    // Construct wall-clock datetime in declared timezone and convert to UTC
+    let start_utc: String =
+        to_utc_timestamp(bid_date.to_datetime(params.window_start_time), params.tz)?;
+    let end_utc: String =
+        to_utc_timestamp(bid_date.to_datetime(params.window_end_time), params.tz)?;
 
     Ok(BidWindow {
         user_id: params.user_id,
@@ -230,20 +233,28 @@ const fn calculate_weekday_offset(position: usize, bidders_per_day: u32) -> i64 
 }
 
 /// Adds a number of weekdays (Mon-Fri) to a date, skipping weekends.
-fn add_weekdays(start: NaiveDate, weekdays: i64) -> NaiveDate {
-    let mut current = start;
-    let mut remaining = weekdays;
+///
+/// # Errors
+///
+/// Returns an error if the resulting date is outside the supported calendar range.
+fn add_weekdays(start: Date, weekdays: i64) -> Result<Date, DomainError> {
+    let mut current: Date = start;
+    let mut remaining: i64 = weekdays;
 
     while remaining > 0 {
-        current += Duration::days(1);
+        current = current
+            .tomorrow()
+            .map_err(|_| DomainError::InvalidBidSchedule {
+                reason: format!("Bid window date out of range after {current}"),
+            })?;
 
         // Skip weekends
-        if current.weekday() != Weekday::Sat && current.weekday() != Weekday::Sun {
+        if current.weekday() != Weekday::Saturday && current.weekday() != Weekday::Sunday {
             remaining -= 1;
         }
     }
 
-    current
+    Ok(current)
 }
 
 #[cfg(test)]
@@ -251,25 +262,121 @@ fn add_weekdays(start: NaiveDate, weekdays: i64) -> NaiveDate {
 mod tests {
     use super::*;
 
+    use jiff::civil::date;
+
+    fn new_york_schedule(
+        start: time::Date,
+        window_start: time::Time,
+        window_end: time::Time,
+    ) -> BidSchedule {
+        BidSchedule::new(
+            String::from("America/New_York"),
+            start,
+            window_start,
+            window_end,
+            5,
+        )
+        .unwrap()
+    }
+
     #[test]
     fn test_add_weekdays_no_offset() {
-        let start = NaiveDate::from_ymd_opt(2026, 3, 2).unwrap(); // Monday
-        let result = add_weekdays(start, 0);
+        let start = date(2026, 3, 2); // Monday
+        let result = add_weekdays(start, 0).unwrap();
         assert_eq!(result, start);
     }
 
     #[test]
     fn test_add_weekdays_within_week() {
-        let start = NaiveDate::from_ymd_opt(2026, 3, 2).unwrap(); // Monday
-        let result = add_weekdays(start, 2);
-        assert_eq!(result, NaiveDate::from_ymd_opt(2026, 3, 4).unwrap()); // Wednesday
+        let start = date(2026, 3, 2); // Monday
+        let result = add_weekdays(start, 2).unwrap();
+        assert_eq!(result, date(2026, 3, 4)); // Wednesday
     }
 
     #[test]
     fn test_add_weekdays_skip_weekend() {
-        let start = NaiveDate::from_ymd_opt(2026, 3, 2).unwrap(); // Monday
-        let result = add_weekdays(start, 5);
-        assert_eq!(result, NaiveDate::from_ymd_opt(2026, 3, 9).unwrap()); // Next Monday
+        let start = date(2026, 3, 2); // Monday
+        let result = add_weekdays(start, 5).unwrap();
+        assert_eq!(result, date(2026, 3, 9)); // Next Monday
+    }
+
+    #[test]
+    fn test_add_weekdays_out_of_range_is_error() {
+        let result = add_weekdays(date(9999, 12, 31), 1);
+        assert!(matches!(
+            result,
+            Err(DomainError::InvalidBidSchedule { .. })
+        ));
+    }
+
+    /// Stored windows must keep the exact RFC 3339 form `YYYY-MM-DDTHH:MM:SS+00:00`.
+    /// Changing it (e.g. to a `Z` suffix) would mix formats in persisted data.
+    #[test]
+    fn test_window_timestamps_use_stable_utc_format() {
+        // March 2, 2026 is EST (UTC-5): 08:00 local = 13:00 UTC.
+        let schedule = new_york_schedule(
+            time::Date::from_calendar_date(2026, time::Month::March, 2).unwrap(),
+            time::Time::from_hms(8, 0, 0).unwrap(),
+            time::Time::from_hms(18, 0, 0).unwrap(),
+        );
+
+        let windows = calculate_bid_windows(&[(1001, 1)], &[1], &schedule).unwrap();
+
+        assert_eq!(
+            windows[0].window_start_datetime,
+            "2026-03-02T13:00:00+00:00"
+        );
+        assert_eq!(windows[0].window_end_datetime, "2026-03-02T23:00:00+00:00");
+    }
+
+    /// Wall-clock times are stable across DST: after the spring-forward change
+    /// (2026-03-08 in `America/New_York`) the same 08:00 local maps to 12:00 UTC.
+    #[test]
+    fn test_window_after_dst_change_keeps_wall_clock_time() {
+        let schedule = new_york_schedule(
+            time::Date::from_calendar_date(2026, time::Month::March, 2).unwrap(),
+            time::Time::from_hms(8, 0, 0).unwrap(),
+            time::Time::from_hms(18, 0, 0).unwrap(),
+        );
+
+        // Position 26 with 5 per day => day offset 5 => Monday March 9 (EDT, UTC-4).
+        let windows = calculate_bid_windows(&[(1001, 26)], &[1], &schedule).unwrap();
+
+        assert_eq!(
+            windows[0].window_start_datetime,
+            "2026-03-09T12:00:00+00:00"
+        );
+        assert_eq!(windows[0].window_end_datetime, "2026-03-09T22:00:00+00:00");
+    }
+
+    /// A local time that does not exist (DST gap) must be rejected, not shifted.
+    #[test]
+    fn test_nonexistent_local_time_is_error() {
+        let tz = resolve_timezone("America/New_York").unwrap();
+        // 02:30 on 2026-03-08 is skipped by the spring-forward transition.
+        let local = date(2026, 3, 8).at(2, 30, 0, 0);
+
+        let result = to_utc_timestamp(local, &tz);
+
+        assert!(matches!(
+            result,
+            Err(DomainError::InvalidBidSchedule { .. })
+        ));
+    }
+
+    /// A local time that occurs twice (DST fold) must be rejected, not guessed.
+    #[test]
+    fn test_ambiguous_local_time_is_error() {
+        let tz = resolve_timezone("America/New_York").unwrap();
+        // 01:30 on 2026-11-01 occurs twice due to the fall-back transition.
+        let local = date(2026, 11, 1).at(1, 30, 0, 0);
+
+        let result = to_utc_timestamp(local, &tz);
+
+        assert!(matches!(
+            result,
+            Err(DomainError::InvalidBidSchedule { .. })
+        ));
     }
 
     #[test]

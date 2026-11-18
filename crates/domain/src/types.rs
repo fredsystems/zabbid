@@ -232,9 +232,7 @@ impl BidSchedule {
     /// Returns an error if any validation rule is violated
     pub fn validate(&self) -> Result<(), DomainError> {
         // Validate timezone
-        self.timezone
-            .parse::<chrono_tz::Tz>()
-            .map_err(|_| DomainError::InvalidTimezone(self.timezone.clone()))?;
+        crate::timezone::resolve_timezone(&self.timezone)?;
 
         // Validate start date is a Monday
         if self.start_date.weekday() != time::Weekday::Monday {
